@@ -31,6 +31,9 @@ const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../worksp
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
 
+// Version for deployment verification
+const VERSION = '1.0.1';
+
 // Sessions storage
 const sessions = new Map();
 const sessionProcesses = new Map();
@@ -205,15 +208,17 @@ app.post('/api/file', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
+    version: VERSION,
     sessions: sessions.size,
     maxSessions: MAX_SESSIONS,
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    freeCodeDir: FREE_CODE_DIR
   });
 });
 
 // Create HTTP server
 const server = app.listen(PORT, HOST, () => {
-  console.log(`🚀 Free-code Web Server running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+  console.log(`🚀 Free-code Web Server v${VERSION} running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
   console.log(`📁 Workspace: ${WORKSPACE_DIR}`);
   console.log(`📦 Free-code directory: ${FREE_CODE_DIR}`);
 });
@@ -234,14 +239,19 @@ wss.on('connection', (ws, req) => {
           sessionId = message.sessionId;
           const session = getSession(sessionId);
           if (!session) {
+            console.error(`Invalid session: ${sessionId}`);
             ws.send(JSON.stringify({ type: 'error', message: 'Invalid session' }));
             ws.close();
             return;
           }
 
-          // Start free-code CLI process using bun run
-          // The free-code project uses bun as runtime and 'start' or 'dev' as the main command
-          proc = spawn('bun', ['run', 'start', '--model', session.model], {
+          console.log(`Starting CLI for session ${sessionId} in ${FREE_CODE_DIR}`);
+
+          // Try to start free-code using node (since bun run might not work in all environments)
+          // The dist folder should have the compiled code from 'bun run build:dev:full'
+          const cliCommand = `node /free-code/dist/entrypoints/cli.js`;
+          
+          proc = spawn('bash', ['-c', cliCommand], {
             cwd: FREE_CODE_DIR,
             env: {
               ...process.env,
@@ -273,6 +283,7 @@ wss.on('connection', (ws, req) => {
           });
 
           proc.on('close', (code) => {
+            console.log(`Process exited with code ${code}`);
             if (ws.readyState === ws.OPEN) {
               ws.send(JSON.stringify({ type: 'exit', code }));
             }
@@ -280,6 +291,7 @@ wss.on('connection', (ws, req) => {
           });
 
           proc.on('error', (err) => {
+            console.error('Process error:', err);
             if (ws.readyState === ws.OPEN) {
               ws.send(JSON.stringify({ type: 'error', message: err.message }));
             }
