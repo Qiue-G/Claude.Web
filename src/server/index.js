@@ -29,6 +29,7 @@ const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
+const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
 
 // Sessions storage
 const sessions = new Map();
@@ -214,6 +215,7 @@ app.get('/api/health', (req, res) => {
 const server = app.listen(PORT, HOST, () => {
   console.log(`🚀 Free-code Web Server running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
   console.log(`📁 Workspace: ${WORKSPACE_DIR}`);
+  console.log(`📦 Free-code directory: ${FREE_CODE_DIR}`);
 });
 
 // WebSocket for real-time CLI interaction
@@ -238,9 +240,8 @@ wss.on('connection', (ws, req) => {
           }
 
           // Start free-code process
-          const freeCodePath = join(__dirname, '../../../free-code/cli');
           proc = spawn('bash', ['-c', `API_KEY=${session.apiKey} ./cli --model ${session.model}`], {
-            cwd: join(__dirname, '../../../free-code'),
+            cwd: FREE_CODE_DIR,
             env: {
               ...process.env,
               ANTHROPIC_API_KEY: session.apiKey
