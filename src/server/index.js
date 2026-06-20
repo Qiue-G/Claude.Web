@@ -239,13 +239,17 @@ wss.on('connection', (ws, req) => {
             return;
           }
 
-          // Start free-code process
-          proc = spawn('bash', ['-c', `API_KEY=${session.apiKey} ./cli --model ${session.model}`], {
+          // Start free-code process with environment variables (safe approach)
+          proc = spawn('bash', ['-c', './cli'], {
             cwd: FREE_CODE_DIR,
             env: {
               ...process.env,
-              ANTHROPIC_API_KEY: session.apiKey
-            }
+              ANTHROPIC_API_KEY: session.apiKey,
+              // Remove any conflicting env vars
+              API_KEY: undefined,
+              NODE_ENV: 'production'
+            },
+            stdio: ['pipe', 'pipe', 'pipe']
           });
 
           sessionProcesses.set(sessionId, proc);
@@ -286,7 +290,7 @@ wss.on('connection', (ws, req) => {
           break;
 
         case 'input':
-          if (proc && !proc.killed) {
+          if (proc && !proc.killed && proc.stdin) {
             proc.stdin.write(message.data + '\n');
           }
           break;
@@ -302,6 +306,7 @@ wss.on('connection', (ws, req) => {
           break;
       }
     } catch (error) {
+      console.error('WebSocket error:', error);
       ws.send(JSON.stringify({ type: 'error', message: error.message }));
     }
   });
