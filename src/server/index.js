@@ -239,14 +239,13 @@ wss.on('connection', (ws, req) => {
             return;
           }
 
-          // Start free-code process with environment variables (safe approach)
-          proc = spawn('bash', ['-c', './cli'], {
+          // Start free-code CLI process using bun run
+          // The free-code project uses bun as runtime and 'start' or 'dev' as the main command
+          proc = spawn('bun', ['run', 'start', '--model', session.model], {
             cwd: FREE_CODE_DIR,
             env: {
               ...process.env,
               ANTHROPIC_API_KEY: session.apiKey,
-              // Remove any conflicting env vars
-              API_KEY: undefined,
               NODE_ENV: 'production'
             },
             stdio: ['pipe', 'pipe', 'pipe']
