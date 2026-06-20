@@ -696,11 +696,24 @@
 
       <div class="form-group">
         <label>Model</label>
-        <select id="model">
+        <input
+          type="text"
+          id="model"
+          list="modelList"
+          placeholder="输入模型名或选择..."
+          value="claude-opus-4-6"
+          autocomplete="off"
+        >
+        <datalist id="modelList">
           <option value="claude-opus-4-6">Claude Opus 4.6 (推荐)</option>
           <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
           <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
-        </select>
+          <option value="claude-opus-4-5">Claude Opus 4.5</option>
+          <option value="claude-haiku-3-5">Claude Haiku 3.5</option>
+          <option value="gpt-5.3-codex">GPT-5.3 Codex</option>
+          <option value="gpt-5.4">GPT-5.4</option>
+          <option value="gpt-5.4-mini">GPT-5.4 Mini</option>
+        </datalist>
       </div>
 
       <button type="submit" class="btn btn-primary" id="startBtn">
@@ -788,11 +801,23 @@
             </div>
             <div class="settings-item">
               <label>模型</label>
-              <select id="settingsModel">
+              <input
+                type="text"
+                id="settingsModel"
+                list="settingsModelList"
+                placeholder="输入模型名..."
+                autocomplete="off"
+              >
+              <datalist id="settingsModelList">
                 <option value="claude-opus-4-6">Claude Opus 4.6</option>
                 <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
                 <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
-              </select>
+                <option value="claude-opus-4-5">Claude Opus 4.5</option>
+                <option value="claude-haiku-3-5">Claude Haiku 3.5</option>
+                <option value="gpt-5.3-codex">GPT-5.3 Codex</option>
+                <option value="gpt-5.4">GPT-5.4</option>
+                <option value="gpt-5.4-mini">GPT-5.4 Mini</option>
+              </datalist>
             </div>
           </div>
 
@@ -928,7 +953,7 @@
         const res = await fetch('/api/session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apiKey, model })
+          body: JSON.stringify({ apiKey, model, provider })
         });
 
         if (!res.ok) {
