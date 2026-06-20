@@ -46,7 +46,7 @@ app.use(express.json());
 app.use(express.static(join(__dirname, '../../public')));
 
 // Session management
-function createSession(apiKey, model = 'claude-opus-4-6') {
+function createSession(apiKey, model = 'claude-opus-4-6', provider = 'anthropic') {
   const sessionId = uuidv4();
   const sessionDir = join(WORKSPACE_DIR, sessionId);
 
@@ -60,6 +60,7 @@ function createSession(apiKey, model = 'claude-opus-4-6') {
     id: sessionId,
     apiKey,
     model,
+    provider,
     dir: sessionDir,
     createdAt: Date.now(),
     lastActivity: Date.now()
@@ -80,7 +81,7 @@ function getSession(sessionId) {
 // API Routes
 app.post('/api/session', async (req, res) => {
   try {
-    const { apiKey, model } = req.body;
+    const { apiKey, model, provider } = req.body;
 
     if (!apiKey) {
       return res.status(400).json({ error: 'API key is required' });
@@ -90,7 +91,7 @@ app.post('/api/session', async (req, res) => {
       return res.status(503).json({ error: 'Too many sessions. Please try again later.' });
     }
 
-    const session = createSession(apiKey, model || 'claude-opus-4-6');
+    const session = createSession(apiKey, model || 'claude-opus-4-6', provider || 'anthropic');
     res.json({ sessionId: session.id, dir: session.dir });
   } catch (error) {
     console.error('Session creation error:', error);
@@ -103,7 +104,7 @@ app.get('/api/session/:id', (req, res) => {
   if (!session) {
     return res.status(404).json({ error: 'Session not found' });
   }
-  res.json({ sessionId: session.id, dir: session.dir, model: session.model });
+  res.json({ sessionId: session.id, dir: session.dir, model: session.model, provider: session.provider });
 });
 
 app.delete('/api/session/:id', async (req, res) => {
@@ -248,6 +249,7 @@ wss.on('connection', (ws, req) => {
           console.log(`Starting CLI for session ${sessionId}`);
           console.log(`Session dir: ${session.dir}`);
           console.log(`Model: ${session.model}`);
+          console.log(`Provider: ${session.provider}`);
 
           // Use the compiled binary from bun run build:dev:full
           // This creates an executable at /free-code/cli-dev
@@ -255,11 +257,39 @@ wss.on('connection', (ws, req) => {
           
           console.log(`Attempting to spawn: ${cliPath}`);
 
-          proc = spawn(cliPath, [], {
+          // Build CLI args: pass model via --model flag
+          const cliArgs = [];
+          if (session.model) {
+            cliArgs.push('--model', session.model);
+          }
+
+          // Build provider-specific environment variables
+          const providerEnv = {};
+          switch (session.provider) {
+            case 'openai':
+              providerEnv.CLAUDE_CODE_USE_OPENAI = '1';
+              break;
+            case 'bedrock':
+              providerEnv.CLAUDE_CODE_USE_BEDROCK = '1';
+              break;
+            case 'vertex':
+              providerEnv.CLAUDE_CODE_USE_VERTEX = '1';
+              break;
+            case 'foundry':
+              providerEnv.CLAUDE_CODE_USE_FOUNDRY = '1';
+              break;
+            case 'anthropic':
+            default:
+              // Anthropic is the default, no special env needed
+              break;
+          }
+
+          proc = spawn(cliPath, cliArgs, {
             cwd: session.dir,  // Run in the session's workspace
             env: {
               ...process.env,
               ANTHROPIC_API_KEY: session.apiKey,
+              ...providerEnv,
               NODE_ENV: 'production'
             },
             stdio: ['pipe', 'pipe', 'pipe']
