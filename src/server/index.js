@@ -278,6 +278,9 @@ wss.on('connection', (ws, req) => {
             case 'foundry':
               providerEnv.CLAUDE_CODE_USE_FOUNDRY = '1';
               break;
+            case 'openrouter':
+              providerEnv.ANTHROPIC_BASE_URL = 'https://openrouter.ai/api/v1';
+              break;
             case 'anthropic':
             default:
               // Anthropic is the default, no special env needed
