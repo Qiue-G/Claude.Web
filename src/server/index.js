@@ -32,7 +32,7 @@ const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
 
 // Version for deployment verification
-const VERSION = '1.0.1';
+const VERSION = '1.0.2';
 
 // Sessions storage
 const sessions = new Map();
@@ -245,14 +245,18 @@ wss.on('connection', (ws, req) => {
             return;
           }
 
-          console.log(`Starting CLI for session ${sessionId} in ${FREE_CODE_DIR}`);
+          console.log(`Starting CLI for session ${sessionId}`);
+          console.log(`Session dir: ${session.dir}`);
+          console.log(`Model: ${session.model}`);
 
-          // Try to start free-code using node (since bun run might not work in all environments)
-          // The dist folder should have the compiled code from 'bun run build:dev:full'
-          const cliCommand = `node /free-code/dist/entrypoints/cli.js`;
+          // Use the compiled binary from bun run build:dev:full
+          // This creates an executable at /free-code/cli-dev
+          const cliPath = join(FREE_CODE_DIR, 'cli-dev');
           
-          proc = spawn('bash', ['-c', cliCommand], {
-            cwd: FREE_CODE_DIR,
+          console.log(`Attempting to spawn: ${cliPath}`);
+
+          proc = spawn(cliPath, [], {
+            cwd: session.dir,  // Run in the session's workspace
             env: {
               ...process.env,
               ANTHROPIC_API_KEY: session.apiKey,
@@ -293,7 +297,7 @@ wss.on('connection', (ws, req) => {
           proc.on('error', (err) => {
             console.error('Process error:', err);
             if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({ type: 'error', message: err.message }));
+              ws.send(JSON.stringify({ type: 'error', message: `Failed to start CLI: ${err.message}` }));
             }
           });
 
