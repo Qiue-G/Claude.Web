@@ -297,6 +297,12 @@ wss.on('connection', (ws, req) => {
 
           sessionProcesses.set(sessionId, proc);
 
+          // Kickstart interactive mode: send a newline so the CLI doesn't
+          // time out detecting a non-TTY stdin and fall into --print mode.
+          if (proc.stdin) {
+            proc.stdin.write('\n');
+          }
+
           proc.stdout.on('data', (data) => {
             if (ws.readyState === ws.OPEN) {
               ws.send(JSON.stringify({
