@@ -5,6 +5,9 @@ import { readFile, writeFile, readdir, stat, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, basename, dirname } from 'path';
 import { spawn } from 'child_process';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const pty = require('node-pty');
 
 // Strip ANSI escape codes - zero dependency
 function strip(str) {
@@ -295,61 +298,45 @@ wss.on('connection', (ws, req) => {
               break;
           }
 
-          // Spawn with script -q to force a real pseudo-terminal
-          const bridgeArgs = ['-q', '-c', [cliPath, ...cliArgs].join(' '), '/dev/null'];
-          proc = spawn('script', bridgeArgs, {
+          proc = pty.spawn(cliPath, cliArgs, {
+            name: 'xterm-256color',
+            cols: 120,
+            rows: 40,
             cwd: session.dir,
             env: {
+              TERM: 'xterm-256color',
               ...process.env,
               ANTHROPIC_API_KEY: session.apiKey,
               ...providerEnv,
               NODE_ENV: 'production'
-            },
-            stdio: ['pipe', 'pipe', 'pipe']
+            }
           });
 
           sessionProcesses.set(sessionId, proc);
 
-          proc.stdout.on('data', (data) => {
+          proc.onData((data) => {
             if (ws.readyState === ws.OPEN) {
               ws.send(JSON.stringify({
                 type: 'output',
-                data: strip(data.toString())
+                data: strip(data)
               }));
             }
           });
 
-          proc.stderr.on('data', (data) => {
+          proc.onExit(({ exitCode, signal }) => {
+            console.log(`Process exited with code ${exitCode}, signal ${signal}`);
             if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({
-                type: 'output',
-                data: data.toString(),
-                stream: 'stderr'
-              }));
-            }
-          });
-
-          proc.on('close', (code, signal) => {
-            console.log(`Process exited with code ${code}, signal ${signal}`);
-            if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({ type: 'exit', code, signal }));
+              ws.send(JSON.stringify({ type: 'exit', code: exitCode, signal }));
             }
             sessionProcesses.delete(sessionId);
-          });
-
-          proc.on('error', (err) => {
-            console.error('Process error:', err);
-            if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({ type: 'error', message: `CLI error: ${err.message}` }));
-            }
           });
 
           ws.send(JSON.stringify({ type: 'ready' }));
           break;
 
         case 'input':
-          if (proc && proc.stdin) {
-            proc.stdin.write(message.data + '\r');
+          if (proc) {
+            proc.write(message.data + '\r');
           }
           break;
 
@@ -370,8 +357,8 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
-    if (proc && !proc.killed && proc.exitCode === null) {
-      proc.kill();
+    if (proc) {
+      try { proc.kill(); } catch(e) {}
     }
     sessionProcesses.delete(sessionId);
   });
