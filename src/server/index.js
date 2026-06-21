@@ -81,23 +81,36 @@ function getProviderEnv(provider) {
 }
 
 function spawnCli(session, prompt) {
+  // OpenRouter: use lightweight bridge (free-code CLI hangs with non-Anthropic models)
+  if (session.provider === 'openrouter') {
+    const bridgePath = join(FREE_CODE_DIR, 'or_bridge.mjs');
+    const model = resolveOpenRouterModel(session.model || 'nvidia/nemotron-3-ultra-550b-a55b:free');
+    console.log(`[SPAWN:bridge] ${bridgePath} --model ${model}`);
+    
+    const proc = spawn('node', [bridgePath, '--model', model], {
+      cwd: session.dir,
+      env: {
+        HOME: session.dir,
+        ...process.env,
+        ANTHROPIC_API_KEY: session.apiKey,
+        NODE_ENV: 'production'
+      },
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    
+    proc.stdin.write(prompt + '\n');
+    proc.stdin.end();
+    return proc;
+  }
+  
   const cliPath = join(FREE_CODE_DIR, 'cli-dev');
   const cliArgs = ['--print'];
   
-  // For OpenRouter, pass model via env instead of --model flag
-  // Free-code CLI resolves aliases to Anthropic format, which OpenRouter doesn't recognize
-  if (session.provider === 'openrouter') {
-    const orModel = resolveOpenRouterModel(session.model || 'nvidia/nemotron-3-ultra-550b-a55b:free');
-    cliArgs.push('--model', orModel);
-  } else if (session.model) {
+  if (session.model) {
     cliArgs.push('--model', session.model);
   }
   
   const providerEnv = getProviderEnv(session.provider);
-  
-  console.log(`[SPAWN] ${cliPath} ${cliArgs.join(' ')}`);
-  console.log(`[SPAWN] cwd=${FREE_CODE_DIR}`);
-  console.log(`[SPAWN] ANTHROPIC_BASE_URL=${providerEnv.ANTHROPIC_BASE_URL || '(not set)'}`);
   
   const proc = spawn(cliPath, cliArgs, {
     cwd: session.dir,
