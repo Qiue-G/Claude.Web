@@ -56,7 +56,7 @@ function createSession(apiKey, model, provider) {
         OPENROUTER_API_KEY: apiKey,
         ANTHROPIC_BASE_URL: 'https://openrouter.ai/api',
         ANTHROPIC_AUTH_TOKEN: apiKey,
-        ANTHROPIC_API_KEY: '',
+        ANTHROPIC_API_KEY: apiKey,
         ANTHROPIC_MODEL: orModel
       }
     };
@@ -118,7 +118,8 @@ function spawnCli(session, prompt) {
       HOME: session.dir,
       ...process.env,
       // OpenRouter requires ANTHROPIC_AUTH_TOKEN (Bearer token), not ANTHROPIC_API_KEY
-      ANTHROPIC_API_KEY: session.provider === 'openrouter' ? '' : session.apiKey,
+      // But free-code may hang if ANTHROPIC_API_KEY is empty (tries OAuth), so set both
+      ANTHROPIC_API_KEY: session.provider === 'openrouter' ? session.apiKey : session.apiKey,
       ANTHROPIC_AUTH_TOKEN: session.provider === 'openrouter' ? session.apiKey : '',
       ANTHROPIC_MODEL: session.provider === 'openrouter' ? (resolveOpenRouterModel(session.model || 'nvidia/nemotron-3-ultra-550b-a55b:free')) : '',
       ...providerEnv,
