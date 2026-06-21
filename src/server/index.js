@@ -4,7 +4,7 @@ import cors from 'cors';
 import { readFile, writeFile, readdir, stat, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, basename, dirname } from 'path';
-import { spawn } from 'node-pty';
+import { spawn } from 'child_process';
 
 // Strip ANSI escape codes - zero dependency
 function strip(str) {
@@ -38,6 +38,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
+const PTY_BRIDGE = '/app/pty_bridge.py';
 
 // Version for deployment verification
 const VERSION = '1.0.2';
@@ -295,45 +296,60 @@ wss.on('connection', (ws, req) => {
               break;
           }
 
-          proc = spawn(cliPath, cliArgs, {
-            name: 'xterm-256color',
-            cols: 120,
-            rows: 40,
+          // Spawn via Python PTY bridge to get a real pseudo-terminal
+          proc = spawn('python3', [PTY_BRIDGE, cliPath, ...cliArgs], {
             cwd: session.dir,
             env: {
               ...process.env,
               ANTHROPIC_API_KEY: session.apiKey,
               ...providerEnv,
               NODE_ENV: 'production'
-            }
+            },
+            stdio: ['pipe', 'pipe', 'pipe']
           });
 
           sessionProcesses.set(sessionId, proc);
 
-          proc.onData((data) => {
+          proc.stdout.on('data', (data) => {
             if (ws.readyState === ws.OPEN) {
               ws.send(JSON.stringify({
                 type: 'output',
-                data: strip(data)
+                data: strip(data.toString())
               }));
             }
           });
 
-          proc.onExit(({ exitCode, signal }) => {
-            console.log(`Process exited with code ${exitCode}, signal ${signal}`);
+          proc.stderr.on('data', (data) => {
             if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({ type: 'exit', code: exitCode, signal }));
+              ws.send(JSON.stringify({
+                type: 'output',
+                data: data.toString(),
+                stream: 'stderr'
+              }));
+            }
+          });
+
+          proc.on('close', (code, signal) => {
+            console.log(`Process exited with code ${code}, signal ${signal}`);
+            if (ws.readyState === ws.OPEN) {
+              ws.send(JSON.stringify({ type: 'exit', code, signal }));
             }
             sessionProcesses.delete(sessionId);
+          });
+
+          proc.on('error', (err) => {
+            console.error('Process error:', err);
+            if (ws.readyState === ws.OPEN) {
+              ws.send(JSON.stringify({ type: 'error', message: `CLI error: ${err.message}` }));
+            }
           });
 
           ws.send(JSON.stringify({ type: 'ready' }));
           break;
 
         case 'input':
-          if (proc) {
-            proc.write(message.data);
-            setTimeout(() => proc.write('\r'), 10);
+          if (proc && proc.stdin) {
+            proc.stdin.write(message.data + '\r');
           }
           break;
 
@@ -354,7 +370,7 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
-    if (proc && !proc.killed) {
+    if (proc && !proc.killed && proc.exitCode === null) {
       proc.kill();
     }
     sessionProcesses.delete(sessionId);
