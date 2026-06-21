@@ -32,7 +32,7 @@ const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../worksp
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
 
-const VERSION = '4.0.0';
+const VERSION = '4.0.1';
 
 // Sessions storage
 const sessions = new Map();
@@ -277,7 +277,17 @@ wss.on('connection', (ws) => {
 
         sessionProcesses.set(sessionId, ptyProcess);
 
+        let trustDialogShown = false;
         ptyProcess.onData((data) => {
+          // Auto-handle trust dialog
+          if (!trustDialogShown && data.includes('Is this a project you created')) {
+            trustDialogShown = true;
+            setTimeout(() => {
+              if (ptyProcess) {
+                ptyProcess.write('1');
+              }
+            }, 1000);
+          }
           if (ws.readyState === ws.OPEN) {
             ws.send(JSON.stringify({ type: 'output', data }));
           }
