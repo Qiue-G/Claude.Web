@@ -347,7 +347,7 @@ wss.on('connection', (ws, req) => {
           if (proc && proc.stdin) {
             // Send \r (carriage return) which is what real terminals send for Enter
             // The PTY slave's line discipline converts \r to \n for the application
-            proc.stdin.write(message.data + '\r');
+            proc.stdin.write(message.data + '\n');
           }
           break;
 
