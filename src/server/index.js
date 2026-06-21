@@ -25,7 +25,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
-const VERSION = '5.0.3';
+const VERSION = '5.0.4';
 
 const sessions = new Map();
 const sessionProcesses = new Map();
@@ -86,7 +86,7 @@ function spawnCli(session, prompt) {
   // For OpenRouter, pass model via env instead of --model flag
   // Free-code CLI resolves aliases to Anthropic format, which OpenRouter doesn't recognize
   if (session.provider === 'openrouter') {
-    const orModel = resolveOpenRouterModel(session.model || 'haiku');
+    const orModel = resolveOpenRouterModel(session.model || 'nvidia/nemotron-3-ultra-550b-a55b:free');
     cliArgs.push('--model', orModel);
   } else if (session.model) {
     cliArgs.push('--model', session.model);
@@ -128,7 +128,7 @@ app.post('/api/session', async (req, res) => {
     const { apiKey, model, provider } = req.body;
     if (!apiKey) return res.status(400).json({ error: 'API key is required' });
     if (sessions.size >= MAX_SESSIONS) return res.status(503).json({ error: 'Too many sessions' });
-    const session = createSession(apiKey, model || 'haiku', provider || 'anthropic');
+    const session = createSession(apiKey, model || 'nvidia/nemotron-3-ultra-550b-a55b:free', provider || 'openrouter');
     res.json({ sessionId: session.id, dir: session.dir });
   } catch (error) { res.status(500).json({ error: 'Failed to create session' }); }
 });
