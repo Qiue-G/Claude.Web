@@ -31,7 +31,7 @@ const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../worksp
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
 
-const VERSION = '3.0.6';
+const VERSION = '3.1.0';
 
 // Sessions storage
 const sessions = new Map();
@@ -220,7 +220,7 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', (ws) => {
   let sessionId = null;
   let proc = null;
-  let onboardingPhase = 0; // 0=theme, 1=login, 2=ready
+  
   let outputBuffer = '';
 
   ws.on('message', async (data) => {
@@ -255,6 +255,18 @@ wss.on('connection', (ws) => {
           providerEnv.CLAUDE_CODE_USE_VERTEX = '1';
         }
 
+        // Pre-create config to skip onboarding
+        const configDir = join(session.dir, '.claude');
+        await mkdir(configDir, { recursive: true });
+        const configPath = join(configDir, '.config.json');
+        const config = {
+          theme: 'dark',
+          hasCompletedOnboarding: true,
+          hasCompletedProjectOnboarding: true,
+          projectOnboardingSeenCount: 1
+        };
+        await writeFile(configPath, JSON.stringify(config), 'utf-8');
+
         // Use socat with PTY
         const cliCmd = [cliPath, ...cliArgs].map(a => `'${a}'`).join(' ');
         proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,raw,echo=0,ctty,setsid,sigint', '-'], {
@@ -263,6 +275,7 @@ wss.on('connection', (ws) => {
             TERM: 'xterm-256color',
             ...process.env,
             ANTHROPIC_API_KEY: session.apiKey,
+            CLAUDE_CONFIG_DIR: configDir,
             ...providerEnv,
             NODE_ENV: 'production'
           },
@@ -270,7 +283,6 @@ wss.on('connection', (ws) => {
         });
 
         sessionProcesses.set(sessionId, proc);
-        onboardingPhase = 0;
         outputBuffer = '';
 
         proc.stdout.on('data', (data) => {
