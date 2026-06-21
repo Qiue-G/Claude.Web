@@ -30,7 +30,7 @@ const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../worksp
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
 
-const VERSION = '4.0.3';
+const VERSION = '4.0.4';
 
 const sessions = new Map();
 const sessionProcesses = new Map();
@@ -179,7 +179,7 @@ wss.on('connection', (ws) => {
             }, 1000);
           }
           if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ type: 'output', data }));
+            ws.send(JSON.stringify({ type: 'output', data: stripAnsi(data) }));
           }
         });
 
