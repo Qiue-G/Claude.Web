@@ -303,16 +303,16 @@ wss.on('connection', (ws, req) => {
               break;
           }
 
-          // Use socat to create a proper PTY bridge
-          const cliCmd = [cliPath, ...cliArgs].map(a => `'${a}'`).join(' ');
-          proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,raw,echo=0,ctty', '-'], {
+          // Spawn CLI directly without PTY
+          proc = spawn(cliPath, cliArgs, {
             cwd: session.dir,
             env: {
-              TERM: 'xterm-256color',
               ...process.env,
               ANTHROPIC_API_KEY: session.apiKey,
               ...providerEnv,
-              NODE_ENV: 'production'
+              NODE_ENV: 'production',
+              CLAUDE_CODE_INTERACTIVE: '0',
+              FORCE_COLOR: '0'
             },
             stdio: ['pipe', 'pipe', 'pipe']
           });
@@ -358,7 +358,7 @@ wss.on('connection', (ws, req) => {
           break;
 
         case 'resize':
-          // PTY resize not supported with socat
+          // Not needed for direct spawn
           break;
       }
     } catch (error) {
