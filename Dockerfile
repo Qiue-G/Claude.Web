@@ -1,7 +1,7 @@
 FROM node:20-slim
 
 # Install Bun + build deps for node-pty
-RUN apt-get update && apt-get install -y curl unzip git build-essential python3 \
+RUN apt-get update && apt-get install -y curl unzip git build-essential python3 socat \
     && curl -fsSL https://bun.sh/install | bash \
     && ln -s /root/.bun/bin/bun /usr/local/bin/bun
 
