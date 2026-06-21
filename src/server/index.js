@@ -43,7 +43,7 @@ const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
 
 // Version for deployment verification
-const VERSION = '1.0.2';
+const VERSION = '1.0.3';
 
 // Sessions storage
 const sessions = new Map();
