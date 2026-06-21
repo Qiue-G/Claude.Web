@@ -191,7 +191,7 @@ wss.on('connection', (ws) => {
           console.log(`[DONE] exit code ${code}`);
           sessionProcesses.delete(sessionId);
           if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ type: 'done', code }));
+            ws.send(JSON.stringify({ type: 'exit', code }));
           }
         });
 
