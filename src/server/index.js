@@ -25,7 +25,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
-const VERSION = '5.0.0';
+const VERSION = '5.0.1';
 
 const sessions = new Map();
 const sessionProcesses = new Map();
@@ -106,7 +106,7 @@ app.post('/api/session', async (req, res) => {
     const { apiKey, model, provider } = req.body;
     if (!apiKey) return res.status(400).json({ error: 'API key is required' });
     if (sessions.size >= MAX_SESSIONS) return res.status(503).json({ error: 'Too many sessions' });
-    const session = createSession(apiKey, model || 'claude-opus-4-6', provider || 'anthropic');
+    const session = createSession(apiKey, model || 'haiku', provider || 'anthropic');
     res.json({ sessionId: session.id, dir: session.dir });
   } catch (error) { res.status(500).json({ error: 'Failed to create session' }); }
 });
@@ -219,3 +219,4 @@ process.on('SIGTERM', () => {
   console.log('Shutting down...');
   server.close(() => process.exit(0));
 });
+
