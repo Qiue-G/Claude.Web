@@ -4,7 +4,7 @@ import cors from 'cors';
 import { readFile, writeFile, readdir, stat, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, basename, dirname } from 'path';
-import { spawn } from 'child_process';
+import { spawn } from 'node-pty';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import { dirname as pathDirname } from 'path';
@@ -288,64 +288,43 @@ wss.on('connection', (ws, req) => {
           }
 
           proc = spawn(cliPath, cliArgs, {
-            cwd: session.dir,  // Run in the session's workspace
+            name: 'xterm-256color',
+            cols: 120,
+            rows: 40,
+            cwd: session.dir,
             env: {
               ...process.env,
               ANTHROPIC_API_KEY: session.apiKey,
               ...providerEnv,
               NODE_ENV: 'production'
-            },
-            stdio: ['pipe', 'pipe', 'pipe']
+            }
           });
 
           sessionProcesses.set(sessionId, proc);
 
-          // Kickstart interactive mode: send a newline so the CLI doesn't
-          // time out detecting a non-TTY stdin and fall into --print mode.
-          if (proc.stdin) {
-            proc.stdin.write('\n');
-          }
-
-          proc.stdout.on('data', (data) => {
+          proc.onData((data) => {
             if (ws.readyState === ws.OPEN) {
               ws.send(JSON.stringify({
                 type: 'output',
-                data: data.toString()
+                data: data
               }));
             }
           });
 
-          proc.stderr.on('data', (data) => {
+          proc.onExit(({ exitCode }) => {
+            console.log(`Process exited with code ${exitCode}`);
             if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({
-                type: 'output',
-                data: data.toString(),
-                stream: 'stderr'
-              }));
-            }
-          });
-
-          proc.on('close', (code) => {
-            console.log(`Process exited with code ${code}`);
-            if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({ type: 'exit', code }));
+              ws.send(JSON.stringify({ type: 'exit', code: exitCode }));
             }
             sessionProcesses.delete(sessionId);
-          });
-
-          proc.on('error', (err) => {
-            console.error('Process error:', err);
-            if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({ type: 'error', message: `Failed to start CLI: ${err.message}` }));
-            }
           });
 
           ws.send(JSON.stringify({ type: 'ready' }));
           break;
 
         case 'input':
-          if (proc && !proc.killed && proc.stdin) {
-            proc.stdin.write(message.data + '\n');
+          if (proc && !proc.killed) {
+            proc.write(message.data + '\n');
           }
           break;
 
