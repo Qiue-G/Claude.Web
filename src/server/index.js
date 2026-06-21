@@ -1,9 +1,9 @@
 import express from 'express';
 import { WebSocketServer } from 'ws';
 import cors from 'cors';
-import { readFile, writeFile, readdir, stat, mkdir } from 'fs/promises';
+import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join, dirname } from 'path';
+import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import { dirname as pathDirname } from 'path';
@@ -16,9 +16,7 @@ try {
   const envContent = await readFile('.env', 'utf-8');
   envContent.split('\n').forEach(line => {
     const [key, ...valueParts] = line.split('=');
-    if (key && valueParts.length > 0) {
-      process.env[key.trim()] = valueParts.join('=').trim();
-    }
+    if (key && valueParts.length > 0) process.env[key.trim()] = valueParts.join('=').trim();
   });
 } catch (e) {}
 
@@ -27,8 +25,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
-
-const VERSION = '4.1.0';
+const VERSION = '4.2.0';
 
 const sessions = new Map();
 const sessionProcesses = new Map();
@@ -90,16 +87,6 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', version: VERSION, sessions: sessions.size, maxSessions: MAX_SESSIONS, uptime: process.uptime(), freeCodeDir: FREE_CODE_DIR });
 });
 
-function stripAnsi(str) {
-  str = str.replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(parseInt(n)));
-  str = str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
-  str = str.replace(/\x1b\][^\x07]*\x07/g, '');
-  str = str.replace(/\x1b\[[?]\d+[hl]/g, '');
-  str = str.replace(/\x1b\[\d+;\d+[A-H]/g, '');
-  str = str.replace(/\x1b\[\d+m/g, '');
-  return str;
-}
-
 const server = app.listen(PORT, HOST, () => {
   console.log(`Free-code Web Server v${VERSION} running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
 });
@@ -109,9 +96,7 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', (ws) => {
   let sessionId = null;
   let ptyProcess = null;
-  let trustDialogShown = false;
-  let apiKeyDialogShown = false;
-  let onboardingComplete = false;
+  let onboardingPhase = 0; // 0=trust, 1=apikey, 2=ready
 
   ws.on('message', async (data) => {
     try {
@@ -164,28 +149,35 @@ wss.on('connection', (ws) => {
         });
 
         sessionProcesses.set(sessionId, ptyProcess);
-        trustDialogShown = false;
-        apiKeyDialogShown = false;
-        onboardingComplete = false;
+        onboardingPhase = 0;
 
         ptyProcess.onData((data) => {
-          // Auto-handle trust dialog
-          if (!trustDialogShown && data.includes('Is this a project you created')) {
-            trustDialogShown = true;
+          // Phase 0: Wait for trust dialog, auto-confirm
+          if (onboardingPhase === 0 && data.includes('Is this a project you created')) {
+            onboardingPhase = 1;
             setTimeout(() => { if (ptyProcess) ptyProcess.write('1\r'); }, 500);
+            return; // Don't show onboarding output
           }
-          // Auto-handle API key confirmation
-          if (!apiKeyDialogShown && data.includes('Do you want to use this API key')) {
-            apiKeyDialogShown = true;
+          // Phase 1: Wait for API key confirmation, auto-confirm
+          if (onboardingPhase === 1 && data.includes('Do you want to use this API key')) {
+            onboardingPhase = 2;
             setTimeout(() => { if (ptyProcess) ptyProcess.write('1\r'); }, 500);
+            return; // Don't show onboarding output
           }
-          // Clear screen after onboarding is complete (detected by "Not logged in")
-          if (!onboardingComplete && data.includes('Not logged in')) {
-            onboardingComplete = true;
-            setTimeout(() => { if (ptyProcess) ptyProcess.write('\x0c'); }, 500);
+          // Phase 2: Onboarding done, clear screen and start showing output
+          if (onboardingPhase === 2 && data.includes('Not logged in')) {
+            onboardingPhase = 3;
+            // Send clear screen + welcome message
+            if (ws.readyState === ws.OPEN) {
+              ws.send(JSON.stringify({ type: 'output', data: '\x1b[2J\x1b[H' })); // Clear screen
+              ws.send(JSON.stringify({ type: 'output', data: '\nFree Code CLI 已就绪，请输入你的问题。\n\n' }));
+            }
+            setTimeout(() => { if (ptyProcess) ptyProcess.write('\x0c'); }, 200);
+            return;
           }
-          if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ type: 'output', data: stripAnsi(data) }));
+          // Only show output after onboarding is complete
+          if (onboardingPhase >= 3 && ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ type: 'output', data }));
           }
         });
 
