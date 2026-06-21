@@ -17,6 +17,7 @@ RUN npm install
 # Copy app files
 COPY src/ ./src/
 COPY public/ ./public/
+COPY pty_bridge.py ./
 
 # Clone and build free-code
 RUN git clone https://github.com/paoloanzn/free-code.git /free-code \
