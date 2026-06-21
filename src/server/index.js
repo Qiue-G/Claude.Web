@@ -303,16 +303,17 @@ wss.on('connection', (ws, req) => {
               break;
           }
 
-          // Spawn CLI directly without PTY
-          proc = spawn(cliPath, cliArgs, {
+          // Use socat with PTY (sane mode - allows 
+ to work)
+          const cliCmd = [cliPath, ...cliArgs].map(a => `'${a}'`).join(' ');
+          proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,sane,echo=0', '-'], {
             cwd: session.dir,
             env: {
+              TERM: 'xterm-256color',
               ...process.env,
               ANTHROPIC_API_KEY: session.apiKey,
               ...providerEnv,
-              NODE_ENV: 'production',
-              CLAUDE_CODE_INTERACTIVE: '0',
-              FORCE_COLOR: '0'
+              NODE_ENV: 'production'
             },
             stdio: ['pipe', 'pipe', 'pipe']
           });
@@ -345,8 +346,7 @@ wss.on('connection', (ws, req) => {
 
         case 'input':
           if (proc && proc.stdin) {
-            // Send \r (carriage return) which is what real terminals send for Enter
-            // The PTY slave's line discipline converts \r to \n for the application
+            // sane mode: line discipline handles \n properly
             proc.stdin.write(message.data + '\n');
           }
           break;
