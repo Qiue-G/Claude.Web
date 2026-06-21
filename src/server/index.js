@@ -25,7 +25,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
-const VERSION = '4.3.1';
+const VERSION = '4.3.2';
 
 const sessions = new Map();
 const sessionProcesses = new Map();
@@ -86,6 +86,16 @@ app.delete('/api/session/:id', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', version: VERSION, sessions: sessions.size, maxSessions: MAX_SESSIONS, uptime: process.uptime(), freeCodeDir: FREE_CODE_DIR });
 });
+
+function stripAnsi(str) {
+  str = str.replace(/\[(\d+)C/g, (_, n) => ' '.repeat(parseInt(n)));
+  str = str.replace(/\[[0-9;]*[a-zA-Z]/g, '');
+  str = str.replace(/\][^]*/g, '');
+  str = str.replace(/\[[?]\d+[hl]/g, '');
+  str = str.replace(/\[\d+;\d+[A-H]/g, '');
+  str = str.replace(/\[\d+m/g, '');
+  return str;
+}
 
 const server = app.listen(PORT, HOST, () => {
   console.log(`Free-code Web Server v${VERSION} running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
@@ -184,7 +194,7 @@ wss.on('connection', (ws) => {
           }
           // Show output when ready
           if (showOutput && ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ type: 'output', data }));
+            ws.send(JSON.stringify({ type: 'output', data: stripAnsi(data) }));
           }
         });
 
