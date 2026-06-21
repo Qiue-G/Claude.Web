@@ -24,6 +24,9 @@ RUN git clone https://github.com/paoloanzn/free-code.git /free-code \
     && bun install \
     && bun run build:dev:full
 
+# Add OpenRouter bridge (bypasses free-code for OpenRouter models)
+COPY or_bridge.mjs /free-code/or_bridge.mjs
+
 # Create workspace directory
 RUN mkdir -p /workspace
 
