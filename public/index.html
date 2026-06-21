@@ -194,6 +194,8 @@
           addLine('system', 'CLI 已启动，等待输入...');
         } else if (msg.type === 'output') {
           addLine('stdout', msg.data);
+        } else if (msg.type === 'stderr') {
+          addLine('error', msg.data);
         } else if (msg.type === 'exit') {
           if (msg.code !== 0) addLine('error', `错误 (code ${msg.code})`);
         } else if (msg.type === 'error') {
