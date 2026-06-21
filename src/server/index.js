@@ -31,7 +31,7 @@ const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../worksp
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
 
-const VERSION = '3.0.4';
+const VERSION = '3.0.5';
 
 // Sessions storage
 const sessions = new Map();
@@ -239,7 +239,7 @@ wss.on('connection', (ws) => {
         console.log(`Starting CLI for session ${sessionId}`);
 
         const cliPath = 'bun';
-        const cliArgs = ['run', join(FREE_CODE_DIR, 'src/index.ts')];
+        const cliArgs = ['run', join(FREE_CODE_DIR, 'src/entrypoints/cli.tsx')];
         if (session.model) {
           cliArgs.push('--model', session.model);
         }
