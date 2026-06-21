@@ -25,7 +25,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
-const VERSION = '4.3.4';
+const VERSION = '4.4.0';
 
 const sessions = new Map();
 const sessionProcesses = new Map();
@@ -40,6 +40,16 @@ app.use(express.static(join(__dirname, '../../public'), {
     res.setHeader('Expires', '0');
   }
 }));
+
+function stripAnsi(str) {
+  // Remove all ANSI escape sequences
+  str = str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+  str = str.replace(/\x1b\][^\x07]*\x07/g, '');
+  str = str.replace(/\x1b\[[?]\d+[hl]/g, '');
+  str = str.replace(/\x1b\[\d+;\d+[A-H]/g, '');
+  str = str.replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(parseInt(n)));
+  return str;
+}
 
 function createSession(apiKey, model, provider) {
   const sessionId = uuidv4();
@@ -86,26 +96,6 @@ app.delete('/api/session/:id', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', version: VERSION, sessions: sessions.size, maxSessions: MAX_SESSIONS, uptime: process.uptime(), freeCodeDir: FREE_CODE_DIR });
 });
-
-function stripAnsi(str) {
-  str = str.replace(/\[(\d+)C/g, (_, n) => ' '.repeat(parseInt(n)));
-  str = str.replace(/\[[0-9;]*[a-zA-Z]/g, '');
-  str = str.replace(/\][^]*/g, '');
-  str = str.replace(/\[[?]\d+[hl]/g, '');
-  str = str.replace(/\[\d+;\d+[A-H]/g, '');
-  str = str.replace(/\[\d+m/g, '');
-  return str;
-}
-
-function stripAnsi(str) {
-  str = str.replace(/\[(\d+)C/g, (_, n) => ' '.repeat(parseInt(n)));
-  str = str.replace(/\[[0-9;]*[a-zA-Z]/g, '');
-  str = str.replace(/\][^]*/g, '');
-  str = str.replace(/\[[?]\d+[hl]/g, '');
-  str = str.replace(/\[\d+;\d+[A-H]/g, '');
-  str = str.replace(/\[\d+m/g, '');
-  return str;
-}
 
 const server = app.listen(PORT, HOST, () => {
   console.log(`Free-code Web Server v${VERSION} running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
@@ -202,7 +192,7 @@ wss.on('connection', (ws) => {
             }
             return;
           }
-          // Show output when ready
+          // Show output when ready (with ANSI stripped)
           if (showOutput && ws.readyState === ws.OPEN) {
             ws.send(JSON.stringify({ type: 'output', data: stripAnsi(data) }));
           }
@@ -218,7 +208,7 @@ wss.on('connection', (ws) => {
 
         ws.send(JSON.stringify({ type: 'ready' }));
       } else if (message.type === 'input') {
-        if (ptyProcess) ptyProcess.write(message.data + '\r\n');
+        if (ptyProcess) ptyProcess.write(message.data + '\r');
       } else if (message.type === 'interrupt') {
         if (ptyProcess) ptyProcess.write('\x03');
       }
