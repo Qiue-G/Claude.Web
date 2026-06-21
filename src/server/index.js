@@ -4,7 +4,6 @@ import cors from 'cors';
 import { readFile, writeFile, readdir, stat, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, dirname } from 'path';
-import { spawn } from 'child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import { dirname as pathDirname } from 'path';
@@ -13,7 +12,6 @@ import * as pty from 'node-pty';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = pathDirname(__filename);
 
-// Load environment variables
 try {
   const envContent = await readFile('.env', 'utf-8');
   envContent.split('\n').forEach(line => {
@@ -30,7 +28,7 @@ const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../worksp
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
 
-const VERSION = '4.0.7';
+const VERSION = '4.1.0';
 
 const sessions = new Map();
 const sessionProcesses = new Map();
@@ -49,19 +47,9 @@ app.use(express.static(join(__dirname, '../../public'), {
 function createSession(apiKey, model, provider) {
   const sessionId = uuidv4();
   const sessionDir = join(WORKSPACE_DIR, sessionId);
-  if (!existsSync(WORKSPACE_DIR)) {
-    mkdir(WORKSPACE_DIR, { recursive: true }).catch(console.error);
-  }
+  if (!existsSync(WORKSPACE_DIR)) mkdir(WORKSPACE_DIR, { recursive: true }).catch(console.error);
   mkdir(sessionDir, { recursive: true }).catch(console.error);
-  const session = {
-    id: sessionId,
-    apiKey,
-    model,
-    provider,
-    dir: sessionDir,
-    createdAt: Date.now(),
-    lastActivity: Date.now()
-  };
+  const session = { id: sessionId, apiKey, model, provider, dir: sessionDir, createdAt: Date.now(), lastActivity: Date.now() };
   sessions.set(sessionId, session);
   return session;
 }
@@ -79,9 +67,7 @@ app.post('/api/session', async (req, res) => {
     if (sessions.size >= MAX_SESSIONS) return res.status(503).json({ error: 'Too many sessions' });
     const session = createSession(apiKey, model || 'claude-opus-4-6', provider || 'anthropic');
     res.json({ sessionId: session.id, dir: session.dir });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to create session' });
-  }
+  } catch (error) { res.status(500).json({ error: 'Failed to create session' }); }
 });
 
 app.get('/api/session/:id', (req, res) => {
@@ -104,12 +90,6 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', version: VERSION, sessions: sessions.size, maxSessions: MAX_SESSIONS, uptime: process.uptime(), freeCodeDir: FREE_CODE_DIR });
 });
 
-// Create HTTP server BEFORE WebSocketServer
-const server = app.listen(PORT, HOST, () => {
-  console.log(`Free-code Web Server v${VERSION} running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
-});
-
-// Strip ANSI codes
 function stripAnsi(str) {
   str = str.replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(parseInt(n)));
   str = str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
@@ -120,13 +100,18 @@ function stripAnsi(str) {
   return str;
 }
 
-// WebSocket
+const server = app.listen(PORT, HOST, () => {
+  console.log(`Free-code Web Server v${VERSION} running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+});
+
 const wss = new WebSocketServer({ server, path: '/ws' });
 
 wss.on('connection', (ws) => {
   let sessionId = null;
   let ptyProcess = null;
   let trustDialogShown = false;
+  let apiKeyDialogShown = false;
+  let onboardingComplete = false;
 
   ws.on('message', async (data) => {
     try {
@@ -143,7 +128,7 @@ wss.on('connection', (ws) => {
 
         console.log(`Starting CLI for session ${sessionId}`);
 
-        // Pre-create config to skip onboarding
+        // Pre-create config to skip theme/login onboarding
         const configDir = join(session.dir, '.claude');
         await mkdir(configDir, { recursive: true });
         await writeFile(join(configDir, '.config.json'), JSON.stringify({
@@ -180,14 +165,24 @@ wss.on('connection', (ws) => {
 
         sessionProcesses.set(sessionId, ptyProcess);
         trustDialogShown = false;
+        apiKeyDialogShown = false;
+        onboardingComplete = false;
 
         ptyProcess.onData((data) => {
           // Auto-handle trust dialog
           if (!trustDialogShown && data.includes('Is this a project you created')) {
             trustDialogShown = true;
-            setTimeout(() => {
-              if (ptyProcess) ptyProcess.write('1\r');
-            }, 1000);
+            setTimeout(() => { if (ptyProcess) ptyProcess.write('1\r'); }, 500);
+          }
+          // Auto-handle API key confirmation
+          if (!apiKeyDialogShown && data.includes('Do you want to use this API key')) {
+            apiKeyDialogShown = true;
+            setTimeout(() => { if (ptyProcess) ptyProcess.write('1\r'); }, 500);
+          }
+          // Clear screen after onboarding is complete (detected by "Not logged in")
+          if (!onboardingComplete && data.includes('Not logged in')) {
+            onboardingComplete = true;
+            setTimeout(() => { if (ptyProcess) ptyProcess.write('\x0c'); }, 500);
           }
           if (ws.readyState === ws.OPEN) {
             ws.send(JSON.stringify({ type: 'output', data: stripAnsi(data) }));
