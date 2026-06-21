@@ -6,9 +6,13 @@ import { existsSync } from 'fs';
 import { join, basename, dirname } from 'path';
 import { spawn } from 'node-pty';
 
-// Strip ANSI escape codes (zero-dependency)
-const ansiRegex = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
-function strip(str) { return str.replace(ansiRegex, ''); }
+// Strip ANSI escape codes - zero dependency
+function strip(str) {
+  // Replace cursor-forward with space (preserves layout)
+  str = str.replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(parseInt(n)));
+  // Strip remaining ANSI sequences
+  return str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+}
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import { dirname as pathDirname } from 'path';
