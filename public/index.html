@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Free Code Chat</title>
+  <title>Free Code Web</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
       background: #0d1117;
       color: #c9d1d9;
       height: 100vh;
@@ -24,52 +24,78 @@
     }
     .header h1 { font-size: 18px; color: #58a6ff; }
     .header .model { font-size: 12px; color: #8b949e; background: #21262d; padding: 4px 8px; border-radius: 4px; }
-    .chat-container { flex: 1; overflow-y: auto; padding: 20px; }
-    .message { margin-bottom: 16px; display: flex; gap: 12px; }
-    .message.user { flex-direction: row-reverse; }
-    .avatar {
-      width: 36px; height: 36px; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 14px; font-weight: bold; flex-shrink: 0;
+    .terminal {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-wrap: break-word;
     }
-    .message.user .avatar { background: #1f6feb; color: white; }
-    .message.assistant .avatar { background: #238636; color: white; }
-    .message-content {
-      max-width: 70%; padding: 12px 16px; border-radius: 12px;
-      line-height: 1.6; white-space: pre-wrap; word-wrap: break-word;
-    }
-    .message.user .message-content { background: #1f6feb; color: white; border-bottom-right-radius: 4px; }
-    .message.assistant .message-content { background: #21262d; color: #c9d1d9; border-bottom-left-radius: 4px; }
+    .terminal-line { margin-bottom: 2px; }
+    .terminal-line.user { color: #58a6ff; }
+    .terminal-line.system { color: #8b949e; }
+    .terminal-line.error { color: #f85149; }
     .input-container {
-      background: #161b22; padding: 16px 20px; border-top: 1px solid #30363d;
-      display: flex; gap: 12px; align-items: flex-end;
+      background: #161b22;
+      padding: 16px 20px;
+      border-top: 1px solid #30363d;
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
     }
     .input-container textarea {
-      flex: 1; background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
-      color: #c9d1d9; padding: 12px; font-size: 14px; resize: none;
-      min-height: 44px; max-height: 120px; font-family: inherit;
+      flex: 1;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      color: #c9d1d9;
+      padding: 12px;
+      font-size: 14px;
+      font-family: inherit;
+      resize: none;
+      min-height: 44px;
+      max-height: 120px;
     }
     .input-container textarea:focus { outline: none; border-color: #58a6ff; }
     .send-btn {
-      background: #238636; color: white; border: none; border-radius: 8px;
-      padding: 12px 20px; font-size: 14px; cursor: pointer; font-weight: 500;
+      background: #238636;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 20px;
+      font-size: 14px;
+      cursor: pointer;
+      font-weight: 500;
     }
     .send-btn:hover { background: #2ea043; }
     .send-btn:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
-    .typing { color: #8b949e; font-style: italic; }
-    .error { color: #f85149; }
     #setup { padding: 40px 20px; max-width: 500px; margin: 0 auto; width: 100%; }
     #setup h2 { color: #58a6ff; margin-bottom: 24px; text-align: center; }
     .form-group { margin-bottom: 16px; }
     .form-group label { display: block; margin-bottom: 6px; font-size: 14px; color: #8b949e; }
     .form-group select, .form-group input {
-      width: 100%; background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
-      color: #c9d1d9; padding: 12px; font-size: 14px;
+      width: 100%;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      color: #c9d1d9;
+      padding: 12px;
+      font-size: 14px;
     }
     .form-group select:focus, .form-group input:focus { outline: none; border-color: #58a6ff; }
     .start-btn {
-      width: 100%; background: #238636; color: white; border: none; border-radius: 8px;
-      padding: 14px; font-size: 16px; cursor: pointer; font-weight: 500; margin-top: 8px;
+      width: 100%;
+      background: #238636;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 14px;
+      font-size: 16px;
+      cursor: pointer;
+      font-weight: 500;
+      margin-top: 8px;
     }
     .start-btn:hover { background: #2ea043; }
     .hidden { display: none !important; }
@@ -77,7 +103,7 @@
 </head>
 <body>
   <div id="setup">
-    <h2>Free Code Chat</h2>
+    <h2>Free Code Web</h2>
     <div class="form-group">
       <label>API Provider</label>
       <select id="provider">
@@ -94,17 +120,17 @@
       <label>Model</label>
       <input type="text" id="model" value="nvidia/nemotron-3-ultra-550b-a55b:free" placeholder="model name">
     </div>
-    <button class="start-btn" id="startBtn">开始对话</button>
+    <button class="start-btn" id="startBtn">开始使用</button>
   </div>
 
-  <div id="chat" class="hidden" style="flex:1;display:flex;flex-direction:column;">
+  <div id="app" class="hidden" style="flex:1;display:flex;flex-direction:column;">
     <div class="header">
-      <h1>Free Code Chat</h1>
+      <h1>Free Code</h1>
       <span class="model" id="modelDisplay"></span>
     </div>
-    <div class="chat-container" id="chatContainer"></div>
+    <div class="terminal" id="terminal"></div>
     <div class="input-container">
-      <textarea id="input" placeholder="输入消息..." rows="1"></textarea>
+      <textarea id="input" placeholder="输入命令..." rows="1"></textarea>
       <button class="send-btn" id="sendBtn">发送</button>
     </div>
   </div>
@@ -112,12 +138,10 @@
   <script>
     let ws = null;
     let sessionId = null;
-    let isStreaming = false;
-    let currentAssistantMsg = null;
 
     const setup = document.getElementById('setup');
-    const chat = document.getElementById('chat');
-    const chatContainer = document.getElementById('chatContainer');
+    const app = document.getElementById('app');
+    const terminal = document.getElementById('terminal');
     const input = document.getElementById('input');
     const sendBtn = document.getElementById('sendBtn');
     const startBtn = document.getElementById('startBtn');
@@ -145,14 +169,14 @@
         document.getElementById('modelDisplay').textContent = model;
 
         setup.classList.add('hidden');
-        chat.classList.remove('hidden');
-        chat.style.display = 'flex';
+        app.classList.remove('hidden');
+        app.style.display = 'flex';
 
         connectWebSocket();
       } catch (e) {
         alert(e.message);
         startBtn.disabled = false;
-        startBtn.textContent = '开始对话';
+        startBtn.textContent = '开始使用';
       }
     });
 
@@ -167,76 +191,54 @@
       ws.onmessage = (e) => {
         const msg = JSON.parse(e.data);
         if (msg.type === 'ready') {
-          addMessage('assistant', '已连接，请输入你的问题。');
-        } else if (msg.type === 'stream_start') {
-          isStreaming = true;
-          currentAssistantMsg = addMessage('assistant', '', true);
-        } else if (msg.type === 'stream') {
-          if (currentAssistantMsg) {
-            currentAssistantMsg.textContent += msg.data;
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-          }
-        } else if (msg.type === 'stream_end') {
-          isStreaming = false;
-          currentAssistantMsg = null;
-          sendBtn.disabled = false;
-          input.disabled = false;
+          addLine('system', 'CLI 已启动，等待输入...');
+        } else if (msg.type === 'output') {
+          addLine('stdout', msg.data);
+        } else if (msg.type === 'exit') {
+          addLine('system', `进程已退出，代码: ${msg.code}`);
         } else if (msg.type === 'error') {
-          addMessage('assistant', '错误: ' + msg.message, false, true);
-          isStreaming = false;
-          sendBtn.disabled = false;
-          input.disabled = false;
+          addLine('error', `错误: ${msg.message}`);
         }
       };
 
       ws.onclose = () => {
+        addLine('system', '连接已断开，正在重连...');
         setTimeout(connectWebSocket, 3000);
       };
     }
 
-    function addMessage(role, text, isStreaming = false, isError = false) {
-      const div = document.createElement('div');
-      div.className = `message ${role}`;
-
-      const avatar = document.createElement('div');
-      avatar.className = 'avatar';
-      avatar.textContent = role === 'user' ? '我' : 'AI';
-
-      const content = document.createElement('div');
-      content.className = 'message-content';
-      if (isError) content.classList.add('error');
-      content.textContent = text;
-
-      div.appendChild(avatar);
-      div.appendChild(content);
-      chatContainer.appendChild(div);
-      chatContainer.scrollTop = chatContainer.scrollHeight;
-
-      return content;
+    function addLine(type, text) {
+      const lines = text.split('\n');
+      lines.forEach(line => {
+        const div = document.createElement('div');
+        div.className = `terminal-line ${type}`;
+        div.textContent = line || ' ';
+        terminal.appendChild(div);
+      });
+      terminal.scrollTop = terminal.scrollHeight;
     }
 
-    function sendMessage() {
-      const text = input.value.trim();
-      if (!text || isStreaming) return;
+    function sendInput() {
+      const text = input.value;
+      if (!text && text !== '') return;
 
-      addMessage('user', text);
-      input.value = '';
-      input.style.height = 'auto';
-
-      isStreaming = true;
-      sendBtn.disabled = true;
-      input.disabled = true;
+      if (text) {
+        addLine('user', `$ ${text}`);
+      }
 
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'chat', data: text }));
+        ws.send(JSON.stringify({ type: 'input', data: text }));
       }
+
+      input.value = '';
+      input.style.height = 'auto';
     }
 
-    sendBtn.addEventListener('click', sendMessage);
+    sendBtn.addEventListener('click', sendInput);
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        sendMessage();
+        sendInput();
       }
     });
     input.addEventListener('input', () => {
