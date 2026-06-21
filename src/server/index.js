@@ -299,7 +299,8 @@ wss.on('connection', (ws, req) => {
 
           // Use socat to create a proper PTY bridge
           const cliCmd = [cliPath, ...cliArgs].map(a => `'${a}'`).join(' ');
-          proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,raw,echo=0,ctty', '-'], {
+          // Don't use raw mode - let the CLI handle raw mode itself
+          proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,echo=0,ctty', '-'], {
             cwd: session.dir,
             env: {
               TERM: 'xterm-256color',
@@ -386,6 +387,7 @@ process.on('SIGTERM', () => {
     process.exit(0);
   });
 });
+
 
 
 
