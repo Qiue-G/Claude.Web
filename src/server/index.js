@@ -4,6 +4,7 @@ import cors from 'cors';
 import { readFile, writeFile, readdir, stat, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, dirname } from 'path';
+import { spawn } from 'child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import { dirname as pathDirname } from 'path';
@@ -28,11 +29,13 @@ const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
+const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
 
-const VERSION = '2.0.1';
+const VERSION = '3.0.0';
 
 // Sessions storage
 const sessions = new Map();
+const sessionProcesses = new Map();
 
 const app = express();
 
@@ -64,7 +67,6 @@ function createSession(apiKey, model, provider) {
     model,
     provider,
     dir: sessionDir,
-    messages: [],
     createdAt: Date.now(),
     lastActivity: Date.now()
   };
@@ -112,7 +114,15 @@ app.get('/api/session/:id', (req, res) => {
 
 app.delete('/api/session/:id', async (req, res) => {
   const sessionId = req.params.id;
-  sessions.delete(sessionId);
+  const session = sessions.get(sessionId);
+  if (session) {
+    const proc = sessionProcesses.get(sessionId);
+    if (proc) {
+      proc.kill();
+      sessionProcesses.delete(sessionId);
+    }
+    sessions.delete(sessionId);
+  }
   res.json({ success: true });
 });
 
@@ -122,21 +132,17 @@ app.get('/api/files', async (req, res) => {
   if (!session) {
     return res.status(401).json({ error: 'Invalid session' });
   }
-
   try {
     const targetDir = req.query.path ? join(session.dir, req.query.path) : session.dir;
-
     if (!targetDir.startsWith(session.dir)) {
       return res.status(403).json({ error: 'Access denied' });
     }
-
     const entries = await readdir(targetDir, { withFileTypes: true });
     const files = entries.map(entry => ({
       name: entry.name,
       type: entry.isDirectory() ? 'directory' : 'file',
       path: req.query.path ? `${req.query.path}/${entry.name}` : entry.name
     }));
-
     res.json({ files, currentPath: req.query.path || '/' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -148,23 +154,14 @@ app.get('/api/file', async (req, res) => {
   if (!session) {
     return res.status(401).json({ error: 'Invalid session' });
   }
-
   try {
     const filePath = join(session.dir, req.query.path);
-
     if (!filePath.startsWith(session.dir)) {
       return res.status(403).json({ error: 'Access denied' });
     }
-
     const content = await readFile(filePath, 'utf-8');
     const stats = await stat(filePath);
-
-    res.json({
-      content,
-      size: stats.size,
-      modified: stats.mtime,
-      path: req.query.path
-    });
+    res.json({ content, size: stats.size, modified: stats.mtime, path: req.query.path });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -175,20 +172,16 @@ app.post('/api/file', async (req, res) => {
   if (!session) {
     return res.status(401).json({ error: 'Invalid session' });
   }
-
   try {
     const { path, content } = req.body;
     const filePath = join(session.dir, path);
-
     if (!filePath.startsWith(session.dir)) {
       return res.status(403).json({ error: 'Access denied' });
     }
-
     const parentDir = dirname(filePath);
     if (!existsSync(parentDir)) {
       await mkdir(parentDir, { recursive: true });
     }
-
     await writeFile(filePath, content, 'utf-8');
     res.json({ success: true, path });
   } catch (error) {
@@ -203,7 +196,8 @@ app.get('/api/health', (req, res) => {
     version: VERSION,
     sessions: sessions.size,
     maxSessions: MAX_SESSIONS,
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    freeCodeDir: FREE_CODE_DIR
   });
 });
 
@@ -211,13 +205,23 @@ app.get('/api/health', (req, res) => {
 const server = app.listen(PORT, HOST, () => {
   console.log(`Free-code Web Server v${VERSION} running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
   console.log(`Workspace: ${WORKSPACE_DIR}`);
+  console.log(`Free-code dir: ${FREE_CODE_DIR}`);
 });
 
-// WebSocket for chat
+// Strip ANSI codes
+function stripAnsi(str) {
+  str = str.replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(parseInt(n)));
+  return str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
+}
+
+// WebSocket for PTY interaction
 const wss = new WebSocketServer({ server, path: '/ws' });
 
 wss.on('connection', (ws) => {
   let sessionId = null;
+  let proc = null;
+  let onboardingPhase = 0; // 0=theme, 1=login, 2=ready
+  let outputBuffer = '';
 
   ws.on('message', async (data) => {
     try {
@@ -231,160 +235,94 @@ wss.on('connection', (ws) => {
           ws.close();
           return;
         }
-        ws.send(JSON.stringify({ type: 'ready' }));
-      } else if (message.type === 'chat') {
-        if (!sessionId) {
-          ws.send(JSON.stringify({ type: 'error', message: 'Session not initialized' }));
-          return;
+
+        console.log(`Starting CLI for session ${sessionId}`);
+
+        const cliPath = join(FREE_CODE_DIR, 'cli-dev');
+        const cliArgs = [];
+        if (session.model) {
+          cliArgs.push('--model', session.model);
         }
 
-        const currentSession = getSession(sessionId);
-        if (!currentSession) {
-          ws.send(JSON.stringify({ type: 'error', message: 'Session not found' }));
-          return;
+        const providerEnv = {};
+        if (session.provider === 'openrouter') {
+          providerEnv.ANTHROPIC_BASE_URL = 'https://openrouter.ai/api/v1';
+        } else if (session.provider === 'openai') {
+          providerEnv.CLAUDE_CODE_USE_OPENAI = '1';
+        } else if (session.provider === 'bedrock') {
+          providerEnv.CLAUDE_CODE_USE_BEDROCK = '1';
+        } else if (session.provider === 'vertex') {
+          providerEnv.CLAUDE_CODE_USE_VERTEX = '1';
         }
 
-        const userMessage = message.data;
-        if (!userMessage || !userMessage.trim()) return;
+        // Use socat with PTY
+        const cliCmd = [cliPath, ...cliArgs].map(a => `'${a}'`).join(' ');
+        proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,raw,echo=0,ctty,setsid,sigint,rows=50,cols=200', '-'], {
+          cwd: session.dir,
+          env: {
+            TERM: 'xterm-256color',
+            ...process.env,
+            ANTHROPIC_API_KEY: session.apiKey,
+            ...providerEnv,
+            NODE_ENV: 'production'
+          },
+          stdio: ['pipe', 'pipe', 'pipe']
+        });
 
-        // Add user message to history
-        currentSession.messages.push({ role: 'user', content: userMessage });
+        sessionProcesses.set(sessionId, proc);
+        onboardingPhase = 0;
+        outputBuffer = '';
 
-        // Build API request based on provider
-        let apiUrl, apiHeaders, requestBody;
+        proc.stdout.on('data', (data) => {
+          const text = stripAnsi(data.toString());
+          outputBuffer += text;
 
-        if (currentSession.provider === 'openrouter') {
-          apiUrl = 'https://openrouter.ai/api/v1/chat/completions';
-          apiHeaders = {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${currentSession.apiKey}`
-          };
-          requestBody = {
-            model: currentSession.model,
-            messages: currentSession.messages,
-            stream: true
-          };
-        } else if (currentSession.provider === 'anthropic') {
-          apiUrl = 'https://api.anthropic.com/v1/messages';
-          apiHeaders = {
-            'Content-Type': 'application/json',
-            'x-api-key': currentSession.apiKey,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true'
-          };
-          const anthropicMessages = currentSession.messages.map(m => ({
-            role: m.role,
-            content: m.content
-          }));
-          requestBody = {
-            model: currentSession.model,
-            messages: anthropicMessages,
-            max_tokens: 4096,
-            stream: true
-          };
-        } else if (currentSession.provider === 'openai') {
-          apiUrl = 'https://api.openai.com/v1/chat/completions';
-          apiHeaders = {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${currentSession.apiKey}`
-          };
-          requestBody = {
-            model: currentSession.model,
-            messages: currentSession.messages,
-            stream: true
-          };
-        } else {
-          // Default: OpenRouter
-          apiUrl = 'https://openrouter.ai/api/v1/chat/completions';
-          apiHeaders = {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${currentSession.apiKey}`
-          };
-          requestBody = {
-            model: currentSession.model,
-            messages: currentSession.messages,
-            stream: true
-          };
-        }
-
-        try {
-          const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: apiHeaders,
-            body: JSON.stringify(requestBody)
-          });
-
-          if (!response.ok) {
-            const errText = await response.text();
-            ws.send(JSON.stringify({ type: 'error', message: `API error: ${response.status} ${errText}` }));
-            // Remove the failed user message
-            currentSession.messages.pop();
-            return;
-          }
-
-          // Stream response
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
-          let fullResponse = '';
-          let buffer = '';
-
-          ws.send(JSON.stringify({ type: 'stream_start' }));
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-
-            for (const line of lines) {
-              const trimmed = line.trim();
-              if (!trimmed || !trimmed.startsWith('data: ')) continue;
-
-              const data = trimmed.slice(6);
-              if (data === '[DONE]') continue;
-
-              try {
-                const json = JSON.parse(data);
-
-                if (currentSession.provider === 'anthropic') {
-                  if (json.type === 'content_block_delta') {
-                    const text = json.delta?.text || '';
-                    if (text) {
-                      fullResponse += text;
-                      ws.send(JSON.stringify({ type: 'stream', data: text }));
-                    }
-                  }
-                } else {
-                  const choice = json.choices?.[0];
-                  const text = choice?.delta?.content || '';
-                  if (text) {
-                    fullResponse += text;
-                    ws.send(JSON.stringify({ type: 'stream', data: text }));
-                  }
-                }
-              } catch (e) {
-                // Skip invalid JSON
+          // Auto-handle onboarding
+          if (onboardingPhase === 0 && outputBuffer.includes('Choose the text style')) {
+            // Theme selection - send "1" for Dark mode
+            setTimeout(() => {
+              if (proc && proc.stdin) {
+                proc.stdin.write('1\r');
+                onboardingPhase = 1;
+                outputBuffer = '';
               }
-            }
+            }, 1000);
+          } else if (onboardingPhase === 1 && (outputBuffer.includes('Select login method') || outputBuffer.includes('login'))) {
+            // Login selection - send "1" for API key
+            setTimeout(() => {
+              if (proc && proc.stdin) {
+                proc.stdin.write('1\r');
+                onboardingPhase = 2;
+                outputBuffer = '';
+              }
+            }, 1000);
           }
 
-          // Add assistant response to history
-          currentSession.messages.push({ role: 'assistant', content: fullResponse });
-          ws.send(JSON.stringify({ type: 'stream_end' }));
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ type: 'output', data: text }));
+          }
+        });
 
-        } catch (error) {
-          ws.send(JSON.stringify({ type: 'error', message: error.message }));
-          currentSession.messages.pop();
+        proc.stderr.on('data', (data) => {
+          console.error('stderr:', data.toString());
+        });
+
+        proc.on('close', (code, signal) => {
+          console.log(`Process exited: code=${code}, signal=${signal}`);
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ type: 'exit', code, signal }));
+          }
+          sessionProcesses.delete(sessionId);
+        });
+
+        ws.send(JSON.stringify({ type: 'ready' }));
+      } else if (message.type === 'input') {
+        if (proc && proc.stdin) {
+          proc.stdin.write(message.data + '\r');
         }
-      } else if (message.type === 'clear') {
-        if (sessionId) {
-          const currentSession = getSession(sessionId);
-          if (currentSession) {
-            currentSession.messages = [];
-            ws.send(JSON.stringify({ type: 'cleared' }));
-          }
+      } else if (message.type === 'interrupt') {
+        if (proc && proc.stdin) {
+          proc.stdin.write('\x03');
         }
       }
     } catch (error) {
@@ -394,7 +332,10 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
-    // Keep session alive
+    if (proc && !proc.killed && proc.exitCode === null) {
+      proc.kill();
+    }
+    sessionProcesses.delete(sessionId);
   });
 });
 
