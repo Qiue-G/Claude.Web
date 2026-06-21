@@ -25,7 +25,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
-const VERSION = '4.4.1';
+const VERSION = '4.5.0';
 
 const sessions = new Map();
 const sessionProcesses = new Map();
@@ -42,7 +42,6 @@ app.use(express.static(join(__dirname, '../../public'), {
 }));
 
 function stripAnsi(str) {
-  // Remove all ANSI escape sequences
   str = str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
   str = str.replace(/\x1b\][^\x07]*\x07/g, '');
   str = str.replace(/\x1b\[[?]\d+[hl]/g, '');
@@ -108,6 +107,7 @@ wss.on('connection', (ws) => {
   let ptyProcess = null;
   let showOutput = false;
   let onboardingTimer = null;
+  let dataCount = 0;
 
   ws.on('message', async (data) => {
     try {
@@ -124,7 +124,6 @@ wss.on('connection', (ws) => {
 
         console.log(`Starting CLI for session ${sessionId}`);
 
-        // Pre-create config to skip theme/login onboarding
         const configDir = join(session.dir, '.claude');
         await mkdir(configDir, { recursive: true });
         await writeFile(join(configDir, '.config.json'), JSON.stringify({
@@ -161,9 +160,11 @@ wss.on('connection', (ws) => {
 
         sessionProcesses.set(sessionId, ptyProcess);
         showOutput = false;
+        dataCount = 0;
 
-        // Force enable output after 3 seconds (timeout fallback)
+        // Force enable output after 3 seconds
         onboardingTimer = setTimeout(() => {
+          console.log(`[DEBUG] Timeout triggered, showOutput=${showOutput}, dataCount=${dataCount}`);
           showOutput = true;
           if (ws.readyState === ws.OPEN) {
             ws.send(JSON.stringify({ type: 'output', data: '\x1b[2J\x1b[H' }));
@@ -172,18 +173,29 @@ wss.on('connection', (ws) => {
         }, 3000);
 
         ptyProcess.onData((data) => {
+          dataCount++;
+          const cleanData = stripAnsi(data);
+          
+          // Debug: log first 10 data events
+          if (dataCount <= 10) {
+            console.log(`[DEBUG onData #${dataCount}] showOutput=${showOutput}, len=${data.length}, preview="${cleanData.substring(0, 80)}"`);
+          }
+
           // Auto-handle trust dialog
           if (!showOutput && data.includes('Is this a project you created')) {
+            console.log('[DEBUG] Trust dialog detected, sending 1');
             setTimeout(() => { if (ptyProcess) ptyProcess.write('1\r'); }, 500);
             return;
           }
           // Auto-handle API key confirmation
           if (!showOutput && data.includes('Do you want to use this API key')) {
+            console.log('[DEBUG] API key dialog detected, sending 1');
             setTimeout(() => { if (ptyProcess) ptyProcess.write('1\r'); }, 500);
             return;
           }
           // Detect onboarding complete
           if (!showOutput && data.includes('Not logged in')) {
+            console.log('[DEBUG] Onboarding complete detected');
             showOutput = true;
             clearTimeout(onboardingTimer);
             if (ws.readyState === ws.OPEN) {
@@ -192,9 +204,9 @@ wss.on('connection', (ws) => {
             }
             return;
           }
-          // Show output when ready (with ANSI stripped)
+          // Show output when ready
           if (showOutput && ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ type: 'output', data: stripAnsi(data) }));
+            ws.send(JSON.stringify({ type: 'output', data: cleanData }));
           }
         });
 
@@ -208,7 +220,13 @@ wss.on('connection', (ws) => {
 
         ws.send(JSON.stringify({ type: 'ready' }));
       } else if (message.type === 'input') {
-        if (ptyProcess) ptyProcess.write(message.data + '\n');
+        console.log(`[DEBUG] Input received: "${message.data}"`);
+        if (ptyProcess) {
+          ptyProcess.write(message.data + '\n');
+          console.log('[DEBUG] Input sent to PTY');
+        } else {
+          console.log('[DEBUG] ptyProcess is null!');
+        }
       } else if (message.type === 'interrupt') {
         if (ptyProcess) ptyProcess.write('\x03');
       }
