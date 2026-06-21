@@ -31,7 +31,7 @@ const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../worksp
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
 
-const VERSION = '3.1.0';
+const VERSION = '3.1.1';
 
 // Sessions storage
 const sessions = new Map();
@@ -269,7 +269,7 @@ wss.on('connection', (ws) => {
 
         // Use socat with PTY
         const cliCmd = [cliPath, ...cliArgs].map(a => `'${a}'`).join(' ');
-        proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,raw,echo=0,ctty,setsid,sigint', '-'], {
+        proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,sane,echo=0,ctty,setsid,sigint', '-'], {
           cwd: session.dir,
           env: {
             TERM: 'xterm-256color',
