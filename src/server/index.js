@@ -31,7 +31,7 @@ const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../worksp
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
 
-const VERSION = '3.1.2';
+const VERSION = '3.1.3';
 
 // Sessions storage
 const sessions = new Map();
@@ -289,26 +289,6 @@ wss.on('connection', (ws) => {
           const text = stripAnsi(data.toString());
           outputBuffer += text;
 
-          // Auto-handle onboarding
-          if (onboardingPhase === 0 && outputBuffer.includes('Choose the text style')) {
-            // Theme selection - send "1" for Dark mode
-            setTimeout(() => {
-              if (proc && proc.stdin) {
-                proc.stdin.write('1\r');
-                onboardingPhase = 1;
-                outputBuffer = '';
-              }
-            }, 1000);
-          } else if (onboardingPhase === 1 && (outputBuffer.includes('Select login method') || outputBuffer.includes('login'))) {
-            // Login selection - send "1" for API key
-            setTimeout(() => {
-              if (proc && proc.stdin) {
-                proc.stdin.write('1\r');
-                onboardingPhase = 2;
-                outputBuffer = '';
-              }
-            }, 1000);
-          }
 
           if (ws.readyState === ws.OPEN) {
             ws.send(JSON.stringify({ type: 'output', data: text }));
