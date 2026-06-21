@@ -195,7 +195,7 @@
         } else if (msg.type === 'output') {
           addLine('stdout', msg.data);
         } else if (msg.type === 'exit') {
-          addLine('system', `进程已退出，代码: ${msg.code}`);
+          if (msg.code !== 0) addLine('error', `错误 (code ${msg.code})`);
         } else if (msg.type === 'error') {
           addLine('error', `错误: ${msg.message}`);
         }
