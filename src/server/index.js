@@ -308,17 +308,18 @@ wss.on('connection', (ws, req) => {
 
           proc.onData((data) => {
             if (ws.readyState === ws.OPEN) {
+              // Raw output - no stripping for debugging
               ws.send(JSON.stringify({
                 type: 'output',
-                data: strip(data)
+                data: data
               }));
             }
           });
 
-          proc.onExit(({ exitCode }) => {
-            console.log(`Process exited with code ${exitCode}`);
+          proc.onExit(({ exitCode, signal }) => {
+            console.log(`Process exited with code ${exitCode}, signal ${signal}`);
             if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({ type: 'exit', code: exitCode }));
+              ws.send(JSON.stringify({ type: 'exit', code: exitCode, signal }));
             }
             sessionProcesses.delete(sessionId);
           });
@@ -328,7 +329,7 @@ wss.on('connection', (ws, req) => {
 
         case 'input':
           if (proc) {
-            proc.write(message.data + '\r\n');
+            proc.write(message.data + '\r');
           }
           break;
 
