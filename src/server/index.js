@@ -2,7 +2,7 @@ import express from 'express';
 import { WebSocketServer } from 'ws';
 import cors from 'cors';
 import { readFile, writeFile, mkdir } from 'fs/promises';
-import { existsSync, writeFileSync } from 'fs';
+import { existsSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { spawn } from 'child_process';
 import { v4 as uuidv4 } from 'uuid';
@@ -49,7 +49,7 @@ function createSession(apiKey, model, provider) {
   // For OpenRouter, create .claude/settings.json with proper env config
   if (provider === 'openrouter') {
     const claudeDir = join(sessionDir, '.claude');
-    mkdir(claudeDir, { recursive: true }).catch(console.error);
+    mkdirSync(claudeDir, { recursive: true });
     const orModel = resolveOpenRouterModel(model || 'nvidia/nemotron-3-ultra-550b-a55b:free');
     const settings = {
       env: {
