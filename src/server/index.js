@@ -308,10 +308,9 @@ wss.on('connection', (ws, req) => {
 
           proc.onData((data) => {
             if (ws.readyState === ws.OPEN) {
-              // Raw output - no stripping for debugging
               ws.send(JSON.stringify({
                 type: 'output',
-                data: data
+                data: strip(data)
               }));
             }
           });
