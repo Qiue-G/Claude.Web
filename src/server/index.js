@@ -25,7 +25,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
-const VERSION = '4.2.3';
+const VERSION = '4.3.0';
 
 const sessions = new Map();
 const sessionProcesses = new Map();
@@ -96,7 +96,8 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', (ws) => {
   let sessionId = null;
   let ptyProcess = null;
-  let onboardingPhase = 0; // 0=trust, 1=apikey, 2=ready
+  let showOutput = false;
+  let onboardingTimer = null;
 
   ws.on('message', async (data) => {
     try {
@@ -149,34 +150,40 @@ wss.on('connection', (ws) => {
         });
 
         sessionProcesses.set(sessionId, ptyProcess);
-        onboardingPhase = 0;
+        showOutput = false;
+
+        // Force enable output after 3 seconds (timeout fallback)
+        onboardingTimer = setTimeout(() => {
+          showOutput = true;
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ type: 'output', data: '\x1b[2J\x1b[H' }));
+            ws.send(JSON.stringify({ type: 'output', data: '\nFree Code CLI 已就绪，请输入你的问题。\n\n' }));
+          }
+        }, 3000);
 
         ptyProcess.onData((data) => {
-          // Phase 0: Wait for trust dialog, auto-confirm
-          if (onboardingPhase === 0 && data.includes('Is this a project you created')) {
-            onboardingPhase = 1;
+          // Auto-handle trust dialog
+          if (!showOutput && data.includes('Is this a project you created')) {
             setTimeout(() => { if (ptyProcess) ptyProcess.write('1\r'); }, 500);
-            return; // Don't show onboarding output
-          }
-          // Phase 1: Wait for API key confirmation, auto-confirm
-          if (onboardingPhase === 1 && data.includes('Do you want to use this API key')) {
-            onboardingPhase = 2;
-            setTimeout(() => { if (ptyProcess) ptyProcess.write('1\r'); }, 500);
-            return; // Don't show onboarding output
-          }
-          // Phase 2: Onboarding done, clear screen and start showing output
-          if (onboardingPhase === 2 && data.includes('Not logged in')) {
-            onboardingPhase = 3;
-            // Send clear screen + welcome message
-            if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({ type: 'output', data: '\x1b[2J\x1b[H' })); // Clear screen
-              ws.send(JSON.stringify({ type: 'output', data: '\nFree Code CLI 已就绪，请输入你的问题。\n\n' }));
-            }
-            setTimeout(() => { if (ptyProcess) ptyProcess.write('\x0c'); }, 200);
             return;
           }
-          // Only show output after onboarding is complete
-          if (onboardingPhase >= 3 && ws.readyState === ws.OPEN) {
+          // Auto-handle API key confirmation
+          if (!showOutput && data.includes('Do you want to use this API key')) {
+            setTimeout(() => { if (ptyProcess) ptyProcess.write('1\r'); }, 500);
+            return;
+          }
+          // Detect onboarding complete
+          if (!showOutput && data.includes('Not logged in')) {
+            showOutput = true;
+            clearTimeout(onboardingTimer);
+            if (ws.readyState === ws.OPEN) {
+              ws.send(JSON.stringify({ type: 'output', data: '\x1b[2J\x1b[H' }));
+              ws.send(JSON.stringify({ type: 'output', data: '\nFree Code CLI 已就绪，请输入你的问题。\n\n' }));
+            }
+            return;
+          }
+          // Show output when ready
+          if (showOutput && ws.readyState === ws.OPEN) {
             ws.send(JSON.stringify({ type: 'output', data }));
           }
         });
@@ -202,6 +209,7 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
+    if (onboardingTimer) clearTimeout(onboardingTimer);
     if (ptyProcess) ptyProcess.kill();
     sessionProcesses.delete(sessionId);
   });
