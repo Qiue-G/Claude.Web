@@ -8,6 +8,7 @@ import { spawn } from 'child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import { dirname as pathDirname } from 'path';
+import * as pty from 'node-pty';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = pathDirname(__filename);
@@ -31,7 +32,7 @@ const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../worksp
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
 
-const VERSION = '3.1.3';
+const VERSION = '4.0.0';
 
 // Sessions storage
 const sessions = new Map();
@@ -201,13 +202,6 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Create HTTP server
-const server = app.listen(PORT, HOST, () => {
-  console.log(`Free-code Web Server v${VERSION} running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
-  console.log(`Workspace: ${WORKSPACE_DIR}`);
-  console.log(`Free-code dir: ${FREE_CODE_DIR}`);
-});
-
 // Strip ANSI codes
 function stripAnsi(str) {
   str = str.replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(parseInt(n)));
@@ -219,9 +213,7 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 
 wss.on('connection', (ws) => {
   let sessionId = null;
-  let proc = null;
-  
-  let outputBuffer = '';
+  let ptyProcess = null;
 
   ws.on('message', async (data) => {
     try {
@@ -238,8 +230,20 @@ wss.on('connection', (ws) => {
 
         console.log(`Starting CLI for session ${sessionId}`);
 
-        const cliPath = 'bun';
-        const cliArgs = ['run', join(FREE_CODE_DIR, 'src/entrypoints/cli.tsx')];
+        // Pre-create config to skip onboarding
+        const configDir = join(session.dir, '.claude');
+        await mkdir(configDir, { recursive: true });
+        const configPath = join(configDir, '.config.json');
+        const config = {
+          theme: 'dark',
+          hasCompletedOnboarding: true,
+          hasCompletedProjectOnboarding: true,
+          projectOnboardingSeenCount: 1
+        };
+        await writeFile(configPath, JSON.stringify(config), 'utf-8');
+
+        const cliPath = join(FREE_CODE_DIR, 'cli-dev');
+        const cliArgs = [];
         if (session.model) {
           cliArgs.push('--model', session.model);
         }
@@ -255,21 +259,11 @@ wss.on('connection', (ws) => {
           providerEnv.CLAUDE_CODE_USE_VERTEX = '1';
         }
 
-        // Pre-create config to skip onboarding
-        const configDir = join(session.dir, '.claude');
-        await mkdir(configDir, { recursive: true });
-        const configPath = join(configDir, '.config.json');
-        const config = {
-          theme: 'dark',
-          hasCompletedOnboarding: true,
-          hasCompletedProjectOnboarding: true,
-          projectOnboardingSeenCount: 1
-        };
-        await writeFile(configPath, JSON.stringify(config), 'utf-8');
-
-        // Use socat with PTY
-        const cliCmd = [cliPath, ...cliArgs].map(a => `'${a}'`).join(' ');
-        proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,sane,echo=0,ctty,setsid,sigint', '-'], {
+        // Use node-pty for native PTY control
+        ptyProcess = pty.spawn(cliPath, cliArgs, {
+          name: 'xterm-256color',
+          cols: 200,
+          rows: 50,
           cwd: session.dir,
           env: {
             TERM: 'xterm-256color',
@@ -278,54 +272,33 @@ wss.on('connection', (ws) => {
             CLAUDE_CONFIG_DIR: configDir,
             ...providerEnv,
             NODE_ENV: 'production'
-          },
-          stdio: ['pipe', 'pipe', 'pipe']
-        });
-
-        sessionProcesses.set(sessionId, proc);
-        outputBuffer = '';
-
-        proc.stdout.on('data', (data) => {
-          const text = stripAnsi(data.toString());
-          outputBuffer += text;
-
-
-          if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ type: 'output', data: text }));
           }
         });
 
-        proc.stderr.on('data', (data) => {
-          const text = data.toString();
-          console.error('stderr:', text);
+        sessionProcesses.set(sessionId, ptyProcess);
+
+        ptyProcess.onData((data) => {
           if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ type: 'error', message: text }));
+            ws.send(JSON.stringify({ type: 'output', data }));
           }
         });
 
-        proc.on('close', (code, signal) => {
-          console.log(`Process exited: code=${code}, signal=${signal}`);
+        ptyProcess.onExit(({ exitCode, signal }) => {
+          console.log(`Process exited: code=${exitCode}, signal=${signal}`);
           if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ type: 'exit', code, signal }));
+            ws.send(JSON.stringify({ type: 'exit', code: exitCode, signal }));
           }
           sessionProcesses.delete(sessionId);
         });
 
-        // Set terminal size via stty
-        setTimeout(() => {
-          if (proc && proc.stdin) {
-            proc.stdin.write('[8;50;200t');
-          }
-        }, 500);
-
         ws.send(JSON.stringify({ type: 'ready' }));
       } else if (message.type === 'input') {
-        if (proc && proc.stdin) {
-          proc.stdin.write(message.data + '\r');
+        if (ptyProcess) {
+          ptyProcess.write(message.data + '\r');
         }
       } else if (message.type === 'interrupt') {
-        if (proc && proc.stdin) {
-          proc.stdin.write('\x03');
+        if (ptyProcess) {
+          ptyProcess.write('\x03');
         }
       }
     } catch (error) {
@@ -335,8 +308,8 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
-    if (proc && !proc.killed && proc.exitCode === null) {
-      proc.kill();
+    if (ptyProcess) {
+      ptyProcess.kill();
     }
     sessionProcesses.delete(sessionId);
   });
