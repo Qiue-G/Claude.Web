@@ -99,7 +99,10 @@ function spawnCli(session, prompt) {
     env: {
       HOME: session.dir,
       ...process.env,
-      ANTHROPIC_API_KEY: session.apiKey,
+      // OpenRouter requires ANTHROPIC_AUTH_TOKEN (Bearer token), not ANTHROPIC_API_KEY
+      ANTHROPIC_API_KEY: session.provider === 'openrouter' ? '' : session.apiKey,
+      ANTHROPIC_AUTH_TOKEN: session.provider === 'openrouter' ? session.apiKey : '',
+      ANTHROPIC_MODEL: session.provider === 'openrouter' ? (resolveOpenRouterModel(session.model || 'nvidia/nemotron-3-ultra-550b-a55b:free')) : '',
       ...providerEnv,
       NODE_ENV: 'production'
     },
@@ -206,7 +209,11 @@ wss.on('connection', (ws) => {
         });
 
         proc.stderr.on('data', (chunk) => {
-          console.error(`[STDERR] ${chunk.toString().substring(0, 200)}`);
+          const errStr = chunk.toString();
+          console.error(`[STDERR] ${errStr.substring(0, 200)}`);
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ type: 'stderr', data: errStr }));
+          }
         });
 
         proc.on('close', (code) => {
