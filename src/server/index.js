@@ -299,8 +299,9 @@ wss.on('connection', (ws, req) => {
 
           // Use socat to create a proper PTY bridge
           const cliCmd = [cliPath, ...cliArgs].map(a => `'${a}'`).join(' ');
-          // Set PTY size to 200x50 for better compatibility
-          proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,raw,echo=0,ctty,setsid,sigint,sane,rows=50,cols=200', '-'], {
+          // Use sane mode instead of raw to preserve line discipline
+          // This ensures \n is properly processed as Enter key
+          proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,sane,echo=0,ctty,setsid,sigint,rows=50,cols=200', '-'], {
             cwd: session.dir,
             env: {
               TERM: 'xterm-256color',
