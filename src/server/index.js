@@ -22,9 +22,7 @@ try {
       process.env[key.trim()] = valueParts.join('=').trim();
     }
   });
-} catch (e) {
-  // .env not found, use defaults
-}
+} catch (e) {}
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -32,15 +30,12 @@ const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../worksp
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
 
-const VERSION = '4.0.1';
+const VERSION = '4.0.3';
 
-// Sessions storage
 const sessions = new Map();
 const sessionProcesses = new Map();
 
 const app = express();
-
-// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static(join(__dirname, '../../public'), {
@@ -51,17 +46,13 @@ app.use(express.static(join(__dirname, '../../public'), {
   }
 }));
 
-// Session management
 function createSession(apiKey, model, provider) {
   const sessionId = uuidv4();
   const sessionDir = join(WORKSPACE_DIR, sessionId);
-
   if (!existsSync(WORKSPACE_DIR)) {
     mkdir(WORKSPACE_DIR, { recursive: true }).catch(console.error);
   }
-
   mkdir(sessionDir, { recursive: true }).catch(console.error);
-
   const session = {
     id: sessionId,
     apiKey,
@@ -71,149 +62,60 @@ function createSession(apiKey, model, provider) {
     createdAt: Date.now(),
     lastActivity: Date.now()
   };
-
   sessions.set(sessionId, session);
   return session;
 }
 
 function getSession(sessionId) {
   const session = sessions.get(sessionId);
-  if (session) {
-    session.lastActivity = Date.now();
-  }
+  if (session) session.lastActivity = Date.now();
   return session;
 }
 
-// API Routes
 app.post('/api/session', async (req, res) => {
   try {
     const { apiKey, model, provider } = req.body;
-
-    if (!apiKey) {
-      return res.status(400).json({ error: 'API key is required' });
-    }
-
-    if (sessions.size >= MAX_SESSIONS) {
-      return res.status(503).json({ error: 'Too many sessions. Please try again later.' });
-    }
-
+    if (!apiKey) return res.status(400).json({ error: 'API key is required' });
+    if (sessions.size >= MAX_SESSIONS) return res.status(503).json({ error: 'Too many sessions' });
     const session = createSession(apiKey, model || 'claude-opus-4-6', provider || 'anthropic');
     res.json({ sessionId: session.id, dir: session.dir });
   } catch (error) {
-    console.error('Session creation error:', error);
     res.status(500).json({ error: 'Failed to create session' });
   }
 });
 
 app.get('/api/session/:id', (req, res) => {
   const session = getSession(req.params.id);
-  if (!session) {
-    return res.status(404).json({ error: 'Session not found' });
-  }
+  if (!session) return res.status(404).json({ error: 'Session not found' });
   res.json({ sessionId: session.id, dir: session.dir, model: session.model, provider: session.provider });
 });
 
 app.delete('/api/session/:id', async (req, res) => {
-  const sessionId = req.params.id;
-  const session = sessions.get(sessionId);
+  const session = sessions.get(req.params.id);
   if (session) {
-    const proc = sessionProcesses.get(sessionId);
-    if (proc) {
-      proc.kill();
-      sessionProcesses.delete(sessionId);
-    }
-    sessions.delete(sessionId);
+    const proc = sessionProcesses.get(req.params.id);
+    if (proc) { proc.kill(); sessionProcesses.delete(req.params.id); }
+    sessions.delete(req.params.id);
   }
   res.json({ success: true });
 });
 
-// File operations
-app.get('/api/files', async (req, res) => {
-  const session = getSession(req.query.sessionId);
-  if (!session) {
-    return res.status(401).json({ error: 'Invalid session' });
-  }
-  try {
-    const targetDir = req.query.path ? join(session.dir, req.query.path) : session.dir;
-    if (!targetDir.startsWith(session.dir)) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-    const entries = await readdir(targetDir, { withFileTypes: true });
-    const files = entries.map(entry => ({
-      name: entry.name,
-      type: entry.isDirectory() ? 'directory' : 'file',
-      path: req.query.path ? `${req.query.path}/${entry.name}` : entry.name
-    }));
-    res.json({ files, currentPath: req.query.path || '/' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get('/api/file', async (req, res) => {
-  const session = getSession(req.query.sessionId);
-  if (!session) {
-    return res.status(401).json({ error: 'Invalid session' });
-  }
-  try {
-    const filePath = join(session.dir, req.query.path);
-    if (!filePath.startsWith(session.dir)) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-    const content = await readFile(filePath, 'utf-8');
-    const stats = await stat(filePath);
-    res.json({ content, size: stats.size, modified: stats.mtime, path: req.query.path });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/file', async (req, res) => {
-  const session = getSession(req.body.sessionId);
-  if (!session) {
-    return res.status(401).json({ error: 'Invalid session' });
-  }
-  try {
-    const { path, content } = req.body;
-    const filePath = join(session.dir, path);
-    if (!filePath.startsWith(session.dir)) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-    const parentDir = dirname(filePath);
-    if (!existsSync(parentDir)) {
-      await mkdir(parentDir, { recursive: true });
-    }
-    await writeFile(filePath, content, 'utf-8');
-    res.json({ success: true, path });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Health check
 app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    version: VERSION,
-    sessions: sessions.size,
-    maxSessions: MAX_SESSIONS,
-    uptime: process.uptime(),
-    freeCodeDir: FREE_CODE_DIR
-  });
+  res.json({ status: 'ok', version: VERSION, sessions: sessions.size, maxSessions: MAX_SESSIONS, uptime: process.uptime(), freeCodeDir: FREE_CODE_DIR });
 });
 
-// Strip ANSI codes
-function stripAnsi(str) {
-  str = str.replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(parseInt(n)));
-  return str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
-}
+// Create HTTP server BEFORE WebSocketServer
+const server = app.listen(PORT, HOST, () => {
+  console.log(`Free-code Web Server v${VERSION} running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+});
 
-// WebSocket for PTY interaction
+// WebSocket
 const wss = new WebSocketServer({ server, path: '/ws' });
 
 wss.on('connection', (ws) => {
   let sessionId = null;
   let ptyProcess = null;
+  let trustDialogShown = false;
 
   ws.on('message', async (data) => {
     try {
@@ -233,33 +135,23 @@ wss.on('connection', (ws) => {
         // Pre-create config to skip onboarding
         const configDir = join(session.dir, '.claude');
         await mkdir(configDir, { recursive: true });
-        const configPath = join(configDir, '.config.json');
-        const config = {
+        await writeFile(join(configDir, '.config.json'), JSON.stringify({
           theme: 'dark',
           hasCompletedOnboarding: true,
           hasCompletedProjectOnboarding: true,
           projectOnboardingSeenCount: 1
-        };
-        await writeFile(configPath, JSON.stringify(config), 'utf-8');
+        }), 'utf-8');
 
         const cliPath = join(FREE_CODE_DIR, 'cli-dev');
         const cliArgs = [];
-        if (session.model) {
-          cliArgs.push('--model', session.model);
-        }
+        if (session.model) cliArgs.push('--model', session.model);
 
         const providerEnv = {};
-        if (session.provider === 'openrouter') {
-          providerEnv.ANTHROPIC_BASE_URL = 'https://openrouter.ai/api/v1';
-        } else if (session.provider === 'openai') {
-          providerEnv.CLAUDE_CODE_USE_OPENAI = '1';
-        } else if (session.provider === 'bedrock') {
-          providerEnv.CLAUDE_CODE_USE_BEDROCK = '1';
-        } else if (session.provider === 'vertex') {
-          providerEnv.CLAUDE_CODE_USE_VERTEX = '1';
-        }
+        if (session.provider === 'openrouter') providerEnv.ANTHROPIC_BASE_URL = 'https://openrouter.ai/api/v1';
+        else if (session.provider === 'openai') providerEnv.CLAUDE_CODE_USE_OPENAI = '1';
+        else if (session.provider === 'bedrock') providerEnv.CLAUDE_CODE_USE_BEDROCK = '1';
+        else if (session.provider === 'vertex') providerEnv.CLAUDE_CODE_USE_VERTEX = '1';
 
-        // Use node-pty for native PTY control
         ptyProcess = pty.spawn(cliPath, cliArgs, {
           name: 'xterm-256color',
           cols: 200,
@@ -276,16 +168,14 @@ wss.on('connection', (ws) => {
         });
 
         sessionProcesses.set(sessionId, ptyProcess);
+        trustDialogShown = false;
 
-        let trustDialogShown = false;
         ptyProcess.onData((data) => {
           // Auto-handle trust dialog
           if (!trustDialogShown && data.includes('Is this a project you created')) {
             trustDialogShown = true;
             setTimeout(() => {
-              if (ptyProcess) {
-                ptyProcess.write('1');
-              }
+              if (ptyProcess) ptyProcess.write('1\r');
             }, 1000);
           }
           if (ws.readyState === ws.OPEN) {
@@ -303,13 +193,9 @@ wss.on('connection', (ws) => {
 
         ws.send(JSON.stringify({ type: 'ready' }));
       } else if (message.type === 'input') {
-        if (ptyProcess) {
-          ptyProcess.write(message.data + '\r');
-        }
+        if (ptyProcess) ptyProcess.write(message.data + '\r');
       } else if (message.type === 'interrupt') {
-        if (ptyProcess) {
-          ptyProcess.write('\x03');
-        }
+        if (ptyProcess) ptyProcess.write('\x03');
       }
     } catch (error) {
       console.error('WebSocket error:', error);
@@ -318,17 +204,12 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
-    if (ptyProcess) {
-      ptyProcess.kill();
-    }
+    if (ptyProcess) ptyProcess.kill();
     sessionProcesses.delete(sessionId);
   });
 });
 
-// Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('Shutting down...');
-  server.close(() => {
-    process.exit(0);
-  });
+  server.close(() => process.exit(0));
 });
