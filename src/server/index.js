@@ -30,7 +30,7 @@ const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../worksp
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
 
-const VERSION = '4.0.5';
+const VERSION = '4.0.6';
 
 const sessions = new Map();
 const sessionProcesses = new Map();
@@ -108,6 +108,17 @@ app.get('/api/health', (req, res) => {
 const server = app.listen(PORT, HOST, () => {
   console.log(`Free-code Web Server v${VERSION} running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
 });
+
+// Strip ANSI codes
+function stripAnsi(str) {
+  str = str.replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(parseInt(n)));
+  str = str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+  str = str.replace(/\x1b\][^\x07]*\x07/g, '');
+  str = str.replace(/\x1b\[[?]\d+[hl]/g, '');
+  str = str.replace(/\x1b\[\d+;\d+[A-H]/g, '');
+  str = str.replace(/\x1b\[\d+m/g, '');
+  return str;
+}
 
 // WebSocket
 const wss = new WebSocketServer({ server, path: '/ws' });
