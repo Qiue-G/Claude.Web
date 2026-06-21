@@ -29,7 +29,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 
-const VERSION = '2.0.0';
+const VERSION = '2.0.1';
 
 // Sessions storage
 const sessions = new Map();
@@ -48,7 +48,7 @@ app.use(express.static(join(__dirname, '../../public'), {
 }));
 
 // Session management
-function createSession(apiKey, model = 'claude-opus-4-6', provider = 'anthropic') {
+function createSession(apiKey, model, provider) {
   const sessionId = uuidv4();
   const sessionDir = join(WORKSPACE_DIR, sessionId);
 
@@ -223,180 +223,169 @@ wss.on('connection', (ws) => {
     try {
       const message = JSON.parse(data.toString());
 
-      switch (message.type) {
-        case 'init':
-          sessionId = message.sessionId;
-          const session = getSession(sessionId);
-          if (!session) {
-            ws.send(JSON.stringify({ type: 'error', message: 'Invalid session' }));
-            ws.close();
+      if (message.type === 'init') {
+        sessionId = message.sessionId;
+        const session = getSession(sessionId);
+        if (!session) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Invalid session' }));
+          ws.close();
+          return;
+        }
+        ws.send(JSON.stringify({ type: 'ready' }));
+      } else if (message.type === 'chat') {
+        if (!sessionId) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Session not initialized' }));
+          return;
+        }
+
+        const currentSession = getSession(sessionId);
+        if (!currentSession) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Session not found' }));
+          return;
+        }
+
+        const userMessage = message.data;
+        if (!userMessage || !userMessage.trim()) return;
+
+        // Add user message to history
+        currentSession.messages.push({ role: 'user', content: userMessage });
+
+        // Build API request based on provider
+        let apiUrl, apiHeaders, requestBody;
+
+        if (currentSession.provider === 'openrouter') {
+          apiUrl = 'https://openrouter.ai/api/v1/chat/completions';
+          apiHeaders = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentSession.apiKey}`
+          };
+          requestBody = {
+            model: currentSession.model,
+            messages: currentSession.messages,
+            stream: true
+          };
+        } else if (currentSession.provider === 'anthropic') {
+          apiUrl = 'https://api.anthropic.com/v1/messages';
+          apiHeaders = {
+            'Content-Type': 'application/json',
+            'x-api-key': currentSession.apiKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true'
+          };
+          const anthropicMessages = currentSession.messages.map(m => ({
+            role: m.role,
+            content: m.content
+          }));
+          requestBody = {
+            model: currentSession.model,
+            messages: anthropicMessages,
+            max_tokens: 4096,
+            stream: true
+          };
+        } else if (currentSession.provider === 'openai') {
+          apiUrl = 'https://api.openai.com/v1/chat/completions';
+          apiHeaders = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentSession.apiKey}`
+          };
+          requestBody = {
+            model: currentSession.model,
+            messages: currentSession.messages,
+            stream: true
+          };
+        } else {
+          // Default: OpenRouter
+          apiUrl = 'https://openrouter.ai/api/v1/chat/completions';
+          apiHeaders = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentSession.apiKey}`
+          };
+          requestBody = {
+            model: currentSession.model,
+            messages: currentSession.messages,
+            stream: true
+          };
+        }
+
+        try {
+          const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: apiHeaders,
+            body: JSON.stringify(requestBody)
+          });
+
+          if (!response.ok) {
+            const errText = await response.text();
+            ws.send(JSON.stringify({ type: 'error', message: `API error: ${response.status} ${errText}` }));
+            // Remove the failed user message
+            currentSession.messages.pop();
             return;
           }
-          ws.send(JSON.stringify({ type: 'ready' }));
-          break;
 
-        case 'chat':
-          if (!sessionId) {
-            ws.send(JSON.stringify({ type: 'error', message: 'Session not initialized' }));
-            return;
-          }
+          // Stream response
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let fullResponse = '';
+          let buffer = '';
 
-          const session = getSession(sessionId);
-          if (!session) {
-            ws.send(JSON.stringify({ type: 'error', message: 'Session not found' }));
-            return;
-          }
+          ws.send(JSON.stringify({ type: 'stream_start' }));
 
-          const userMessage = message.data;
-          if (!userMessage || !userMessage.trim()) return;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-          // Add user message to history
-          session.messages.push({ role: 'user', content: userMessage });
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
 
-          // Build API request based on provider
-          let apiUrl, apiHeaders, requestBody;
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed || !trimmed.startsWith('data: ')) continue;
 
-          if (session.provider === 'openrouter') {
-            apiUrl = 'https://openrouter.ai/api/v1/chat/completions';
-            apiHeaders = {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.apiKey}`
-            };
-            requestBody = {
-              model: session.model,
-              messages: session.messages,
-              stream: true
-            };
-          } else if (session.provider === 'anthropic') {
-            apiUrl = 'https://api.anthropic.com/v1/messages';
-            apiHeaders = {
-              'Content-Type': 'application/json',
-              'x-api-key': session.apiKey,
-              'anthropic-version': '2023-06-01',
-              'anthropic-dangerous-direct-browser-access': 'true'
-            };
-            // Convert to Anthropic format
-            const anthropicMessages = session.messages.map(m => ({
-              role: m.role,
-              content: m.content
-            }));
-            requestBody = {
-              model: session.model,
-              messages: anthropicMessages,
-              max_tokens: 4096,
-              stream: true
-            };
-          } else if (session.provider === 'openai') {
-            apiUrl = 'https://api.openai.com/v1/chat/completions';
-            apiHeaders = {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.apiKey}`
-            };
-            requestBody = {
-              model: session.model,
-              messages: session.messages,
-              stream: true
-            };
-          } else {
-            // Default: OpenRouter
-            apiUrl = 'https://openrouter.ai/api/v1/chat/completions';
-            apiHeaders = {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.apiKey}`
-            };
-            requestBody = {
-              model: session.model,
-              messages: session.messages,
-              stream: true
-            };
-          }
+              const data = trimmed.slice(6);
+              if (data === '[DONE]') continue;
 
-          try {
-            const response = await fetch(apiUrl, {
-              method: 'POST',
-              headers: apiHeaders,
-              body: JSON.stringify(requestBody)
-            });
+              try {
+                const json = JSON.parse(data);
 
-            if (!response.ok) {
-              const errText = await response.text();
-              ws.send(JSON.stringify({ type: 'error', message: `API error: ${response.status} ${errText}` }));
-              // Remove the failed user message
-              session.messages.pop();
-              return;
-            }
-
-            // Stream response
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let fullResponse = '';
-            let buffer = '';
-
-            ws.send(JSON.stringify({ type: 'stream_start' }));
-
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split('\n');
-              buffer = lines.pop() || '';
-
-              for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed || !trimmed.startsWith('data: ')) continue;
-
-                const data = trimmed.slice(6);
-                if (data === '[DONE]') continue;
-
-                try {
-                  const json = JSON.parse(data);
-
-                  if (session.provider === 'anthropic') {
-                    // Anthropic streaming format
-                    if (json.type === 'content_block_delta') {
-                      const text = json.delta?.text || '';
-                      if (text) {
-                        fullResponse += text;
-                        ws.send(JSON.stringify({ type: 'stream', data: text }));
-                      }
-                    } else if (json.type === 'message_stop') {
-                      // End of stream
-                    }
-                  } else {
-                    // OpenAI/OpenRouter streaming format
-                    const choice = json.choices?.[0];
-                    const text = choice?.delta?.content || '';
+                if (currentSession.provider === 'anthropic') {
+                  if (json.type === 'content_block_delta') {
+                    const text = json.delta?.text || '';
                     if (text) {
                       fullResponse += text;
                       ws.send(JSON.stringify({ type: 'stream', data: text }));
                     }
                   }
-                } catch (e) {
-                  // Skip invalid JSON
+                } else {
+                  const choice = json.choices?.[0];
+                  const text = choice?.delta?.content || '';
+                  if (text) {
+                    fullResponse += text;
+                    ws.send(JSON.stringify({ type: 'stream', data: text }));
+                  }
                 }
+              } catch (e) {
+                // Skip invalid JSON
               }
             }
-
-            // Add assistant response to history
-            session.messages.push({ role: 'assistant', content: fullResponse });
-            ws.send(JSON.stringify({ type: 'stream_end' }));
-
-          } catch (error) {
-            ws.send(JSON.stringify({ type: 'error', message: error.message }));
-            session.messages.pop();
           }
-          break;
 
-        case 'clear':
-          if (sessionId) {
-            const session = getSession(sessionId);
-            if (session) {
-              session.messages = [];
-              ws.send(JSON.stringify({ type: 'cleared' }));
-            }
+          // Add assistant response to history
+          currentSession.messages.push({ role: 'assistant', content: fullResponse });
+          ws.send(JSON.stringify({ type: 'stream_end' }));
+
+        } catch (error) {
+          ws.send(JSON.stringify({ type: 'error', message: error.message }));
+          currentSession.messages.pop();
+        }
+      } else if (message.type === 'clear') {
+        if (sessionId) {
+          const currentSession = getSession(sessionId);
+          if (currentSession) {
+            currentSession.messages = [];
+            ws.send(JSON.stringify({ type: 'cleared' }));
           }
-          break;
+        }
       }
     } catch (error) {
       console.error('WebSocket error:', error);
