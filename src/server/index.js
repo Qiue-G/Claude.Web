@@ -4,7 +4,6 @@ import cors from 'cors';
 import { readFile, writeFile, readdir, stat, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, basename, dirname } from 'path';
-import { spawn } from 'child_process';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 
@@ -42,7 +41,7 @@ const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
 
 // Version for deployment verification
-const VERSION = '1.0.4';
+const VERSION = '1.0.5';
 
 // Sessions storage
 const sessions = new Map();
@@ -229,9 +228,9 @@ app.get('/api/health', (req, res) => {
 
 // Create HTTP server
 const server = app.listen(PORT, HOST, () => {
-  console.log(`馃殌 Free-code Web Server v${VERSION} running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
-  console.log(`馃搧 Workspace: ${WORKSPACE_DIR}`);
-  console.log(`馃摝 Free-code directory: ${FREE_CODE_DIR}`);
+  console.log(` Free-code Web Server v${VERSION} running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+  console.log(`📁 Workspace: ${WORKSPACE_DIR}`);
+  console.log(`📦 Free-code directory: ${FREE_CODE_DIR}`);
 });
 
 // WebSocket for real-time CLI interaction
@@ -239,7 +238,7 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 
 wss.on('connection', (ws, req) => {
   let sessionId = null;
-  let proc = null;
+  let pty = null;
 
   ws.on('message', async (data) => {
     try {
@@ -262,12 +261,11 @@ wss.on('connection', (ws, req) => {
           console.log(`Provider: ${session.provider}`);
 
           // Use the compiled binary from bun run build:dev:full
-          // This creates an executable at /free-code/cli-dev
           const cliPath = join(FREE_CODE_DIR, 'cli-dev');
           
           console.log(`Attempting to spawn: ${cliPath}`);
 
-          // Build CLI args: pass model via --model flag
+          // Build CLI args
           const cliArgs = [];
           if (session.model) {
             cliArgs.push('--model', session.model);
@@ -293,14 +291,15 @@ wss.on('connection', (ws, req) => {
               break;
             case 'anthropic':
             default:
-              // Anthropic is the default, no special env needed
               break;
           }
 
-          // Use socat to create a proper PTY bridge
-          const cliCmd = [cliPath, ...cliArgs].map(a => `'${a}'`).join(' ');
-          // Don't use raw mode - let the CLI handle raw mode itself
-          proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,echo=0,ctty', '-'], {
+          // Use node-pty for native PTY control
+          const nodePty = require('node-pty');
+          pty = nodePty.spawn(cliPath, cliArgs, {
+            name: 'xterm-256color',
+            cols: 200,
+            rows: 50,
             cwd: session.dir,
             env: {
               TERM: 'xterm-256color',
@@ -308,29 +307,24 @@ wss.on('connection', (ws, req) => {
               ANTHROPIC_API_KEY: session.apiKey,
               ...providerEnv,
               NODE_ENV: 'production'
-            },
-            stdio: ['pipe', 'pipe', 'pipe']
+            }
           });
 
-          sessionProcesses.set(sessionId, proc);
+          sessionProcesses.set(sessionId, pty);
 
-          proc.stdout.on('data', (data) => {
+          pty.onData((data) => {
             if (ws.readyState === ws.OPEN) {
               ws.send(JSON.stringify({
                 type: 'output',
-                data: strip(data.toString())
+                data: strip(data)
               }));
             }
           });
 
-          proc.stderr.on('data', (data) => {
-            console.error('stderr:', data.toString());
-          });
-
-          proc.on('close', (code, signal) => {
-            console.log(`Process exited with code ${code}, signal ${signal}`);
+          pty.onExit(({ exitCode, signal }) => {
+            console.log(`Process exited with code ${exitCode}, signal ${signal}`);
             if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({ type: 'exit', code, signal }));
+              ws.send(JSON.stringify({ type: 'exit', code: exitCode, signal }));
             }
             sessionProcesses.delete(sessionId);
           });
@@ -339,27 +333,21 @@ wss.on('connection', (ws, req) => {
           break;
 
         case 'input':
-          if (proc && proc.stdin) {
-            proc.stdin.write(message.data + '\n');
+          if (pty) {
+            pty.write(message.data + '\r');
           }
           break;
 
         case 'interrupt':
-          if (proc && proc.stdin) {
-            proc.stdin.write('\x03');
+          if (pty) {
+            pty.write('\x03');
           }
           break;
 
         case 'resize':
-          // Handle terminal resize - send SIGWINCH to the PTY
-          if (proc && message.cols && message.rows) {
+          if (pty && message.cols && message.rows) {
             try {
-              // Use stty to resize the PTY
-              const resizeProc = spawn('stty', ['rows', String(message.rows), 'columns', String(message.cols)], {
-                cwd: session.dir,
-                stdio: ['pipe', 'pipe', 'pipe']
-              });
-              resizeProc.on('close', () => {});
+              pty.resize(message.cols, message.rows);
             } catch (e) {
               console.error('Resize error:', e);
             }
@@ -373,8 +361,8 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
-    if (proc && !proc.killed && proc.exitCode === null) {
-      proc.kill();
+    if (pty && !pty.killed) {
+      pty.kill();
     }
     sessionProcesses.delete(sessionId);
   });
@@ -387,9 +375,3 @@ process.on('SIGTERM', () => {
     process.exit(0);
   });
 });
-
-
-
-
-
-
