@@ -4,10 +4,10 @@ import cors from 'cors';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
+import { spawn } from 'child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import { dirname as pathDirname } from 'path';
-import * as pty from 'node-pty';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = pathDirname(__filename);
@@ -25,21 +25,10 @@ const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
-const VERSION = '4.5.0';
+const VERSION = '5.0.0';
 
 const sessions = new Map();
 const sessionProcesses = new Map();
-
-const app = express();
-app.use(cors());
-app.use(express.json());
-app.use(express.static(join(__dirname, '../../public'), {
-  setHeaders: (res) => {
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-  }
-}));
 
 function stripAnsi(str) {
   str = str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
@@ -66,6 +55,52 @@ function getSession(sessionId) {
   return session;
 }
 
+function getProviderEnv(provider) {
+  switch (provider) {
+    case 'openai': return { CLAUDE_CODE_USE_OPENAI: '1' };
+    case 'bedrock': return { CLAUDE_CODE_USE_BEDROCK: '1' };
+    case 'vertex': return { CLAUDE_CODE_USE_VERTEX: '1' };
+    case 'openrouter': return { ANTHROPIC_BASE_URL: 'https://openrouter.ai/api/v1' };
+    default: return {};
+  }
+}
+
+function spawnCli(session, prompt) {
+  const cliPath = join(FREE_CODE_DIR, 'cli-dev');
+  const cliArgs = ['--print'];
+  if (session.model) cliArgs.push('--model', session.model);
+  
+  const providerEnv = getProviderEnv(session.provider);
+  
+  const proc = spawn(cliPath, cliArgs, {
+    cwd: session.dir,
+    env: {
+      HOME: session.dir,
+      ...process.env,
+      ANTHROPIC_API_KEY: session.apiKey,
+      ...providerEnv,
+      NODE_ENV: 'production'
+    },
+    stdio: ['pipe', 'pipe', 'pipe']
+  });
+  
+  proc.stdin.write(prompt + '\n');
+  proc.stdin.end();
+  
+  return proc;
+}
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use(express.static(join(__dirname, '../../public'), {
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+}));
+
 app.post('/api/session', async (req, res) => {
   try {
     const { apiKey, model, provider } = req.body;
@@ -85,8 +120,8 @@ app.get('/api/session/:id', (req, res) => {
 app.delete('/api/session/:id', async (req, res) => {
   const session = sessions.get(req.params.id);
   if (session) {
-    const proc = sessionProcesses.get(req.params.id);
-    if (proc) { proc.kill(); sessionProcesses.delete(req.params.id); }
+    const oldProc = sessionProcesses.get(req.params.id);
+    if (oldProc) { oldProc.kill(); sessionProcesses.delete(req.params.id); }
     sessions.delete(req.params.id);
   }
   res.json({ success: true });
@@ -97,17 +132,13 @@ app.get('/api/health', (req, res) => {
 });
 
 const server = app.listen(PORT, HOST, () => {
-  console.log(`Free-code Web Server v${VERSION} running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+  console.log(`Free-code Web Server v${VERSION} on ${HOST}:${PORT}`);
 });
 
 const wss = new WebSocketServer({ server, path: '/ws' });
 
 wss.on('connection', (ws) => {
   let sessionId = null;
-  let ptyProcess = null;
-  let showOutput = false;
-  let onboardingTimer = null;
-  let dataCount = 0;
 
   ws.on('message', async (data) => {
     try {
@@ -121,115 +152,57 @@ wss.on('connection', (ws) => {
           ws.close();
           return;
         }
-
-        console.log(`Starting CLI for session ${sessionId}`);
-
-        const configDir = join(session.dir, '.claude');
-        await mkdir(configDir, { recursive: true });
-        await writeFile(join(configDir, '.config.json'), JSON.stringify({
-          theme: 'dark',
-          hasCompletedOnboarding: true,
-          hasCompletedProjectOnboarding: true,
-          projectOnboardingSeenCount: 1
-        }), 'utf-8');
-
-        const cliPath = join(FREE_CODE_DIR, 'cli-dev');
-        const cliArgs = [];
-        if (session.model) cliArgs.push('--model', session.model);
-
-        const providerEnv = {};
-        if (session.provider === 'openrouter') providerEnv.ANTHROPIC_BASE_URL = 'https://openrouter.ai/api/v1';
-        else if (session.provider === 'openai') providerEnv.CLAUDE_CODE_USE_OPENAI = '1';
-        else if (session.provider === 'bedrock') providerEnv.CLAUDE_CODE_USE_BEDROCK = '1';
-        else if (session.provider === 'vertex') providerEnv.CLAUDE_CODE_USE_VERTEX = '1';
-
-        ptyProcess = pty.spawn(cliPath, cliArgs, {
-          name: 'xterm-256color',
-          cols: 200,
-          rows: 50,
-          cwd: session.dir,
-          env: {
-            TERM: 'xterm-256color',
-            ...process.env,
-            ANTHROPIC_API_KEY: session.apiKey,
-            CLAUDE_CONFIG_DIR: configDir,
-            ...providerEnv,
-            NODE_ENV: 'production'
-          }
-        });
-
-        sessionProcesses.set(sessionId, ptyProcess);
-        showOutput = false;
-        dataCount = 0;
-
-        // Force enable output after 3 seconds
-        onboardingTimer = setTimeout(() => {
-          console.log(`[DEBUG] Timeout triggered, showOutput=${showOutput}, dataCount=${dataCount}`);
-          showOutput = true;
-          if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ type: 'output', data: '\x1b[2J\x1b[H' }));
-            ws.send(JSON.stringify({ type: 'output', data: '\nFree Code CLI 已就绪，请输入你的问题。\n\n' }));
-          }
-        }, 3000);
-
-        ptyProcess.onData((data) => {
-          dataCount++;
-          const cleanData = stripAnsi(data);
-          
-          // Debug: log first 10 data events
-          if (dataCount <= 10) {
-            console.log(`[DEBUG onData #${dataCount}] showOutput=${showOutput}, len=${data.length}, preview="${cleanData.substring(0, 80)}"`);
-          }
-
-          // Auto-handle trust dialog
-          if (!showOutput && data.includes('Is this a project you created')) {
-            console.log('[DEBUG] Trust dialog detected, sending 1');
-            setTimeout(() => { if (ptyProcess) ptyProcess.write('1\r'); }, 500);
-            return;
-          }
-          // Auto-handle API key confirmation
-          if (!showOutput && data.includes('Do you want to use this API key')) {
-            console.log('[DEBUG] API key dialog detected, sending 1');
-            setTimeout(() => { if (ptyProcess) ptyProcess.write('1\r'); }, 500);
-            return;
-          }
-          // Detect onboarding complete
-          if (!showOutput && data.includes('Not logged in')) {
-            console.log('[DEBUG] Onboarding complete detected');
-            showOutput = true;
-            clearTimeout(onboardingTimer);
-            if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({ type: 'output', data: '\x1b[2J\x1b[H' }));
-              ws.send(JSON.stringify({ type: 'output', data: '\nFree Code CLI 已就绪，请输入你的问题。\n\n' }));
-            }
-            return;
-          }
-          // Show output when ready
-          if (showOutput && ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ type: 'output', data: cleanData }));
-          }
-        });
-
-        ptyProcess.onExit(({ exitCode, signal }) => {
-          console.log(`Process exited: code=${exitCode}, signal=${signal}`);
-          if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ type: 'exit', code: exitCode, signal }));
-          }
-          sessionProcesses.delete(sessionId);
-        });
-
+        console.log(`Session ${sessionId} initialized`);
         ws.send(JSON.stringify({ type: 'ready' }));
+
       } else if (message.type === 'input') {
-        console.log(`[DEBUG] Input received: "${message.data}"`);
-        if (ptyProcess) {
-          ptyProcess.write(message.data + '\n');
-          console.log('[DEBUG] Input sent to PTY');
-        } else {
-          console.log('[DEBUG] ptyProcess is null!');
+        const session = getSession(sessionId);
+        if (!session) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Invalid session' }));
+          return;
         }
-      } else if (message.type === 'interrupt') {
-        if (ptyProcess) ptyProcess.write('\x03');
+
+        // Kill previous process if still running
+        const oldProc = sessionProcesses.get(sessionId);
+        if (oldProc) oldProc.kill();
+
+        console.log(`[INPUT] "${message.data.substring(0, 100)}"`);
+        
+        const proc = spawnCli(session, message.data);
+        sessionProcesses.set(sessionId, proc);
+
+        let buffer = '';
+        proc.stdout.on('data', (chunk) => {
+          buffer += chunk.toString();
+          // Flush periodically for streaming
+          if (ws.readyState === ws.OPEN) {
+            const clean = stripAnsi(chunk.toString());
+            if (clean.trim()) {
+              ws.send(JSON.stringify({ type: 'output', data: clean }));
+            }
+          }
+        });
+
+        proc.stderr.on('data', (chunk) => {
+          console.error(`[STDERR] ${chunk.toString().substring(0, 200)}`);
+        });
+
+        proc.on('close', (code) => {
+          console.log(`[DONE] exit code ${code}`);
+          sessionProcesses.delete(sessionId);
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ type: 'done', code }));
+          }
+        });
+
+        proc.on('error', (err) => {
+          console.error(`[ERROR] spawn failed: ${err.message}`);
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ type: 'error', message: `Failed to start CLI: ${err.message}` }));
+          }
+        });
       }
+
     } catch (error) {
       console.error('WebSocket error:', error);
       ws.send(JSON.stringify({ type: 'error', message: error.message }));
@@ -237,9 +210,8 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
-    if (onboardingTimer) clearTimeout(onboardingTimer);
-    if (ptyProcess) ptyProcess.kill();
-    sessionProcesses.delete(sessionId);
+    const proc = sessionProcesses.get(sessionId);
+    if (proc) { proc.kill(); sessionProcesses.delete(sessionId); }
   });
 });
 
