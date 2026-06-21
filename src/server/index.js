@@ -53,7 +53,15 @@ const app = express();
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(join(__dirname, '../../public')));
+
+// Serve static files with no-cache headers to prevent stale page issues
+app.use(express.static(join(__dirname, '../../public'), {
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+}));
 
 // Session management
 function createSession(apiKey, model = 'claude-opus-4-6', provider = 'anthropic') {
@@ -230,8 +238,8 @@ app.get('/api/health', (req, res) => {
 // Create HTTP server
 const server = app.listen(PORT, HOST, () => {
   console.log(` Free-code Web Server v${VERSION} running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
-  console.log(`📁 Workspace: ${WORKSPACE_DIR}`);
-  console.log(`📦 Free-code directory: ${FREE_CODE_DIR}`);
+  console.log(`馃搧 Workspace: ${WORKSPACE_DIR}`);
+  console.log(`馃摝 Free-code directory: ${FREE_CODE_DIR}`);
 });
 
 // WebSocket for real-time CLI interaction
@@ -374,3 +382,4 @@ process.on('SIGTERM', () => {
     process.exit(0);
   });
 });
+
