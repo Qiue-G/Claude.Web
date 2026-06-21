@@ -3,18 +3,7 @@ import { WebSocketServer } from 'ws';
 import cors from 'cors';
 import { readFile, writeFile, readdir, stat, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join, basename, dirname } from 'path';
-import { spawn } from 'child_process';
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-
-// Strip ANSI escape codes - zero dependency
-function strip(str) {
-  // Replace cursor-forward with space (preserves layout)
-  str = str.replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(parseInt(n)));
-  // Strip remaining ANSI sequences
-  return str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
-}
+import { join, dirname } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import { dirname as pathDirname } from 'path';
@@ -39,21 +28,24 @@ const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
-const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
 
-// Version for deployment verification
-const VERSION = '1.0.8';
+const VERSION = '2.0.0';
 
 // Sessions storage
 const sessions = new Map();
-const sessionProcesses = new Map();
 
 const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(join(__dirname, '../../public')));
+app.use(express.static(join(__dirname, '../../public'), {
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+}));
 
 // Session management
 function createSession(apiKey, model = 'claude-opus-4-6', provider = 'anthropic') {
@@ -72,6 +64,7 @@ function createSession(apiKey, model = 'claude-opus-4-6', provider = 'anthropic'
     model,
     provider,
     dir: sessionDir,
+    messages: [],
     createdAt: Date.now(),
     lastActivity: Date.now()
   };
@@ -119,18 +112,7 @@ app.get('/api/session/:id', (req, res) => {
 
 app.delete('/api/session/:id', async (req, res) => {
   const sessionId = req.params.id;
-  const session = sessions.get(sessionId);
-
-  if (session) {
-    // Kill any running process
-    const proc = sessionProcesses.get(sessionId);
-    if (proc) {
-      proc.kill();
-      sessionProcesses.delete(sessionId);
-    }
-    sessions.delete(sessionId);
-  }
-
+  sessions.delete(sessionId);
   res.json({ success: true });
 });
 
@@ -202,7 +184,6 @@ app.post('/api/file', async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // Create parent directories if needed
     const parentDir = dirname(filePath);
     if (!existsSync(parentDir)) {
       await mkdir(parentDir, { recursive: true });
@@ -222,24 +203,21 @@ app.get('/api/health', (req, res) => {
     version: VERSION,
     sessions: sessions.size,
     maxSessions: MAX_SESSIONS,
-    uptime: process.uptime(),
-    freeCodeDir: FREE_CODE_DIR
+    uptime: process.uptime()
   });
 });
 
 // Create HTTP server
 const server = app.listen(PORT, HOST, () => {
-  console.log(`馃殌 Free-code Web Server v${VERSION} running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
-  console.log(`馃搧 Workspace: ${WORKSPACE_DIR}`);
-  console.log(`馃摝 Free-code directory: ${FREE_CODE_DIR}`);
+  console.log(`Free-code Web Server v${VERSION} running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+  console.log(`Workspace: ${WORKSPACE_DIR}`);
 });
 
-// WebSocket for real-time CLI interaction
+// WebSocket for chat
 const wss = new WebSocketServer({ server, path: '/ws' });
 
-wss.on('connection', (ws, req) => {
+wss.on('connection', (ws) => {
   let sessionId = null;
-  let proc = null;
 
   ws.on('message', async (data) => {
     try {
@@ -250,119 +228,172 @@ wss.on('connection', (ws, req) => {
           sessionId = message.sessionId;
           const session = getSession(sessionId);
           if (!session) {
-            console.error(`Invalid session: ${sessionId}`);
             ws.send(JSON.stringify({ type: 'error', message: 'Invalid session' }));
             ws.close();
             return;
           }
-
-          console.log(`Starting CLI for session ${sessionId}`);
-          console.log(`Session dir: ${session.dir}`);
-          console.log(`Model: ${session.model}`);
-          console.log(`Provider: ${session.provider}`);
-
-          // Use the compiled binary from bun run build:dev:full
-          // This creates an executable at /free-code/cli-dev
-          const cliPath = join(FREE_CODE_DIR, 'cli-dev');
-          
-          console.log(`Attempting to spawn: ${cliPath}`);
-
-          // Build CLI args: pass model via --model flag
-          const cliArgs = [];
-          if (session.model) {
-            cliArgs.push('--model', session.model);
-          }
-
-          // Build provider-specific environment variables
-          const providerEnv = {};
-          switch (session.provider) {
-            case 'openai':
-              providerEnv.CLAUDE_CODE_USE_OPENAI = '1';
-              break;
-            case 'bedrock':
-              providerEnv.CLAUDE_CODE_USE_BEDROCK = '1';
-              break;
-            case 'vertex':
-              providerEnv.CLAUDE_CODE_USE_VERTEX = '1';
-              break;
-            case 'foundry':
-              providerEnv.CLAUDE_CODE_USE_FOUNDRY = '1';
-              break;
-            case 'openrouter':
-              providerEnv.ANTHROPIC_BASE_URL = 'https://openrouter.ai/api/v1';
-              break;
-            case 'anthropic':
-            default:
-              // Anthropic is the default, no special env needed
-              break;
-          }
-
-          // Use socat to create a proper PTY bridge
-          const cliCmd = [cliPath, ...cliArgs].map(a => `'${a}'`).join(' ');
-          // raw mode: disable all processing on master side
-          // The CLI will set raw mode on slave side when needed
-          proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,sane,echo=0,ctty,setsid,sigint,rows=50,cols=200', '-'], {
-            cwd: session.dir,
-            env: {
-              TERM: 'xterm-256color',
-              ...process.env,
-              ANTHROPIC_API_KEY: session.apiKey,
-              ...providerEnv,
-              NODE_ENV: 'production'
-            },
-            stdio: ['pipe', 'pipe', 'pipe']
-          });
-
-          sessionProcesses.set(sessionId, proc);
-
-          proc.stdout.on('data', (data) => {
-            if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({
-                type: 'output',
-                data: strip(data.toString())
-              }));
-            }
-          });
-
-          proc.stderr.on('data', (data) => {
-            console.error('stderr:', data.toString());
-          });
-
-          proc.on('close', (code, signal) => {
-            console.log(`Process exited with code ${code}, signal ${signal}`);
-            if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({ type: 'exit', code, signal }));
-            }
-            sessionProcesses.delete(sessionId);
-          });
-
           ws.send(JSON.stringify({ type: 'ready' }));
           break;
 
-        case 'input':
-          if (proc && proc.stdin) {
-            proc.stdin.write(message.data + '\r');
+        case 'chat':
+          if (!sessionId) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Session not initialized' }));
+            return;
+          }
+
+          const session = getSession(sessionId);
+          if (!session) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Session not found' }));
+            return;
+          }
+
+          const userMessage = message.data;
+          if (!userMessage || !userMessage.trim()) return;
+
+          // Add user message to history
+          session.messages.push({ role: 'user', content: userMessage });
+
+          // Build API request based on provider
+          let apiUrl, apiHeaders, requestBody;
+
+          if (session.provider === 'openrouter') {
+            apiUrl = 'https://openrouter.ai/api/v1/chat/completions';
+            apiHeaders = {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.apiKey}`
+            };
+            requestBody = {
+              model: session.model,
+              messages: session.messages,
+              stream: true
+            };
+          } else if (session.provider === 'anthropic') {
+            apiUrl = 'https://api.anthropic.com/v1/messages';
+            apiHeaders = {
+              'Content-Type': 'application/json',
+              'x-api-key': session.apiKey,
+              'anthropic-version': '2023-06-01',
+              'anthropic-dangerous-direct-browser-access': 'true'
+            };
+            // Convert to Anthropic format
+            const anthropicMessages = session.messages.map(m => ({
+              role: m.role,
+              content: m.content
+            }));
+            requestBody = {
+              model: session.model,
+              messages: anthropicMessages,
+              max_tokens: 4096,
+              stream: true
+            };
+          } else if (session.provider === 'openai') {
+            apiUrl = 'https://api.openai.com/v1/chat/completions';
+            apiHeaders = {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.apiKey}`
+            };
+            requestBody = {
+              model: session.model,
+              messages: session.messages,
+              stream: true
+            };
+          } else {
+            // Default: OpenRouter
+            apiUrl = 'https://openrouter.ai/api/v1/chat/completions';
+            apiHeaders = {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.apiKey}`
+            };
+            requestBody = {
+              model: session.model,
+              messages: session.messages,
+              stream: true
+            };
+          }
+
+          try {
+            const response = await fetch(apiUrl, {
+              method: 'POST',
+              headers: apiHeaders,
+              body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+              const errText = await response.text();
+              ws.send(JSON.stringify({ type: 'error', message: `API error: ${response.status} ${errText}` }));
+              // Remove the failed user message
+              session.messages.pop();
+              return;
+            }
+
+            // Stream response
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let fullResponse = '';
+            let buffer = '';
+
+            ws.send(JSON.stringify({ type: 'stream_start' }));
+
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split('\n');
+              buffer = lines.pop() || '';
+
+              for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed || !trimmed.startsWith('data: ')) continue;
+
+                const data = trimmed.slice(6);
+                if (data === '[DONE]') continue;
+
+                try {
+                  const json = JSON.parse(data);
+
+                  if (session.provider === 'anthropic') {
+                    // Anthropic streaming format
+                    if (json.type === 'content_block_delta') {
+                      const text = json.delta?.text || '';
+                      if (text) {
+                        fullResponse += text;
+                        ws.send(JSON.stringify({ type: 'stream', data: text }));
+                      }
+                    } else if (json.type === 'message_stop') {
+                      // End of stream
+                    }
+                  } else {
+                    // OpenAI/OpenRouter streaming format
+                    const choice = json.choices?.[0];
+                    const text = choice?.delta?.content || '';
+                    if (text) {
+                      fullResponse += text;
+                      ws.send(JSON.stringify({ type: 'stream', data: text }));
+                    }
+                  }
+                } catch (e) {
+                  // Skip invalid JSON
+                }
+              }
+            }
+
+            // Add assistant response to history
+            session.messages.push({ role: 'assistant', content: fullResponse });
+            ws.send(JSON.stringify({ type: 'stream_end' }));
+
+          } catch (error) {
+            ws.send(JSON.stringify({ type: 'error', message: error.message }));
+            session.messages.pop();
           }
           break;
 
-        case 'interrupt':
-          if (proc && proc.stdin) {
-            proc.stdin.write('\x03');
-          }
-          break;
-
-        case 'resize':
-          // Handle terminal resize - send SIGWINCH to the PTY
-          if (proc && message.cols && message.rows) {
-            try {
-              // Use stty to resize the PTY
-              const resizeProc = spawn('stty', ['rows', String(message.rows), 'columns', String(message.cols)], {
-                cwd: session.dir,
-                stdio: ['pipe', 'pipe', 'pipe']
-              });
-              resizeProc.on('close', () => {});
-            } catch (e) {
-              console.error('Resize error:', e);
+        case 'clear':
+          if (sessionId) {
+            const session = getSession(sessionId);
+            if (session) {
+              session.messages = [];
+              ws.send(JSON.stringify({ type: 'cleared' }));
             }
           }
           break;
@@ -374,10 +405,7 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
-    if (proc && !proc.killed && proc.exitCode === null) {
-      proc.kill();
-    }
-    sessionProcesses.delete(sessionId);
+    // Keep session alive
   });
 });
 
@@ -388,6 +416,3 @@ process.on('SIGTERM', () => {
     process.exit(0);
   });
 });
-
-
-
