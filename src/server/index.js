@@ -25,7 +25,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
-const VERSION = '6.0.2';
+const VERSION = '6.0.3';
 
 const sessions = new Map();
 const sessionProcesses = new Map();
@@ -81,71 +81,31 @@ function getProviderEnv(provider) {
 }
 
 async function spawnWithProxy(session, prompt) {
-  const proxyPath = join(FREE_CODE_DIR, 'or_bridge.mjs');
+  const bridgePath = join(FREE_CODE_DIR, 'or_bridge.mjs');
   const model = resolveOpenRouterModel(session.model || 'nvidia/nemotron-3-ultra-550b-a55b:free');
+  console.log('[BRIDGE] node ' + bridgePath + ' --model ' + model);
   
-  console.log(`[PROXY] starting node ${proxyPath} --model ${model}`);
-  
-  const proxy = spawn('node', [proxyPath, '--model', model], {
+  const bridge = spawn('node', [bridgePath, '--model', model], {
     cwd: session.dir,
-    env: {
-      HOME: session.dir,
-      ...process.env,
-      ANTHROPIC_API_KEY: session.apiKey,
-      NODE_ENV: 'production'
-    },
+    env: { HOME: session.dir, ...process.env, ANTHROPIC_API_KEY: session.apiKey, NODE_ENV: 'production' },
     stdio: ['pipe', 'pipe', 'pipe']
   });
   
-  // Read port from proxy's first stdout line
-  const port = await new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('Proxy startup timeout')), 10000);
-    let portStr = '';
-    proxy.stdout.on('data', (chunk) => {
-      portStr += chunk.toString();
-      const match = portStr.match(/^\d+/);
-      if (match) {
-        clearTimeout(timeout);
-        resolve(parseInt(match[0], 10));
-      }
+  await new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('Bridge startup timeout')), 10000);
+    bridge.stdout.once('data', (c) => {
+      clearTimeout(t);
+      if (c.toString().match(/^\d+/)) resolve();
+      else reject(new Error('Invalid bridge signal'));
     });
-    proxy.on('error', (e) => { clearTimeout(timeout); reject(e); });
-    proxy.on('close', (code) => { clearTimeout(timeout); reject(new Error(`Proxy exited ${code}`)); });
+    bridge.on('error', (e) => { clearTimeout(t); reject(e); });
+    bridge.on('close', (c) => { clearTimeout(t); reject(new Error('Bridge exited ' + c)); });
   });
   
-  console.log(`[PROXY] ready on port ${port}`);
-  
-  const cliPath = join(FREE_CODE_DIR, 'cli-dev');
-  console.log(`[SPAWN] ${cliPath} --print --model ${model}`);
-  
-  const cli = spawn(cliPath, ['--print', '--model', model], {
-    cwd: session.dir,
-    env: {
-      HOME: session.dir,
-      ...process.env,
-      ANTHROPIC_BASE_URL: `http://127.0.0.1:${port}`,
-      ANTHROPIC_API_KEY: 'sk-ant-proxy',
-      ANTHROPIC_AUTH_TOKEN: 'sk-ant-proxy',
-      ANTHROPIC_MODEL: model,
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
-      ANTHROPIC_DEFAULT_SONNET_MODEL: model,
-      ANTHROPIC_DEFAULT_OPUS_MODEL: model,
-      NODE_ENV: 'production'
-    },
-    stdio: ['pipe', 'pipe', 'pipe']
-  });
-  
-  cli.stdin.write(prompt + '\n');
-  cli.stdin.end();
-  
-  // Kill proxy when CLI exits
-  cli.on('close', () => proxy.kill());
-  cli.on('error', () => proxy.kill());
-  
-  // Forward proxy stderr to CLI stderr for debugging
-  proxy.stderr.on('data', (c) => cli.stderr.write(c));
-  
-  return cli;
+  console.log('[BRIDGE] ready');
+  bridge.stdin.write(prompt);
+  bridge.stdin.end();
+  return bridge;
 }
 
 async function spawnCli(session, prompt) {
