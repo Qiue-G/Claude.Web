@@ -327,13 +327,13 @@ wss.on('connection', (ws, req) => {
           break;
 
         case 'input':
-          if (proc && !proc.killed) {
-            proc.write(message.data + '\n');
+          if (proc) {
+            proc.write(message.data + '\r');
           }
           break;
 
         case 'interrupt':
-          if (proc && !proc.killed) {
+          if (proc) {
             proc.kill('SIGINT');
           }
           break;
