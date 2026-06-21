@@ -25,7 +25,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
-const VERSION = '5.0.1';
+const VERSION = '5.0.2';
 
 const sessions = new Map();
 const sessionProcesses = new Map();
@@ -55,6 +55,20 @@ function getSession(sessionId) {
   return session;
 }
 
+// OpenRouter model name mapping
+const OPENROUTER_MODELS = {
+  'haiku': 'anthropic/claude-haiku-4.5',
+  'sonnet': 'anthropic/claude-sonnet-4',
+  'opus': 'anthropic/claude-opus-4',
+  'haiku35': 'anthropic/claude-3.5-haiku',
+  'sonnet35': 'anthropic/claude-3.5-sonnet',
+  'sonnet37': 'anthropic/claude-3.7-sonnet',
+};
+
+function resolveOpenRouterModel(model) {
+  return OPENROUTER_MODELS[model] || model;
+}
+
 function getProviderEnv(provider) {
   switch (provider) {
     case 'openai': return { CLAUDE_CODE_USE_OPENAI: '1' };
@@ -68,7 +82,15 @@ function getProviderEnv(provider) {
 function spawnCli(session, prompt) {
   const cliPath = join(FREE_CODE_DIR, 'cli-dev');
   const cliArgs = ['--print'];
-  if (session.model) cliArgs.push('--model', session.model);
+  
+  // For OpenRouter, pass model via env instead of --model flag
+  // Free-code CLI resolves aliases to Anthropic format, which OpenRouter doesn't recognize
+  if (session.provider === 'openrouter') {
+    const orModel = resolveOpenRouterModel(session.model || 'haiku');
+    cliArgs.push('--model', orModel);
+  } else if (session.model) {
+    cliArgs.push('--model', session.model);
+  }
   
   const providerEnv = getProviderEnv(session.provider);
   
