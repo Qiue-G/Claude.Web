@@ -5,6 +5,7 @@ import { readFile, writeFile, readdir, stat, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, basename, dirname } from 'path';
 import { spawn } from 'node-pty';
+import stripAnsi from 'strip-ansi';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import { dirname as pathDirname } from 'path';
@@ -306,7 +307,7 @@ wss.on('connection', (ws, req) => {
             if (ws.readyState === ws.OPEN) {
               ws.send(JSON.stringify({
                 type: 'output',
-                data: data
+                data: stripAnsi(data)
               }));
             }
           });
