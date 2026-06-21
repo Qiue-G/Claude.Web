@@ -81,18 +81,24 @@ function getProviderEnv(provider) {
 }
 
 function spawnCli(session, prompt) {
-  // OpenRouter: free-code CLI has compatibility issues; use lightweight bridge
+  // OpenRouter: free-code CLI needs full env config including DEFAULT models
   if (session.provider === 'openrouter') {
-    const bridgePath = join(FREE_CODE_DIR, 'or_bridge.mjs');
+    const cliPath = join(FREE_CODE_DIR, 'cli-dev');
     const model = resolveOpenRouterModel(session.model || 'nvidia/nemotron-3-ultra-550b-a55b:free');
-    console.log(`[SPAWN:bridge] node ${bridgePath} --model ${model}`);
+    console.log(`[SPAWN:openrouter] ${cliPath} --print --model ${model}`);
     
-    const proc = spawn('node', [bridgePath, '--model', model], {
+    const proc = spawn(cliPath, ['--print', '--model', model], {
       cwd: session.dir,
       env: {
         HOME: session.dir,
         ...process.env,
-        ANTHROPIC_API_KEY: session.apiKey,
+        ANTHROPIC_BASE_URL: 'https://openrouter.ai/api',
+        ANTHROPIC_AUTH_TOKEN: session.apiKey,
+        ANTHROPIC_API_KEY: '',
+        ANTHROPIC_MODEL: model,
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
+        ANTHROPIC_DEFAULT_SONNET_MODEL: model,
+        ANTHROPIC_DEFAULT_OPUS_MODEL: model,
         NODE_ENV: 'production'
       },
       stdio: ['pipe', 'pipe', 'pipe']
