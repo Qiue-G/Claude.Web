@@ -38,7 +38,6 @@ const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
-const PTY_BRIDGE = '/app/pty_bridge.py';
 
 // Version for deployment verification
 const VERSION = '1.0.2';
@@ -296,8 +295,9 @@ wss.on('connection', (ws, req) => {
               break;
           }
 
-          // Spawn via Python PTY bridge to get a real pseudo-terminal
-          proc = spawn('python3', [PTY_BRIDGE, cliPath, ...cliArgs], {
+          // Spawn with script -q to force a real pseudo-terminal
+          const bridgeArgs = ['-q', '-c', [cliPath, ...cliArgs].join(' '), '/dev/null'];
+          proc = spawn('script', bridgeArgs, {
             cwd: session.dir,
             env: {
               ...process.env,
