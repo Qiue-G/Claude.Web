@@ -1,7 +1,7 @@
 FROM node:20-slim
 
-# Install Bun
-RUN apt-get update && apt-get install -y curl unzip git \
+# Install Bun + build deps for node-pty
+RUN apt-get update && apt-get install -y curl unzip git build-essential python3 \
     && curl -fsSL https://bun.sh/install | bash \
     && ln -s /root/.bun/bin/bun /usr/local/bin/bun
 
@@ -11,7 +11,7 @@ WORKDIR /app
 # Copy package files
 COPY package.json ./
 
-# Install dependencies
+# Install dependencies (includes node-pty)
 RUN npm install
 
 # Copy app files
