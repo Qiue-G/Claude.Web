@@ -229,9 +229,9 @@ app.get('/api/health', (req, res) => {
 
 // Create HTTP server
 const server = app.listen(PORT, HOST, () => {
-  console.log(`🚀 Free-code Web Server v${VERSION} running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
-  console.log(`📁 Workspace: ${WORKSPACE_DIR}`);
-  console.log(`📦 Free-code directory: ${FREE_CODE_DIR}`);
+  console.log(`馃殌 Free-code Web Server v${VERSION} running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+  console.log(`馃搧 Workspace: ${WORKSPACE_DIR}`);
+  console.log(`馃摝 Free-code directory: ${FREE_CODE_DIR}`);
 });
 
 // WebSocket for real-time CLI interaction
@@ -299,7 +299,8 @@ wss.on('connection', (ws, req) => {
 
           // Use socat to create a proper PTY bridge
           const cliCmd = [cliPath, ...cliArgs].map(a => `'${a}'`).join(' ');
-          proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,raw,echo=0,ctty', '-'], {
+          // Set PTY size to 200x50 for better compatibility
+          proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,raw,echo=0,ctty,setsid,sigint,sane,rows=50,cols=200', '-'], {
             cwd: session.dir,
             env: {
               TERM: 'xterm-256color',
@@ -350,7 +351,19 @@ wss.on('connection', (ws, req) => {
           break;
 
         case 'resize':
-          // Handle terminal resize
+          // Handle terminal resize - send SIGWINCH to the PTY
+          if (proc && message.cols && message.rows) {
+            try {
+              // Use stty to resize the PTY
+              const resizeProc = spawn('stty', ['rows', String(message.rows), 'columns', String(message.cols)], {
+                cwd: session.dir,
+                stdio: ['pipe', 'pipe', 'pipe']
+              });
+              resizeProc.on('close', () => {});
+            } catch (e) {
+              console.error('Resize error:', e);
+            }
+          }
           break;
       }
     } catch (error) {
@@ -374,4 +387,5 @@ process.on('SIGTERM', () => {
     process.exit(0);
   });
 });
+
 
