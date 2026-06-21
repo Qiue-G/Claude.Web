@@ -95,6 +95,10 @@ function spawnCli(session, prompt) {
   
   const providerEnv = getProviderEnv(session.provider);
   
+  console.log(`[SPAWN] ${cliPath} ${cliArgs.join(' ')}`);
+  console.log(`[SPAWN] cwd=${FREE_CODE_DIR}`);
+  console.log(`[SPAWN] ANTHROPIC_BASE_URL=${providerEnv.ANTHROPIC_BASE_URL || '(not set)'}`);
+  
   const proc = spawn(cliPath, cliArgs, {
     cwd: session.dir,
     env: {
