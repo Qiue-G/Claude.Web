@@ -2,7 +2,7 @@ import express from 'express';
 import { WebSocketServer } from 'ws';
 import cors from 'cors';
 import { readFile, writeFile, mkdir } from 'fs/promises';
-import { existsSync } from 'fs';
+import { existsSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { spawn } from 'child_process';
 import { v4 as uuidv4 } from 'uuid';
@@ -45,6 +45,24 @@ function createSession(apiKey, model, provider) {
   if (!existsSync(WORKSPACE_DIR)) mkdir(WORKSPACE_DIR, { recursive: true }).catch(console.error);
   mkdir(sessionDir, { recursive: true }).catch(console.error);
   const session = { id: sessionId, apiKey, model, provider, dir: sessionDir, createdAt: Date.now(), lastActivity: Date.now() };
+  
+  // For OpenRouter, create .claude/settings.json with proper env config
+  if (provider === 'openrouter') {
+    const claudeDir = join(sessionDir, '.claude');
+    mkdir(claudeDir, { recursive: true }).catch(console.error);
+    const orModel = resolveOpenRouterModel(model || 'nvidia/nemotron-3-ultra-550b-a55b:free');
+    const settings = {
+      env: {
+        OPENROUTER_API_KEY: apiKey,
+        ANTHROPIC_BASE_URL: 'https://openrouter.ai/api',
+        ANTHROPIC_AUTH_TOKEN: apiKey,
+        ANTHROPIC_API_KEY: '',
+        ANTHROPIC_MODEL: orModel
+      }
+    };
+    writeFileSync(join(claudeDir, 'settings.json'), JSON.stringify(settings, null, 2));
+  }
+  
   sessions.set(sessionId, session);
   return session;
 }
