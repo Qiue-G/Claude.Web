@@ -669,8 +669,8 @@
   <!-- Login Screen -->
   <div class="login-container" id="loginScreen">
     <div class="login-logo">
-      <h1>⚡ Free Code</h1>
-      <p>在浏览器中使用 Claude Code</p>
+      <h1>鈿?Free Code</h1>
+      <p>鍦ㄦ祻瑙堝櫒涓娇鐢?Claude Code</p>
     </div>
 
     <form class="login-form" id="loginForm">
@@ -703,12 +703,12 @@
           type="text"
           id="model"
           list="modelList"
-          placeholder="输入模型名或选择..."
+          placeholder="杈撳叆妯″瀷鍚嶆垨閫夋嫨..."
           value="claude-opus-4-6"
           autocomplete="off"
         >
         <datalist id="modelList">
-          <option value="claude-opus-4-6">Claude Opus 4.6（推荐）</option>
+          <option value="claude-opus-4-6">Claude Opus 4.6锛堟帹鑽愶級</option>
           <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
           <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
           <option value="claude-opus-4-5">Claude Opus 4.5</option>
@@ -722,12 +722,11 @@
       </div>
 
       <button type="submit" class="btn btn-primary" id="startBtn">
-        开始使用
-      </button>
+        寮€濮嬩娇鐢?      </button>
     </form>
 
     <p style="text-align: center; margin-top: 24px; font-size: 12px; color: var(--text-muted);">
-      🔒 你的 API Key 仅存储在本地浏览器中
+      馃敀 浣犵殑 API Key 浠呭瓨鍌ㄥ湪鏈湴娴忚鍣ㄤ腑
     </p>
   </div>
 
@@ -736,20 +735,20 @@
     <!-- Header -->
     <header class="header">
       <div class="header-left">
-        <span class="header-logo">⚡ Free Code</span>
+        <span class="header-logo">鈿?Free Code</span>
         <span class="header-model" id="headerModel">Claude Opus 4.6</span>
       </div>
       <div class="header-actions">
-        <button class="header-btn" id="newSessionBtn">+ 新会话</button>
-        <button class="header-btn danger" id="logoutBtn">退出</button>
+        <button class="header-btn" id="newSessionBtn">+ 鏂颁細璇?/button>
+        <button class="header-btn danger" id="logoutBtn">閫€鍑?/button>
       </div>
     </header>
 
     <!-- Tab Bar -->
     <nav class="tab-bar">
-      <button class="tab active" data-tab="terminal">终端</button>
-      <button class="tab" data-tab="files">文件</button>
-      <button class="tab" data-tab="settings">设置</button>
+      <button class="tab active" data-tab="terminal">缁堢</button>
+      <button class="tab" data-tab="files">鏂囦欢</button>
+      <button class="tab" data-tab="settings">璁剧疆</button>
     </nav>
 
     <!-- Content Area -->
@@ -758,19 +757,19 @@
       <div class="panel active" id="terminalPanel">
         <div class="terminal-container">
           <div class="terminal-output" id="terminalOutput">
-            <div class="terminal-line system">🚀 Free Code Web 已连接</div>
-            <div class="terminal-line system">📁 工作目录: <span id="workDir">初始化中...</span></div>
-            <div class="terminal-line system">💡 输入你的需求，按发送按钮开始</div>
+            <div class="terminal-line system">馃殌 Free Code Web 宸茶繛鎺?/div>
+            <div class="terminal-line system">馃搧 宸ヤ綔鐩綍: <span id="workDir">鍒濆鍖栦腑...</span></div>
+            <div class="terminal-line system">馃挕 杈撳叆浣犵殑闇€姹傦紝鎸夊彂閫佹寜閽紑濮?/div>
           </div>
           <div class="terminal-input-container">
             <span class="terminal-prompt-prefix">$</span>
             <textarea
               class="terminal-input"
               id="terminalInput"
-              placeholder="输入命令..."
+              placeholder="杈撳叆鍛戒护..."
               rows="1"
             ></textarea>
-            <button class="terminal-send-btn" id="sendBtn">发送</button>
+            <button class="terminal-send-btn" id="sendBtn">鍙戦€?/button>
           </div>
         </div>
       </div>
@@ -780,11 +779,11 @@
         <div class="files-container">
           <div class="files-header">
             <span class="files-path" id="currentPath">/</span>
-            <button class="header-btn" id="refreshFilesBtn">🔄 刷新</button>
+            <button class="header-btn" id="refreshFilesBtn">馃攧 鍒锋柊</button>
           </div>
           <div class="files-list" id="filesList">
             <div style="text-align: center; padding: 40px; color: var(--text-muted);">
-              点击刷新加载文件
+              鐐瑰嚮鍒锋柊鍔犺浇鏂囦欢
             </div>
           </div>
         </div>
@@ -794,7 +793,7 @@
       <div class="panel" id="settingsPanel">
         <div class="settings-container">
           <div class="settings-section">
-            <h3>模型设置</h3>
+            <h3>妯″瀷璁剧疆</h3>
             <div class="settings-item">
               <label>API Provider</label>
               <select id="settingsProvider">
@@ -807,12 +806,12 @@
               </select>
             </div>
             <div class="settings-item">
-              <label>模型</label>
+              <label>妯″瀷</label>
               <input
                 type="text"
                 id="settingsModel"
                 list="settingsModelList"
-                placeholder="输入模型名..."
+                placeholder="杈撳叆妯″瀷鍚?.."
                 autocomplete="off"
               >
               <datalist id="settingsModelList">
@@ -830,29 +829,27 @@
           </div>
 
           <div class="settings-section">
-            <h3>会话信息</h3>
+            <h3>浼氳瘽淇℃伅</h3>
             <div class="settings-item">
-              <label>会话 ID</label>
+              <label>浼氳瘽 ID</label>
               <span id="sessionId" style="font-family: monospace; font-size: 12px; color: var(--text-muted);">-</span>
             </div>
             <div class="settings-item">
-              <label>工作目录</label>
+              <label>宸ヤ綔鐩綍</label>
               <span id="settingsWorkDir" style="font-family: monospace; font-size: 12px; color: var(--text-muted);">-</span>
             </div>
             <div class="settings-item">
-              <label>服务器状态</label>
-              <span id="serverStatus" style="color: var(--success);">● 在线</span>
+              <label>鏈嶅姟鍣ㄧ姸鎬?/label>
+              <span id="serverStatus" style="color: var(--success);">鈼?鍦ㄧ嚎</span>
             </div>
           </div>
 
           <div class="settings-section">
-            <h3>关于</h3>
+            <h3>鍏充簬</h3>
             <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.6;">
-              Free Code Web 让你在浏览器中也能使用 Claude Code 的强大功能。
-              支持文件管理、代码编辑、AI 对话等功能。
-            </p>
+              Free Code Web 璁╀綘鍦ㄦ祻瑙堝櫒涓篃鑳戒娇鐢?Claude Code 鐨勫己澶у姛鑳姐€?              鏀寔鏂囦欢绠＄悊銆佷唬鐮佺紪杈戙€丄I 瀵硅瘽绛夊姛鑳姐€?            </p>
             <p style="font-size: 12px; color: var(--text-muted); margin-top: 12px;">
-              版本 1.0.0 | 基于 Claude Code 源码
+              鐗堟湰 1.0.0 | 鍩轰簬 Claude Code 婧愮爜
             </p>
           </div>
         </div>
@@ -865,7 +862,7 @@
 
   <!-- Shortcuts Hint -->
   <div class="shortcuts-hint" id="shortcutsHint">
-    Enter 发送 · Ctrl+L 清屏 · ↑↓ 历史
+    Enter 鍙戦€?路 Ctrl+L 娓呭睆 路 鈫戔啌 鍘嗗彶
   </div>
 
   <script>
@@ -949,13 +946,13 @@
       const provider = document.getElementById('apiProvider').value;
 
       if (!apiKey) {
-        showToast('请输入 API Key', 'error');
+        showToast('璇疯緭鍏?API Key', 'error');
         return;
       }
 
       const btn = document.getElementById('startBtn');
       btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span> 连接中...';
+      btn.innerHTML = '<span class="spinner"></span> 杩炴帴涓?..';
 
       try {
         const res = await fetch('/api/session', {
@@ -966,7 +963,7 @@
 
         if (!res.ok) {
           const err = await res.json();
-          throw new Error(err.error || '连接失败');
+          throw new Error(err.error || '杩炴帴澶辫触');
         }
 
         const data = await res.json();
@@ -994,7 +991,7 @@
         showToast(error.message, 'error');
       } finally {
         btn.disabled = false;
-        btn.textContent = '开始使用';
+        btn.textContent = '寮€濮嬩娇鐢?;
       }
     });
 
@@ -1016,28 +1013,28 @@
 
         switch (msg.type) {
           case 'ready':
-            addLine('system', '✓ CLI 已启动，等待输入...');
+            addLine('system', '鉁?CLI 宸插惎鍔紝绛夊緟杈撳叆...');
             break;
           case 'output':
             addLine(msg.stream || 'stdout', msg.data);
             break;
           case 'exit':
-            addLine('system', `进程已退出，代码: ${msg.code}`);
+            addLine('system', `杩涚▼宸查€€鍑猴紝浠ｇ爜: ${msg.code}`);
             break;
           case 'error':
-            addLine('error', `错误: ${msg.message}`);
+            addLine('error', `閿欒: ${msg.message}`);
             break;
         }
       };
 
       state.ws.onclose = () => {
         state.connected = false;
-        addLine('system', '⚠ 连接已断开，正在重连...');
+        addLine('system', '鈿?杩炴帴宸叉柇寮€锛屾鍦ㄩ噸杩?..');
         setTimeout(connectWebSocket, 3000);
       };
 
       state.ws.onerror = () => {
-        addLine('error', 'WebSocket 连接错误');
+        addLine('error', 'WebSocket 杩炴帴閿欒');
       };
     }
 
@@ -1053,14 +1050,19 @@
     }
 
     function sendInput(text) {
-      if (!text.trim()) return;
+      // Always send input to server, even if empty (Enter key)
+      // The CLI needs Enter to confirm selections
 
-      // Add to history
-      state.history.push(text);
-      state.historyIndex = state.history.length;
+      // Add to history (only for non-empty input)
+      if (text.trim()) {
+        state.history.push(text);
+        state.historyIndex = state.history.length;
+      }
 
       // Show user input
-      addLine('user-input', `$ ${text}`);
+      if (text) {
+        addLine('user-input', `$ ${text}`);
+      }
 
       // Send to server
       if (state.ws && state.connected) {
@@ -1104,7 +1106,7 @@
       } else if (e.key === 'l' && e.ctrlKey) {
         e.preventDefault();
         terminalOutput.innerHTML = '';
-        addLine('system', '屏幕已清空');
+        addLine('system', '灞忓箷宸叉竻绌?);
       }
     });
 
@@ -1146,15 +1148,15 @@
         if (!res.ok) throw new Error(data.error);
 
         if (data.files.length === 0) {
-          filesList.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-muted);">📁 空文件夹</div>';
+          filesList.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-muted);">馃搧 绌烘枃浠跺す</div>';
           return;
         }
 
         filesList.innerHTML = data.files.map(file => `
           <div class="file-item ${file.type}" data-path="${file.path}" data-type="${file.type}">
-            <span class="file-icon">${file.type === 'directory' ? '📁' : '📄'}</span>
+            <span class="file-icon">${file.type === 'directory' ? '馃搧' : '馃搫'}</span>
             <span class="file-name">${file.name}</span>
-            <span class="file-type">${file.type === 'directory' ? '文件夹' : '文件'}</span>
+            <span class="file-type">${file.type === 'directory' ? '鏂囦欢澶? : '鏂囦欢'}</span>
           </div>
         `).join('');
 
@@ -1170,7 +1172,7 @@
         });
 
       } catch (error) {
-        filesList.innerHTML = `<div style="text-align: center; padding: 40px; color: var(--error);">错误: ${error.message}</div>`;
+        filesList.innerHTML = `<div style="text-align: center; padding: 40px; color: var(--error);">閿欒: ${error.message}</div>`;
       }
     }
 
@@ -1183,11 +1185,11 @@
 
         // Switch to terminal and show file content
         document.querySelector('[data-tab="terminal"]').click();
-        addLine('system', `📄 文件: ${path}`);
+        addLine('system', `馃搫 鏂囦欢: ${path}`);
         addLine('output', data.content);
 
       } catch (error) {
-        showToast(`读取文件失败: ${error.message}`, 'error');
+        showToast(`璇诲彇鏂囦欢澶辫触: ${error.message}`, 'error');
       }
     }
 
@@ -1213,7 +1215,7 @@
     });
 
     document.getElementById('newSessionBtn').addEventListener('click', async () => {
-      if (!confirm('创建新会话将清空当前工作区，确定吗？')) return;
+      if (!confirm('鍒涘缓鏂颁細璇濆皢娓呯┖褰撳墠宸ヤ綔鍖猴紝纭畾鍚楋紵')) return;
 
       if (state.sessionId) {
         await fetch(`/api/session/${state.sessionId}`, { method: 'DELETE' });
@@ -1233,10 +1235,10 @@
         const res = await fetch('/api/health');
         const data = await res.json();
         document.getElementById('serverStatus').innerHTML = data.status === 'ok'
-          ? '<span style="color: var(--success);">● 在线</span>'
-          : '<span style="color: var(--error);">● 离线</span>';
+          ? '<span style="color: var(--success);">鈼?鍦ㄧ嚎</span>'
+          : '<span style="color: var(--error);">鈼?绂荤嚎</span>';
       } catch {
-        document.getElementById('serverStatus').innerHTML = '<span style="color: var(--error);">● 离线</span>';
+        document.getElementById('serverStatus').innerHTML = '<span style="color: var(--error);">鈼?绂荤嚎</span>';
       }
     }
 
@@ -1257,4 +1259,5 @@
   </script>
 </body>
 </html>
+
 
