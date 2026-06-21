@@ -299,9 +299,7 @@ wss.on('connection', (ws, req) => {
 
           // Use socat to create a proper PTY bridge
           const cliCmd = [cliPath, ...cliArgs].map(a => `'${a}'`).join(' ');
-          // Minimal PTY config: raw master, echo off, proper size
-          // Don't use setsid - it can break PTY session in containers
-          proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,raw,echo=0,rows=50,cols=200', '-'], {
+          proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,raw,echo=0,ctty', '-'], {
             cwd: session.dir,
             env: {
               TERM: 'xterm-256color',
@@ -388,6 +386,7 @@ process.on('SIGTERM', () => {
     process.exit(0);
   });
 });
+
 
 
 
