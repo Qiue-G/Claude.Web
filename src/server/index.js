@@ -81,7 +81,7 @@ function getProviderEnv(provider) {
 }
 
 async function spawnWithProxy(session, prompt) {
-  const proxyPath = join(FREE_CODE_DIR, 'or_proxy.mjs');
+  const proxyPath = join(FREE_CODE_DIR, 'or_bridge.mjs');
   const model = resolveOpenRouterModel(session.model || 'nvidia/nemotron-3-ultra-550b-a55b:free');
   
   console.log(`[PROXY] starting node ${proxyPath} --model ${model}`);
