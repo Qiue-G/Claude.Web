@@ -42,7 +42,7 @@ const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
 
 // Version for deployment verification
-const VERSION = '1.0.6';
+const VERSION = '1.0.4';
 
 // Sessions storage
 const sessions = new Map();
@@ -53,15 +53,7 @@ const app = express();
 // Middleware
 app.use(cors());
 app.use(express.json());
-
-// Serve static files with no-cache headers to prevent stale page issues
-app.use(express.static(join(__dirname, '../../public'), {
-  setHeaders: (res) => {
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-  }
-}));
+app.use(express.static(join(__dirname, '../../public')));
 
 // Session management
 function createSession(apiKey, model = 'claude-opus-4-6', provider = 'anthropic') {
@@ -237,7 +229,7 @@ app.get('/api/health', (req, res) => {
 
 // Create HTTP server
 const server = app.listen(PORT, HOST, () => {
-  console.log(` Free-code Web Server v${VERSION} running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+  console.log(`馃殌 Free-code Web Server v${VERSION} running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
   console.log(`馃搧 Workspace: ${WORKSPACE_DIR}`);
   console.log(`馃摝 Free-code directory: ${FREE_CODE_DIR}`);
 });
@@ -270,11 +262,12 @@ wss.on('connection', (ws, req) => {
           console.log(`Provider: ${session.provider}`);
 
           // Use the compiled binary from bun run build:dev:full
+          // This creates an executable at /free-code/cli-dev
           const cliPath = join(FREE_CODE_DIR, 'cli-dev');
           
           console.log(`Attempting to spawn: ${cliPath}`);
 
-          // Build CLI args
+          // Build CLI args: pass model via --model flag
           const cliArgs = [];
           if (session.model) {
             cliArgs.push('--model', session.model);
@@ -300,13 +293,15 @@ wss.on('connection', (ws, req) => {
               break;
             case 'anthropic':
             default:
+              // Anthropic is the default, no special env needed
               break;
           }
 
-          // Use socat with PTY (sane mode - allows 
- to work)
+          // Use socat to create a proper PTY bridge
           const cliCmd = [cliPath, ...cliArgs].map(a => `'${a}'`).join(' ');
-          proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,sane,echo=0', '-'], {
+          // raw mode: disable all processing on master side
+          // The CLI will set raw mode on slave side when needed
+          proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,raw,echo=0,ctty,setsid,sigint,rows=50,cols=200', '-'], {
             cwd: session.dir,
             env: {
               TERM: 'xterm-256color',
@@ -346,7 +341,6 @@ wss.on('connection', (ws, req) => {
 
         case 'input':
           if (proc && proc.stdin) {
-            // sane mode: line discipline handles \n properly
             proc.stdin.write(message.data + '\n');
           }
           break;
@@ -358,7 +352,19 @@ wss.on('connection', (ws, req) => {
           break;
 
         case 'resize':
-          // Not needed for direct spawn
+          // Handle terminal resize - send SIGWINCH to the PTY
+          if (proc && message.cols && message.rows) {
+            try {
+              // Use stty to resize the PTY
+              const resizeProc = spawn('stty', ['rows', String(message.rows), 'columns', String(message.cols)], {
+                cwd: session.dir,
+                stdio: ['pipe', 'pipe', 'pipe']
+              });
+              resizeProc.on('close', () => {});
+            } catch (e) {
+              console.error('Resize error:', e);
+            }
+          }
           break;
       }
     } catch (error) {
@@ -382,4 +388,6 @@ process.on('SIGTERM', () => {
     process.exit(0);
   });
 });
+
+
 
