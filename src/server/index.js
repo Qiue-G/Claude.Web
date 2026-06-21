@@ -7,7 +7,6 @@ import { join, basename, dirname } from 'path';
 import { spawn } from 'child_process';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-const pty = require('node-pty');
 
 // Strip ANSI escape codes - zero dependency
 function strip(str) {
@@ -298,10 +297,9 @@ wss.on('connection', (ws, req) => {
               break;
           }
 
-          proc = pty.spawn(cliPath, cliArgs, {
-            name: 'xterm-256color',
-            cols: 120,
-            rows: 40,
+          // Use socat to create a proper PTY bridge
+          const cliCmd = [cliPath, ...cliArgs].map(a => `'${a}'`).join(' ');
+          proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,raw,echo=0,ctty', '-'], {
             cwd: session.dir,
             env: {
               TERM: 'xterm-256color',
@@ -309,24 +307,29 @@ wss.on('connection', (ws, req) => {
               ANTHROPIC_API_KEY: session.apiKey,
               ...providerEnv,
               NODE_ENV: 'production'
-            }
+            },
+            stdio: ['pipe', 'pipe', 'pipe']
           });
 
           sessionProcesses.set(sessionId, proc);
 
-          proc.onData((data) => {
+          proc.stdout.on('data', (data) => {
             if (ws.readyState === ws.OPEN) {
               ws.send(JSON.stringify({
                 type: 'output',
-                data: strip(data)
+                data: strip(data.toString())
               }));
             }
           });
 
-          proc.onExit(({ exitCode, signal }) => {
-            console.log(`Process exited with code ${exitCode}, signal ${signal}`);
+          proc.stderr.on('data', (data) => {
+            console.error('stderr:', data.toString());
+          });
+
+          proc.on('close', (code, signal) => {
+            console.log(`Process exited with code ${code}, signal ${signal}`);
             if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({ type: 'exit', code: exitCode, signal }));
+              ws.send(JSON.stringify({ type: 'exit', code, signal }));
             }
             sessionProcesses.delete(sessionId);
           });
@@ -335,14 +338,14 @@ wss.on('connection', (ws, req) => {
           break;
 
         case 'input':
-          if (proc) {
-            proc.write(message.data + '\r');
+          if (proc && proc.stdin) {
+            proc.stdin.write(message.data + '\r');
           }
           break;
 
         case 'interrupt':
-          if (proc) {
-            proc.kill('SIGINT');
+          if (proc && proc.stdin) {
+            proc.stdin.write('\x03');
           }
           break;
 
@@ -357,8 +360,8 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
-    if (proc) {
-      try { proc.kill(); } catch(e) {}
+    if (proc && !proc.killed && proc.exitCode === null) {
+      proc.kill();
     }
     sessionProcesses.delete(sessionId);
   });
