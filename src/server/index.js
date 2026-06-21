@@ -97,6 +97,16 @@ function stripAnsi(str) {
   return str;
 }
 
+function stripAnsi(str) {
+  str = str.replace(/\[(\d+)C/g, (_, n) => ' '.repeat(parseInt(n)));
+  str = str.replace(/\[[0-9;]*[a-zA-Z]/g, '');
+  str = str.replace(/\][^]*/g, '');
+  str = str.replace(/\[[?]\d+[hl]/g, '');
+  str = str.replace(/\[\d+;\d+[A-H]/g, '');
+  str = str.replace(/\[\d+m/g, '');
+  return str;
+}
+
 const server = app.listen(PORT, HOST, () => {
   console.log(`Free-code Web Server v${VERSION} running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
 });
