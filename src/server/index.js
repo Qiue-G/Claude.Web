@@ -42,7 +42,7 @@ const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
 
 // Version for deployment verification
-const VERSION = '1.0.7';
+const VERSION = '1.0.8';
 
 // Sessions storage
 const sessions = new Map();
@@ -301,7 +301,7 @@ wss.on('connection', (ws, req) => {
           const cliCmd = [cliPath, ...cliArgs].map(a => `'${a}'`).join(' ');
           // raw mode: disable all processing on master side
           // The CLI will set raw mode on slave side when needed
-          proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,raw,echo=0,ctty,setsid,sigint,rows=50,cols=200', '-'], {
+          proc = spawn('socat', ['EXEC:' + cliCmd + ',pty,sane,echo=0,ctty,setsid,sigint,rows=50,cols=200', '-'], {
             cwd: session.dir,
             env: {
               TERM: 'xterm-256color',
