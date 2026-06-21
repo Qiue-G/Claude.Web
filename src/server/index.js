@@ -339,7 +339,7 @@ wss.on('connection', (ws, req) => {
 
         case 'input':
           if (proc && proc.stdin) {
-            proc.stdin.write(message.data + '\r');
+            proc.stdin.write(message.data + '\n');
           }
           break;
 
@@ -374,3 +374,4 @@ process.on('SIGTERM', () => {
     process.exit(0);
   });
 });
+
