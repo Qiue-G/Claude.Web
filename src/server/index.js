@@ -332,7 +332,8 @@ wss.on('connection', (ws, req) => {
 
         case 'input':
           if (proc) {
-            proc.write(message.data + '\r');
+            proc.write(message.data);
+            setTimeout(() => proc.write('\r'), 10);
           }
           break;
 
