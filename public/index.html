@@ -1419,8 +1419,12 @@
   $('toggleLeft').addEventListener('click', () => {
     const panel = $('leftPanel');
     const overlay = $('panelOverlay');
-    panel.classList.toggle('open');
-    if (overlay) overlay.classList.toggle('show');
+    if (window.innerWidth <= 768) {
+      panel.classList.toggle('open');
+      if (overlay) overlay.classList.toggle('show');
+    } else {
+      panel.classList.toggle('collapsed');
+    }
   });
   // Close panel when clicking overlay
   const overlay = $('panelOverlay');
