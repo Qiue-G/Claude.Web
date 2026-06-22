@@ -1325,12 +1325,50 @@
     }
   });
 
+  // File open via hidden <input type="file">
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.style.display = 'none';
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      addSystemMessage(`已选择文件: ${file.name} (${(file.size/1024).toFixed(1)} KB)`);
+      // TODO: read file content and open in editor
+    }
+  });
+
+  // Folder open via hidden <input type="file" webkitdirectory>
+  const folderInput = document.createElement('input');
+  folderInput.type = 'file';
+  folderInput.webkitdirectory = true;
+  folderInput.style.display = 'none';
+  folderInput.addEventListener('change', (e) => {
+    const files = Array.from(e.target.files);
+    addSystemMessage(`已选择文件夹: ${files.length} 个文件`);
+    files.slice(0, 5).forEach(f => addSystemMessage(`  - ${f.name}`));
+    if (files.length > 5) addSystemMessage(`  ... 还有 ${files.length - 5} 个文件`);
+  });
+
   $('menuOpenFile').addEventListener('click', () => {
-    addSystemMessage('打开文件功能需要后端支持');
+    fileInput.click();
   });
 
   $('menuOpenFolder').addEventListener('click', () => {
-    addSystemMessage('打开文件夹功能需要后端支持');
+    folderInput.click();
+  });
+
+  // ===== Context Tab Switching =====
+  document.querySelectorAll('.context-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      // Update active tab style
+      document.querySelectorAll('.context-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      // Show matching content panel
+      const targetId = 'tab' + tab.dataset.tab.charAt(0).toUpperCase() + tab.dataset.tab.slice(1);
+      document.querySelectorAll('#tabContext, #tabTools').forEach(p => p.classList.add('hidden'));
+      const target = document.getElementById(targetId);
+      if (target) target.classList.remove('hidden');
+    });
   });
 
   $('menuSave').addEventListener('click', () => {
