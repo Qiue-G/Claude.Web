@@ -1431,6 +1431,10 @@
     });
   }
 
+  $('toggleRight').addEventListener('click', () => {
+    $('rightPanel').classList.toggle('collapsed');
+  });
+
   // ===== Autocomplete =====
   const commands = [
     { label: '/help', desc: '显示可用命令' },
