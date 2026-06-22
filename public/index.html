@@ -2444,6 +2444,10 @@
     openai: [
       { value: 'gpt-4o', label: 'GPT-4o' },
       { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+    ],
+    deepseek: [
+      { value: 'deepseek-chat', label: 'DeepSeek V3' },
+      { value: 'deepseek-reasoner', label: 'DeepSeek R1' },
     ]
   };
 
@@ -2472,6 +2476,7 @@
     { value: 'openrouter', label: 'OpenRouter' },
     { value: 'anthropic', label: 'Anthropic' },
     { value: 'openai', label: 'OpenAI' },
+    { value: 'deepseek', label: 'DeepSeek' },
   ];
 
   function renderProviderOptions() {
@@ -2565,6 +2570,7 @@
     openrouter: '&#9881;',
     anthropic: '&#9881;',
     openai: '&#9881;',
+    deepseek: '&#9881;',
     custom: '&#128295;'
   };
 
@@ -2777,7 +2783,8 @@
   const apiKeyUrls = {
     openrouter: 'https://openrouter.ai/keys',
     anthropic: 'https://console.anthropic.com/settings/keys',
-    openai: 'https://platform.openai.com/api-keys'
+    openai: 'https://platform.openai.com/api-keys',
+    deepseek: 'https://platform.deepseek.com/api_keys'
   };
 
   function getApiKeyUrl() {
