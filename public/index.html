@@ -963,7 +963,14 @@
       .chat-message .role { font-size: 10px; padding: 1px 6px; }
 
       /* Command input */
-      .command-area { padding: 8px 12px 12px; }
+      /* Chat input */
+      .command-area {
+        padding: 8px 12px 12px;
+        position: sticky;
+        bottom: 0;
+        background: var(--bg-base);
+        z-index: 10;
+      }
       .command-input-box { padding: 8px 10px; border-radius: 8px; }
       .command-input-box input { font-size: 15px; } /* 16px prevents iOS zoom */
       .command-input-box .prefix { font-size: 13px; }
