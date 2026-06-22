@@ -1,13 +1,16 @@
 /**
- * or_proxy.mjs v3
- * Local proxy that translates Anthropic Messages API → OpenRouter Chat Completions
- * Supports both streaming and non-streaming requests.
+ * or_proxy.mjs v4
+ * Local proxy that translates Anthropic Messages API → OpenAI Chat Completions
+ * Supports OpenRouter, DeepSeek, and any OpenAI-compatible API.
  */
 import { createServer } from 'http';
 
 const args = process.argv.slice(2);
 const modelIdx = args.indexOf('--model');
 const MODEL = modelIdx >= 0 ? args[modelIdx + 1] : 'anthropic/claude-haiku-4.5';
+const baseUrlIdx = args.indexOf('--base-url');
+const BASE_URL = baseUrlIdx >= 0 ? args[baseUrlIdx + 1] : 'https://openrouter.ai/api/v1';
+const CHAT_URL = BASE_URL + '/chat/completions';
 const PORT = parseInt(process.env.PROXY_PORT || '0', 10) || 0;
 const KEY = process.env.ANTHROPIC_API_KEY || '';
 
@@ -93,30 +96,33 @@ const server = createServer(async (req, res) => {
       const isStream = anthropicReq.stream === true;
       const orBody = translateToOpenRouter(anthropicReq);
 
-      console.error(`[proxy] → OpenRouter model=${MODEL} stream=${isStream}`);
+      console.error(`[proxy] → ${BASE_URL} model=${MODEL} stream=${isStream}`);
 
-      const orResp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      const fetchHeaders = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${KEY}`,
+      };
+      if (BASE_URL.includes('openrouter.ai')) {
+        fetchHeaders['HTTP-Referer'] = 'https://claudefree-production.up.railway.app';
+        fetchHeaders['X-Title'] = 'ClaudeFree Proxy';
+      }
+
+      const orResp = await fetch(CHAT_URL, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${KEY}`,
-          'HTTP-Referer': 'https://claudefree-production.up.railway.app',
-          'X-Title': 'ClaudeFree Proxy',
-        },
+        headers: fetchHeaders,
         body: JSON.stringify(orBody),
         signal: AbortSignal.timeout(120000),
       });
 
       if (!orResp.ok) {
         const errText = await orResp.text();
-        console.error(`[proxy] OpenRouter error ${orResp.status}: ${errText}`);
+        console.error(`[proxy] API error ${orResp.status}: ${errText}`);
         res.writeHead(orResp.status, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: { type: 'api_error', message: errText.substring(0, 500) } }));
         return;
       }
 
       if (isStream) {
-        // Stream mode: read NDJSON from OpenRouter, translate to Anthropic SSE
         res.writeHead(200, {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
@@ -142,7 +148,6 @@ const server = createServer(async (req, res) => {
 
             const dataStr = trimmed.slice(6);
             if (dataStr === '[DONE]') {
-              // Send final message event
               res.write(`event: message_stop\ndata: {}\n\n`);
               continue;
             }
@@ -154,16 +159,13 @@ const server = createServer(async (req, res) => {
                 totalChars += (chunk.delta?.text?.length || 0);
                 res.write(`data: ${JSON.stringify(chunk)}\n\n`);
               }
-            } catch (e) {
-              // Skip unparseable chunks
-            }
+            } catch (e) {}
           }
         }
 
         console.error(`[proxy] ← streamed ~${totalChars} chars`);
         res.end();
       } else {
-        // Non-stream mode
         const orData = await orResp.json();
         const anthropicResp = translateToAnthropic(orData);
         console.error(`[proxy] ← ${anthropicResp.content[0]?.text?.length || 0} chars`);
@@ -194,7 +196,7 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, '127.0.0.1', () => {
   const addr = server.address();
   process.stdout.write(String(addr.port));
-  console.error(`[proxy] listening on 127.0.0.1:${addr.port}`);
+  console.error(`[proxy] listening on 127.0.0.1:${addr.port} target=${BASE_URL}`);
 });
 
 process.stdin.resume();
