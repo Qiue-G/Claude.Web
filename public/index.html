@@ -1684,55 +1684,15 @@
     $('sendBtn').disabled = true;
     showTyping();
 
-    // Simulate AI responses
-    setTimeout(() => {
+    // Send to server
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'input', data: text }));
+    } else {
       removeTyping();
-
-      if (text.includes('分析') || text.includes('结构')) {
-        appendChatMsg('assistant', '我来分析项目结构，先查看关键文件：', [
-          { name: 'Read', icon: '&#128196;', detail: 'src/app/page.tsx', status: 'done' },
-          { name: 'Read', icon: '&#128196;', detail: 'src/server.ts', status: 'done' },
-          { name: 'Glob', icon: '&#128193;', detail: 'src/**/*.tsx', status: 'done' },
-        ]);
-        appendChatMsg('assistant', '项目结构分析完成：\n\n- **src/app/** — Next.js App Router 页面\n- **src/components/** — UI 组件（chat-area, code-block, command-input 等）\n- **src/server.ts** — 后端服务\n- 使用 TypeScript + shadcn/ui + Tailwind CSS 4\n\n需要我深入分析某个模块吗？');
-      } else if (text.includes('重构') || text.includes('Header')) {
-        appendChatMsg('assistant', '我来重构 Header 组件，先查看当前实现：', [
-          { name: 'Read', icon: '&#128196;', detail: 'src/components/Header.tsx', status: 'done' },
-          { name: 'Read', icon: '&#128196;', detail: 'src/lib/design-tokens.ts', status: 'done' },
-        ]);
-        appendChatMsg('assistant', '现在用设计系统 Token 重写 Header，并添加响应式移动端菜单：', null, [
-          {
-            code: `"use client";\n\nimport { useState } from "react";\nimport { Menu, X } from "lucide-react";\nimport { cn } from "@/lib/utils";\n\ninterface HeaderProps {\n  title: string;\n  onNavigate?: (path: string) => void;\n}\n\nexport function Header({ title, onNavigate }: HeaderProps) {\n  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);\n\n  return (\n    <header className="sticky top-0 z-50 border-b\n      border-[var(--border)] bg-[var(--surface-raised)]">\n      <div className="flex items-center justify-between\n        h-14 px-4 lg:px-6">\n        <h1 className="text-lg font-semibold">\n          {title}\n        </h1>\n      </div>\n    </header>\n  );\n}`,
-            language: 'tsx',
-            filename: 'src/components/Header.tsx'
-          }
-        ]);
-      } else if (text.includes('检查') || text.includes('问题')) {
-        appendChatMsg('assistant', '正在检查代码...', [
-          { name: 'Grep', icon: '&#128269;', detail: 'TODO|FIXME|BUG', status: 'done' },
-          { name: 'Read', icon: '&#128196;', detail: 'src/server.ts', status: 'done' },
-        ]);
-        appendChatMsg('assistant', '发现以下潜在问题：\n\n1. `src/server.ts` 第 15 行 — 缺少请求体验证\n2. `src/components/chat-area.tsx` 第 42 行 — 未处理 WebSocket 断线重连\n3. `package.json` — 缺少 `eslint` 依赖\n\n需要我修复这些问题吗？');
-      } else if (text.startsWith('/')) {
-        const cmd = text.split(' ')[0];
-        const cmdDesc = { '/help': '可用命令：/help, /compact, /clear, /model, /cost, /init, /diff, /commit', '/compact': '对话上下文已压缩', '/clear': '对话历史已清除', '/model': '打开模型配置', '/cost': 'Token 用量：输入 12,450 / 输出 3,280', '/init': '项目已初始化', '/diff': '3 个文件待提交', '/commit': '请输入提交信息' };
-        appendChatMsg('system', cmdDesc[cmd] || `命令 ${cmd} 已执行`);
-        if (cmd === '/model') openConfigModal();
-      } else {
-        appendChatMsg('assistant', '收到指令，正在处理...', [
-          { name: 'Bash', icon: '&#9654;', detail: 'processing...', status: 'running' },
-        ]);
-        setTimeout(() => {
-          removeTyping();
-          appendChatMsg('assistant', `已完成：${text}\n\n如果你需要我执行具体操作，可以使用：\n- \`/help\` 查看所有命令\n- \`@文件名\` 引用特定文件\n- 直接描述你想要的改动`);
-        }, 1500);
-      }
-
+      appendChatMsg('system', '未连接到服务器，请刷新页面重试');
       isWaiting = false;
       $('sendBtn').disabled = false;
-    }, 800);
-
-    // Real WebSocket
+    }// Real WebSocket
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'input', data: text }));
     }
