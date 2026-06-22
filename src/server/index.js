@@ -25,11 +25,11 @@ const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
-const VERSION = '6.1.0';
+const VERSION = '6.1.1';
 
 const sessions = new Map();
 const sessionProcesses = new Map();
-const sessionMessages = new Map(); // conversation history per session
+const sessionMessages = new Map();
 
 function stripAnsi(str) {
   str = str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
@@ -61,7 +61,6 @@ function getMessages(sessionId) {
   return sessionMessages.get(sessionId) || [];
 }
 
-// OpenRouter model name mapping
 const OPENROUTER_MODELS = {
   'haiku': 'anthropic/claude-haiku-4.5',
   'sonnet': 'anthropic/claude-sonnet-4',
@@ -85,7 +84,7 @@ function getProviderEnv(provider) {
   }
 }
 
-async function spawnWithProxy(session, prompt) {
+async function spawnWithProxy(session, prompt, ws) {
   const bridgePath = join(FREE_CODE_DIR, 'or_bridge.mjs');
   const model = resolveOpenRouterModel(session.model || 'nvidia/nemotron-3-ultra-550b-a55b:free');
   console.log('[BRIDGE] node ' + bridgePath + ' --model ' + model);
@@ -96,21 +95,87 @@ async function spawnWithProxy(session, prompt) {
     stdio: ['pipe', 'pipe', 'pipe']
   });
 
-  // Wait for startup signal "0\n"
+  let responseBuffer = '';
+  let startupReceived = false;
+
+  // Attach listeners BEFORE sending messages
+  bridge.stdout.on('data', (chunk) => {
+    const raw = chunk.toString();
+    const clean = stripAnsi(raw);
+    console.log('[BRIDGE stdout] ' + clean.substring(0, 100));
+
+    if (!startupReceived) {
+      const lines = clean.split('\n');
+      for (const line of lines) {
+        if (line.match(/^\d+$/)) {
+          startupReceived = true;
+          console.log('[BRIDGE] startup signal received');
+          continue;
+        }
+        if (line.trim()) {
+          responseBuffer += line + '\n';
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ type: 'output', data: line + '\n' }));
+          }
+        }
+      }
+    } else {
+      responseBuffer += clean;
+      if (clean.trim() && ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({ type: 'output', data: clean }));
+      }
+    }
+  });
+
+  bridge.stderr.on('data', (chunk) => {
+    const errStr = chunk.toString();
+    console.error('[BRIDGE stderr] ' + errStr.substring(0, 200));
+    if (ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify({ type: 'stderr', data: errStr }));
+    }
+  });
+
+  bridge.on('close', (code) => {
+    console.log('[BRIDGE] exited with code ' + code);
+    sessionProcesses.delete(session.id);
+
+    if (responseBuffer.trim()) {
+      const msgs = getMessages(session.id);
+      msgs.push({ role: 'user', content: prompt });
+      msgs.push({ role: 'assistant', content: responseBuffer.trim() });
+      if (msgs.length > 20) msgs.splice(0, msgs.length - 20);
+      sessionMessages.set(session.id, msgs);
+      console.log('[HISTORY] ' + msgs.length + ' messages');
+    }
+
+    if (ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify({ type: 'exit', code }));
+    }
+  });
+
+  bridge.on('error', (err) => {
+    console.error('[BRIDGE error] ' + err.message);
+    if (ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify({ type: 'error', message: 'Bridge failed: ' + err.message }));
+    }
+  });
+
+  // Wait for startup signal
   await new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('Bridge startup timeout')), 10000);
-    bridge.stdout.once('data', (c) => {
-      clearTimeout(t);
-      if (c.toString().match(/^\d+/)) resolve();
-      else reject(new Error('Invalid bridge signal'));
-    });
-    bridge.on('error', (e) => { clearTimeout(t); reject(e); });
+    const checkStartup = () => {
+      if (startupReceived) {
+        clearTimeout(t);
+        resolve();
+      } else {
+        setTimeout(checkStartup, 100);
+      }
+    };
+    checkStartup();
     bridge.on('close', (c) => { clearTimeout(t); reject(new Error('Bridge exited ' + c)); });
   });
 
-  console.log('[BRIDGE] ready, sending messages');
-
-  // Build messages: history + new user message
+  console.log('[BRIDGE] sending messages');
   const messages = [...getMessages(session.id), { role: 'user', content: prompt }];
   bridge.stdin.write(JSON.stringify(messages));
   bridge.stdin.end();
@@ -118,29 +183,19 @@ async function spawnWithProxy(session, prompt) {
   return bridge;
 }
 
-async function spawnCli(session, prompt) {
+async function spawnCli(session, prompt, ws) {
   if (session.provider === 'openrouter') {
-    return spawnWithProxy(session, prompt);
+    return spawnWithProxy(session, prompt, ws);
   }
 
   const cliPath = join(FREE_CODE_DIR, 'cli-dev');
   const cliArgs = ['--print'];
-
-  if (session.model) {
-    cliArgs.push('--model', session.model);
-  }
+  if (session.model) cliArgs.push('--model', session.model);
 
   const providerEnv = getProviderEnv(session.provider);
-
   const proc = spawn(cliPath, cliArgs, {
     cwd: session.dir,
-    env: {
-      HOME: session.dir,
-      ...process.env,
-      ANTHROPIC_API_KEY: session.apiKey,
-      ...providerEnv,
-      NODE_ENV: 'production'
-    },
+    env: { HOME: session.dir, ...process.env, ANTHROPIC_API_KEY: session.apiKey, ...providerEnv, NODE_ENV: 'production' },
     stdio: ['pipe', 'pipe', 'pipe']
   });
 
@@ -193,7 +248,7 @@ app.get('/api/health', (req, res) => {
 });
 
 const server = app.listen(PORT, HOST, () => {
-  console.log(`Free-code Web Server v${VERSION} on ${HOST}:${PORT}`);
+  console.log('Free-code Web Server v' + VERSION + ' on ' + HOST + ':' + PORT);
 });
 
 const wss = new WebSocketServer({ server, path: '/ws' });
@@ -213,7 +268,7 @@ wss.on('connection', (ws) => {
           ws.close();
           return;
         }
-        console.log(`Session ${sessionId} initialized`);
+        console.log('Session ' + sessionId + ' initialized');
         ws.send(JSON.stringify({ type: 'ready' }));
 
       } else if (message.type === 'input') {
@@ -226,73 +281,45 @@ wss.on('connection', (ws) => {
         const oldProc = sessionProcesses.get(sessionId);
         if (oldProc) oldProc.kill();
 
-        console.log(`[INPUT] "${message.data.substring(0, 100)}"`);
+        console.log('[INPUT] "' + message.data.substring(0, 100) + '"');
 
-        const proc = await spawnCli(session, message.data);
+        const proc = await spawnCli(session, message.data, ws);
         sessionProcesses.set(sessionId, proc);
 
-        let responseBuffer = '';
-        let startupSkipped = false;
-
-        proc.stdout.on('data', (chunk) => {
-          const raw = chunk.toString();
-          const clean = stripAnsi(raw);
-
-          // For bridge: skip the "0\n" startup signal
-          if (!startupSkipped && session.provider === 'openrouter') {
-            const lines = clean.split('\n');
-            for (const line of lines) {
-              if (line.match(/^\d+$/)) continue; // skip startup signal
-              if (line.trim()) {
-                startupSkipped = true;
-                responseBuffer += line + '\n';
-                if (ws.readyState === ws.OPEN) {
-                  ws.send(JSON.stringify({ type: 'output', data: line + '\n' }));
-                }
-              }
-            }
-          } else {
+        // For non-openrouter providers, attach stdout listener here
+        if (session.provider !== 'openrouter') {
+          let responseBuffer = '';
+          proc.stdout.on('data', (chunk) => {
+            const clean = stripAnsi(chunk.toString());
             responseBuffer += clean;
             if (clean.trim() && ws.readyState === ws.OPEN) {
               ws.send(JSON.stringify({ type: 'output', data: clean }));
             }
-          }
-        });
+          });
 
-        proc.stderr.on('data', (chunk) => {
-          const errStr = chunk.toString();
-          console.error(`[STDERR] ${errStr.substring(0, 200)}`);
-          if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ type: 'stderr', data: errStr }));
-          }
-        });
+          proc.stderr.on('data', (chunk) => {
+            const errStr = chunk.toString();
+            console.error('[STDERR] ' + errStr.substring(0, 200));
+            if (ws.readyState === ws.OPEN) {
+              ws.send(JSON.stringify({ type: 'stderr', data: errStr }));
+            }
+          });
 
-        proc.on('close', (code) => {
-          console.log(`[DONE] exit code ${code}`);
-          sessionProcesses.delete(sessionId);
+          proc.on('close', (code) => {
+            console.log('[DONE] exit code ' + code);
+            sessionProcesses.delete(sessionId);
+            if (ws.readyState === ws.OPEN) {
+              ws.send(JSON.stringify({ type: 'exit', code }));
+            }
+          });
 
-          // Save assistant response to conversation history
-          if (session.provider === 'openrouter' && responseBuffer.trim()) {
-            const msgs = getMessages(sessionId);
-            msgs.push({ role: 'user', content: message.data });
-            msgs.push({ role: 'assistant', content: responseBuffer.trim() });
-            // Keep last 20 messages to avoid token overflow
-            if (msgs.length > 20) msgs.splice(0, msgs.length - 20);
-            sessionMessages.set(sessionId, msgs);
-            console.log(`[HISTORY] ${msgs.length} messages in session`);
-          }
-
-          if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ type: 'exit', code }));
-          }
-        });
-
-        proc.on('error', (err) => {
-          console.error(`[ERROR] spawn failed: ${err.message}`);
-          if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ type: 'error', message: `Failed to start CLI: ${err.message}` }));
-          }
-        });
+          proc.on('error', (err) => {
+            console.error('[ERROR] ' + err.message);
+            if (ws.readyState === ws.OPEN) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Failed to start CLI: ' + err.message }));
+            }
+          });
+        }
       }
 
     } catch (error) {
