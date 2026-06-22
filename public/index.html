@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0a0a0c">
   <title>Free Code</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
@@ -72,7 +73,7 @@
       cursor: pointer;
       font-size: 13px;
       font-family: var(--font-sans);
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: background 0.2s, color 0.2s, transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }
     .menu-btn:hover { background: var(--bg-hover); color: var(--text-primary); transform: scale(1.02); }
     .menu-btn .shortcut { font-size: 11px; color: var(--text-dim); margin-left: 12px; font-family: var(--font-mono); }
@@ -122,11 +123,6 @@
       margin: 4px 8px;
     }
 
-    .menu-item.disabled {
-      opacity: 0.35;
-      pointer-events: none;
-    }
-
     .menu-item .mi-check {
       width: 18px;
       text-align: center;
@@ -159,7 +155,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: color 0.2s, background 0.2s, transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
       font-size: 16px;
     }
     .toolbar-btn:hover { color: var(--amber); background: var(--bg-accent-dim); transform: scale(1.1); }
@@ -170,9 +166,7 @@
       align-items: center;
       gap: 6px;
     }
-    .toolbar-project .logo-icon { color: var(--amber); font-size: 14px; }
     .toolbar-project .name { font-size: 13px; font-weight: 500; color: var(--text-secondary); }
-    .toolbar-project .branch-icon { color: var(--green); font-size: 12px; margin-left: 4px; }
     .toolbar-project .branch-name { font-size: 11px; color: var(--green); font-family: var(--font-mono); }
 
     .toolbar-sep {
@@ -194,10 +188,9 @@
       cursor: pointer;
       font-size: 12px;
       font-family: var(--font-mono);
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: color 0.2s, background 0.2s, transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }
     .toolbar-model:hover { color: var(--amber); background: var(--bg-accent-dim); transform: scale(1.02); }
-    .toolbar-model .cpu-icon { font-size: 14px; }
     .toolbar-model .arrow { font-size: 10px; transition: transform 0.2s ease; }
     .toolbar-model:hover .arrow { transform: rotate(180deg); }
 
@@ -393,7 +386,7 @@
       margin-bottom: 4px;
       font-size: 12px;
       font-family: var(--font-mono);
-      transition: all 0.2s ease;
+      transition: border-color 0.2s, background 0.2s;
       animation: msgFadeUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
     }
     .tool-use-item:hover { border-color: var(--border-hover); background: var(--bg-accent-dim); }
@@ -443,7 +436,7 @@
       gap: 4px;
       opacity: 0;
       transform: translateY(-2px);
-      transition: all 0.2s ease;
+      transition: opacity 0.2s, transform 0.2s;
     }
     .chat-code-block:hover .copy-btn {
       opacity: 1;
@@ -503,7 +496,7 @@
       color: var(--text-muted);
       cursor: pointer;
       text-align: left;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: background 0.2s, color 0.2s, border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
       line-height: 1.4;
       position: relative;
       overflow: hidden;
@@ -565,7 +558,11 @@
       color: var(--text-primary);
       font-size: 14px;
       font-family: var(--font-sans);
-      outline: none;
+    }
+    .command-input-box input:focus-visible {
+      outline: 2px solid var(--amber);
+      outline-offset: 2px;
+      border-radius: 4px;
     }
     .command-input-box input::placeholder { color: var(--text-dim); }
 
@@ -672,7 +669,7 @@
       border: none;
       border-bottom: 2px solid transparent;
       cursor: pointer;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: color 0.2s, border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
       position: relative;
     }
     .context-tab:hover { color: var(--text-secondary); }
@@ -785,14 +782,14 @@
     .modal-close {
       background: none; border: none; color: var(--text-muted);
       cursor: pointer; font-size: 18px; padding: 4px; border-radius: 4px;
-      transition: all 0.15s ease;
+      transition: background 0.15s, color 0.15s, transform 0.15s;
     }
     .modal-close:hover { background: var(--bg-hover); color: var(--text-primary); transform: rotate(90deg); }
 
     .modal-body { padding: 4px 20px 16px; }
     .modal-body .form-group { margin-bottom: 12px; }
     .modal-body label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
-    .modal-body input, .modal-body select {
+    .modal-body input {
       width: 100%;
       padding: 8px 10px;
       background: var(--bg-input);
@@ -801,14 +798,12 @@
       color: var(--text-primary);
       font-size: 13px;
       font-family: var(--font-sans);
-      outline: none;
     }
-    .modal-body input:focus, .modal-body select:focus { border-color: var(--amber); }
-    .modal-body select { cursor: pointer; appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%238b8b9e' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-      background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px;
+    .modal-body input:focus-visible {
+      outline: 2px solid var(--amber);
+      outline-offset: 2px;
+      border-color: var(--amber);
     }
-    .modal-body select option { background: var(--bg-panel); }
 
     /* Custom Select Dropdown */
     .custom-select { position: relative; }
@@ -889,12 +884,114 @@
       font-weight: 500;
       font-family: var(--font-sans);
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
       position: relative;
       overflow: hidden;
     }
     .modal-submit:hover { background: var(--amber-bright); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(217,119,6,0.3); }
     .modal-submit:active { transform: translateY(0); box-shadow: none; }
+
+    /* ===== Config Modal Top Tabs ===== */
+    .config-top-tab {
+      flex: 1;
+      padding: 10px 0;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      font-family: var(--font-sans);
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .config-top-tab:hover { color: var(--text-secondary); }
+    .config-top-tab.active { color: var(--amber); border-bottom-color: var(--amber); }
+
+    /* ===== "使用其他模型" option ===== */
+    .use-other-model {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      border-top: 1px solid var(--border);
+      margin-top: 2px;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .use-other-model:hover { background: rgba(255,255,255,0.04); }
+    .use-other-model .uom-label { font-size: 13px; color: var(--text-primary); font-weight: 500; }
+    .use-other-model .uom-desc { font-size: 11px; color: var(--text-dim); }
+
+    /* ===== Model Management List ===== */
+    .model-list { padding: 4px 0; }
+    .model-list-empty {
+      text-align: center;
+      padding: 32px 0;
+      color: var(--text-dim);
+      font-size: 13px;
+    }
+    .model-list-empty .mle-icon { font-size: 28px; margin-bottom: 8px; opacity: 0.4; }
+    .model-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      margin-bottom: 4px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      border: 1px solid transparent;
+    }
+    .model-item:hover { background: var(--bg-hover); }
+    .model-item.active {
+      background: var(--bg-accent-dim);
+      border-color: var(--border-hover);
+    }
+    .model-item-icon {
+      width: 32px; height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+    .model-item-icon.openrouter { background: rgba(217,119,6,0.15); color: var(--amber); }
+    .model-item-icon.anthropic { background: rgba(217,119,6,0.15); color: var(--amber); }
+    .model-item-icon.openai { background: rgba(59,130,246,0.15); color: var(--blue); }
+    .model-item-icon.custom { background: rgba(139,139,158,0.15); color: var(--text-muted); }
+    .model-item-info { flex: 1; min-width: 0; }
+    .model-item-name { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+    .model-item-detail { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+    .model-item-actions { display: flex; gap: 4px; flex-shrink: 0; }
+    .model-item-btn {
+      width: 28px; height: 28px;
+      border-radius: 6px;
+      border: none;
+      background: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s, color 0.15s;
+      font-size: 14px;
+    }
+    .model-item-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .model-item-btn.delete:hover { color: var(--red); background: rgba(239,68,68,0.1); }
+    .model-item-btn.switch-btn { color: var(--amber); }
+    .model-item-btn.switch-btn:hover { background: var(--bg-accent-dim); }
+    .model-item .active-badge {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: rgba(34,197,94,0.15);
+      color: var(--green);
+      font-weight: 500;
+      flex-shrink: 0;
+    }
 
     /* ===== Typing indicator ===== */
     .typing-indicator { display: flex; gap: 4px; padding: 4px 0; }
@@ -918,8 +1015,6 @@
     .syn-fn { color: #82aaff; }
     .syn-num { color: #f78c6c; }
     .syn-type { color: #ffcb6b; }
-    .syn-var { color: #f07178; }
-    .syn-tag { color: #f07178; }
     .syn-attr { color: #ffcb6b; }
   
         /* ===== Mobile Responsive ===== */
@@ -933,10 +1028,9 @@
       .menu-btn { font-size: 12px; padding: 4px 6px; }
       .toolbar-sep { margin: 0 2px; height: 14px; }
       .toolbar-btn { font-size: 14px; padding: 3px; }
-      .toolbar-btn svg { width: 16px; height: 16px; }
+      .toolbar-btn .icon { width: 16px; height: 16px; }
       .toolbar-project .name { font-size: 12px; }
       .toolbar-model { font-size: 11px; padding: 3px 6px; gap: 2px; }
-      .toolbar-model .cpu-icon { font-size: 12px; }
       .toolbar-status { font-size: 10px; gap: 3px; }
       #statusText { display: none; }
 
@@ -965,7 +1059,6 @@
         border-left: 1px solid var(--border);
       }
       .right-panel.open { right: 0; }
-      .right-panel.collapsed { width: 0; border-left: none; }
       #resizeRight { display: none; }
 
       /* Chat area full width */
@@ -977,13 +1070,13 @@
       .chat-welcome .logo { margin-bottom: 12px; }
       .chat-welcome .title { font-size: 20px; }
       .chat-welcome .subtitle { font-size: 13px; }
-      .suggestions { flex-wrap: wrap; gap: 6px; }
-      .suggestion { font-size: 12px; padding: 6px 10px; }
+      .chat-welcome .suggestions { flex-wrap: wrap; gap: 6px; }
+      .chat-welcome .suggestion { font-size: 12px; padding: 6px 10px; }
 
       /* Chat messages */
-      .chat-message { padding: 6px 12px; }
-      .chat-message .content { font-size: 13px; }
-      .chat-message .role { font-size: 10px; padding: 1px 6px; }
+      .chat-msg { padding: 10px 16px; }
+      .chat-msg-body { font-size: 13px; }
+      .chat-msg-role { font-size: 10px; }
 
       /* Command input */
       .command-area {
@@ -1002,8 +1095,8 @@
       .command-wrapper { max-width: 100%; }
 
       /* Code blocks */
-      .code-block { margin: 4px 0; }
-      .code-block pre { font-size: 12px; padding: 10px; }
+      .chat-code-block { margin: 4px 0; }
+      .chat-code-body { font-size: 12px; padding: 10px; }
 
       /* Overlay for left panel */
       .panel-overlay {
@@ -1020,46 +1113,107 @@
       .toolbar { height: 36px; padding: 0 4px; gap: 2px; }
       .menu-btn { font-size: 11px; padding: 3px 5px; }
       .toolbar-btn { padding: 2px; }
-      .toolbar-btn svg { width: 14px; height: 14px; }
+      .toolbar-btn .icon { width: 14px; height: 14px; }
       .toolbar-project .name { font-size: 11px; }
       .toolbar-model { font-size: 10px; padding: 2px 4px; }
       .toolbar-status .dot { width: 5px; height: 5px; }
       .chat-welcome .title { font-size: 18px; }
       .command-area { padding: 6px 8px 8px; }
-    }  </style>
+      .modal { width: 95vw !important; }
+      .modal-body { padding: 4px 14px 12px; }
+      .modal-header { padding: 12px 14px 10px; }
+      .modal-footer { padding: 0 14px 12px; }
+    }
+
+    /* Skip Link */
+    .skip-link {
+      position: absolute;
+      top: -40px;
+      left: 0;
+      background: var(--amber);
+      color: var(--bg-base);
+      padding: 8px 16px;
+      z-index: 9999;
+      font-size: 13px;
+      text-decoration: none;
+      border-radius: 0 0 6px 0;
+      transition: top 0.2s;
+    }
+    .skip-link:focus {
+      top: 0;
+    }
+
+    /* ===== Accessibility & Mobile Optimizations ===== */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* Touch & Interaction */
+    button, .toolbar-btn, .menu-btn, .modal-close, .send-btn {
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: rgba(217,119,6,0.1);
+    }
+
+    .modal, .menu-dropdown {
+      overscroll-behavior: contain;
+    }
+
+    /* Safe Areas */
+    .toolbar {
+      padding-top: env(safe-area-inset-top, 0);
+    }
+    .command-area {
+      padding-bottom: calc(12px + env(safe-area-inset-bottom, 0));
+    }
+    .left-panel, .right-panel {
+      padding-left: env(safe-area-inset-left, 0);
+      padding-right: env(safe-area-inset-right, 0);
+    }
+
+    /* Dark Mode */
+    html.dark {
+      color-scheme: dark;
+    }
+  </style>
 </head>
 <body>
+
+<a href="#chatMessages" class="skip-link">跳转到主内容</a>
 
 <div class="app">
   <!-- Toolbar -->
   <div class="toolbar">
     <!-- File Menu -->
-    <div class="menu-bar" id="fileMenu">
+    <div class="menu-bar">
       <button class="menu-btn" id="fileMenuBtn">文件(F)</button>
       <div class="menu-dropdown" id="fileMenuDropdown">
         <div class="menu-item" id="menuNewFile">
-          <span class="mi-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg></span>
+          <span class="mi-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg></span>
           <span class="mi-label">新建文件</span>
           <span class="mi-shortcut">Ctrl+N</span>
         </div>
         <div class="menu-item" id="menuOpenFile">
-          <span class="mi-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
+          <span class="mi-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
           <span class="mi-label">打开文件</span>
           <span class="mi-shortcut">Ctrl+O</span>
         </div>
         <div class="menu-item" id="menuOpenFolder">
-          <span class="mi-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg></span>
+          <span class="mi-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg></span>
           <span class="mi-label">打开文件夹</span>
           <span class="mi-shortcut">Ctrl+Shift+O</span>
         </div>
         <div class="menu-sep"></div>
-        <div class="menu-item disabled" id="menuSave">
-          <span class="mi-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></span>
+        <div class="menu-item" id="menuSave">
+          <span class="mi-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></span>
           <span class="mi-label">保存</span>
           <span class="mi-shortcut">Ctrl+S</span>
         </div>
-        <div class="menu-item disabled" id="menuSaveAs">
-          <span class="mi-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg></span>
+        <div class="menu-item" id="menuSaveAs">
+          <span class="mi-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg></span>
           <span class="mi-label">另存为</span>
           <span class="mi-shortcut">Ctrl+Shift+S</span>
         </div>
@@ -1068,32 +1222,26 @@
           <span class="mi-check" id="autoSaveCheck"></span>
           <span class="mi-label">自动保存</span>
         </div>
-        <div class="menu-sep"></div>
-        <div class="menu-item disabled" id="menuExit">
-          <span class="mi-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg></span>
-          <span class="mi-label">退出</span>
-          <span class="mi-shortcut">Alt+F4</span>
-        </div>
       </div>
     </div>
 
     <div class="toolbar-sep"></div>
 
-    <button class="toolbar-btn" id="toggleLeft" title="切换文件浏览器">
-      <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+    <button class="toolbar-btn" id="toggleLeft" title="切换文件浏览器" aria-label="切换文件浏览器">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
     </button>
 
     <div class="toolbar-project">
-      <svg class="icon" viewBox="0 0 24 24" style="color:var(--amber)"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+      <svg class="icon" viewBox="0 0 24 24" style="color:var(--amber)" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
       <span class="name">free-code</span>
-      <svg class="icon icon-sm" viewBox="0 0 24 24" style="color:var(--green)"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+      <svg class="icon icon-sm" viewBox="0 0 24 24" style="color:var(--green)" aria-hidden="true"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
       <span class="branch-name">main</span>
     </div>
 
     <div class="toolbar-sep"></div>
 
-    <button class="toolbar-model" id="modelBtn">
-      <svg class="icon icon-sm" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
+    <button class="toolbar-model" id="modelBtn" aria-label="配置模型">
+      <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
       <span id="modelName">未配置模型</span>
       <span class="arrow">&#9662;</span>
     </button>
@@ -1107,8 +1255,8 @@
 
     <div class="toolbar-sep"></div>
 
-    <button class="toolbar-btn" id="toggleRight" title="切换上下文面板">
-      <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+    <button class="toolbar-btn" id="toggleRight" title="切换上下文面板" aria-label="切换上下文面板">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
     </button>
   </div>
 
@@ -1117,17 +1265,16 @@
     <!-- Left Panel: File Browser -->
     <div class="left-panel" id="leftPanel">
       <div class="panel-header">资源管理器</div>
-      <div class="file-tree" id="fileTree">
+      <div class="file-tree" id="fileTree" role="tree" aria-label="文件树">
       </div>
     </div>
 
     <!-- Resize -->
-    <div class="resize-v" id="resizeLeft">
-    <div class="panel-overlay" id="panelOverlay"></div></div>
+    <div class="resize-v" id="resizeLeft"></div>
 
     <!-- Center: Chat Area -->
     <div class="chat-area">
-      <div class="chat-messages" id="chatMessages">
+      <div class="chat-messages" id="chatMessages" aria-live="polite" aria-atomic="false">
         <div class="chat-welcome" id="chatWelcome">
           <div class="logo"><svg class="icon icon-md" viewBox="0 0 24 24" style="color:var(--amber)"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
           <div class="title">Free Code</div>
@@ -1148,8 +1295,8 @@
           <div class="command-input-box">
             <span class="prefix">&gt;</span>
             <input type="text" id="commandInput" placeholder="输入指令，/ 命令，@ 引用文件..." autocomplete="off" spellcheck="false">
-            <button class="send-btn" id="sendBtn" title="发送">
-              <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            <button class="send-btn" id="sendBtn" title="发送" aria-label="发送消息">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
             </button>
           </div>
           <div class="command-hints">
@@ -1171,138 +1318,109 @@
         <button class="context-tab active" data-tab="context">上下文</button>
         <button class="context-tab" data-tab="tools">工具</button>
       </div>
-      <div class="context-body" id="contextBody">
+      <div class="context-body">
         <!-- Context Tab -->
         <div id="tabContext">
           <div class="context-section">
-            <div class="context-section-title"><svg class="icon icon-sm" viewBox="0 0 24 24" style="color:var(--amber)"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> 项目信息</div>
-            <div class="context-item">
-              <span class="context-item-label">框架</span>
-              <span class="context-item-value">Next.js 16</span>
-            </div>
-            <div class="context-item">
-              <span class="context-item-label">语言</span>
-              <span class="context-item-value">TypeScript</span>
-            </div>
-            <div class="context-item">
-              <span class="context-item-label">UI</span>
-              <span class="context-item-value">shadcn/ui</span>
-            </div>
-            <div class="context-item">
-              <span class="context-item-label">样式</span>
-              <span class="context-item-value">Tailwind CSS 4</span>
-            </div>
+            <div class="context-section-title"><svg class="icon icon-sm" viewBox="0 0 24 24" style="color:var(--amber)" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> 项目信息</div>
+            <div id="projectInfo"></div>
           </div>
-
           <div class="context-section">
-            <div class="context-section-title"><svg class="icon icon-sm" viewBox="0 0 24 24" style="color:var(--amber-bright)"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg> Token 使用</div>
-            <div class="context-item">
-              <span class="context-item-label">输入</span>
-              <span class="context-item-value">12,450 / 200K</span>
-            </div>
-            <div class="progress-bar"><div class="progress-bar-fill" style="width:6%"></div></div>
-            <div class="context-item" style="margin-top:6px;">
-              <span class="context-item-label">输出</span>
-              <span class="context-item-value">3,280 / 16K</span>
-            </div>
-            <div class="progress-bar"><div class="progress-bar-fill" style="width:20%;background:var(--green)"></div></div>
+            <div class="context-section-title"><svg class="icon icon-sm" viewBox="0 0 24 24" style="color:var(--amber-bright)" aria-hidden="true"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg> Token 使用</div>
+            <div id="tokenUsage"></div>
           </div>
-
           <div class="context-section">
-            <div class="context-section-title"><svg class="icon icon-sm" viewBox="0 0 24 24" style="color:var(--text-muted)"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg> 当前文件</div>
+            <div class="context-section-title"><svg class="icon icon-sm" viewBox="0 0 24 24" style="color:var(--text-muted)" aria-hidden="true"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg> 当前文件</div>
             <div class="context-item">
               <span class="context-item-label" id="currentFileLabel">未选择</span>
             </div>
           </div>
+          <div class="context-section">
+            <div class="context-section-title"><svg class="icon icon-sm" viewBox="0 0 24 24" style="color:var(--text-muted)" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg> 当前模型</div>
+            <div class="context-item">
+              <span class="context-item-label" id="currentModelLabel">未配置</span>
+            </div>
+          </div>
         </div>
-
         <!-- Tools Tab -->
         <div id="tabTools" class="hidden">
           <div class="context-section">
-            <div class="context-section-title"><svg class="icon icon-sm" viewBox="0 0 24 24" style="color:var(--text-muted)"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> 已用工具</div>
-            <div class="tool-usage-item">
-              <span class="tu-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg></span>
-              <span class="tu-name">Read</span>
-              <span class="tu-count">5</span>
-              <span class="tu-time">2m ago</span>
-            </div>
-            <div class="tool-usage-item">
-              <span class="tu-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></span>
-              <span class="tu-name">Write</span>
-              <span class="tu-count">2</span>
-              <span class="tu-time">5m ago</span>
-            </div>
-            <div class="tool-usage-item">
-              <span class="tu-icon"><svg class="icon" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg></span>
-              <span class="tu-name">Bash</span>
-              <span class="tu-count">3</span>
-              <span class="tu-time">1m ago</span>
-            </div>
-            <div class="tool-usage-item">
-              <span class="tu-icon"><svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
-              <span class="tu-name">Grep</span>
-              <span class="tu-count">4</span>
-              <span class="tu-time">30s ago</span>
-            </div>
-            <div class="tool-usage-item">
-              <span class="tu-icon"><svg class="icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
-              <span class="tu-name">Glob</span>
-              <span class="tu-count">2</span>
-              <span class="tu-time">1m ago</span>
-            </div>
-            <div class="tool-usage-item">
-              <span class="tu-icon"><svg class="icon" viewBox="0 0 24 24"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg></span>
-              <span class="tu-name">Git</span>
-              <span class="tu-count">1</span>
-              <span class="tu-time">8m ago</span>
-            </div>
+            <div class="context-section-title"><svg class="icon icon-sm" viewBox="0 0 24 24" style="color:var(--text-muted)" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> 已用工具</div>
+            <div id="toolUsageList"></div>
           </div>
         </div>
       </div>
     </div>
   </div>
+
+  <!-- Panel Overlay (mobile) -->
+  <div class="panel-overlay" id="panelOverlay"></div>
 </div>
 
 <!-- Config Modal -->
 <div class="modal-overlay hidden" id="configModal">
-  <div class="modal">
+  <div class="modal" style="width:500px;">
     <div class="modal-header">
-      <h2>配置模型</h2>
-      <button class="modal-close" id="closeModal">&times;</button>
+      <h2>添加模型</h2>
+      <button class="modal-close" id="closeModal" aria-label="关闭">&times;</button>
+    </div>
+    <!-- Top Tabs -->
+    <div style="display:flex;gap:0;padding:0 20px;border-bottom:1px solid var(--border);">
+      <button class="config-top-tab active" data-tab="provider">模型服务商</button>
+      <button class="config-top-tab" data-tab="custom">自定义配置</button>
+      <button class="config-top-tab" data-tab="manage">模型管理</button>
     </div>
     <div class="modal-body">
-      <div class="form-group">
-        <label>服务商</label>
-        <div class="custom-select" id="csProvider">
-          <div class="custom-select-trigger" data-placeholder="选择服务商">
-            <span class="cs-label">选择服务商</span>
-            <span class="cs-arrow">&#9662;</span>
+      <!-- Provider Tab -->
+      <div id="cfgTabProvider">
+        <div class="form-group">
+          <label style="color:var(--red);">* 服务商</label>
+          <div class="custom-select" id="csProvider">
+            <div class="custom-select-trigger" data-placeholder="选择服务商">
+              <span class="cs-label">选择服务商</span>
+              <span class="cs-arrow">&#9662;</span>
+            </div>
+            <div class="custom-select-dropdown" id="csProviderDropdown"></div>
           </div>
-          <div class="custom-select-dropdown" id="csProviderDropdown"></div>
+        </div>
+        <div class="form-group">
+          <label style="color:var(--red);">* 模型</label>
+          <div class="custom-select" id="csModel">
+            <div class="custom-select-trigger" data-placeholder="选择模型">
+              <span class="cs-label">选择模型</span>
+              <span class="cs-arrow">&#9662;</span>
+            </div>
+            <div class="custom-select-dropdown" id="csModelDropdown"></div>
+          </div>
+          <input type="text" id="cfgModelCustom" placeholder="输入模型 ID" style="margin-top:6px;display:none;">
+        </div>
+        <div class="form-group">
+          <label style="color:var(--red);">* API 密钥 <a href="javascript:void(0)" id="getApiKeyLink" style="float:right;font-size:12px;color:var(--amber);text-decoration:none;">获取 API 密钥</a></label>
+          <input type="password" id="cfgApiKey" placeholder="输入 API 密钥" autocomplete="off">
         </div>
       </div>
-      <div class="form-group">
-        <label>模型</label>
-        <div class="custom-select" id="csModel">
-          <div class="custom-select-trigger" data-placeholder="选择模型">
-            <span class="cs-label">选择模型</span>
-            <span class="cs-arrow">&#9662;</span>
-          </div>
-          <div class="custom-select-dropdown" id="csModelDropdown"></div>
+      <!-- Custom Tab -->
+      <div id="cfgTabCustom" class="hidden">
+        <div class="form-group">
+          <label style="color:var(--red);">* 模型 ID</label>
+          <input type="text" id="cfgCustomModelId" placeholder="输入模型 ID（如 anthropic/claude-3.5-sonnet）">
         </div>
-        <input type="text" id="cfgModelCustom" placeholder="输入模型名称（如 anthropic/claude-3.5-sonnet）" style="margin-top:6px;display:none;">
+        <div class="form-group">
+          <label style="color:var(--red);">* API 密钥 <a href="javascript:void(0)" id="getApiKeyLink2" style="float:right;font-size:12px;color:var(--amber);text-decoration:none;">获取 API 密钥</a></label>
+          <input type="password" id="cfgCustomApiKey" placeholder="输入 API 密钥" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>Base URL（可选）</label>
+          <input type="text" id="cfgCustomBaseUrl" placeholder="https://api.example.com/v1">
+        </div>
       </div>
-      <div class="form-group">
-        <label>API 密钥</label>
-        <input type="password" id="cfgApiKey" placeholder="输入 API 密钥" autocomplete="off">
-      </div>
-      <div class="form-group">
-        <label>Base URL（可选）</label>
-        <input type="text" id="cfgBaseUrl" placeholder="https://api.example.com/v1">
+      <!-- Manage Tab -->
+      <div id="cfgTabManage" class="hidden">
+        <div class="model-list" id="modelList"></div>
       </div>
     </div>
     <div class="modal-footer">
-      <button class="modal-submit" id="submitConfig">保存配置</button>
+      <button class="modal-submit" id="submitConfig">添加模型</button>
     </div>
   </div>
 </div>
@@ -1312,11 +1430,124 @@
   let isConnected = false;
   let ws = null;
   let sessionId = null;
+  let sessionToken = null;
   let isWaiting = false;
   let currentFile = null;
   let autoSave = false;
+  let savedModels = JSON.parse(localStorage.getItem('savedModels') || '[]');
+  let activeModelId = localStorage.getItem('activeModelId') || '';
+
+  // 安全：不在前端存储 API Key，改用 sessionStorage
+  // API Key 只在当前会话有效，关闭标签页后清除
+  savedModels.forEach(model => {
+    if (model.apiKey) {
+      sessionStorage.setItem(`apiKey_${model.id}`, model.apiKey);
+      delete model.apiKey;
+    }
+  });
+  localStorage.setItem('savedModels', JSON.stringify(savedModels));
+
+  // Right panel dynamic data
+  let tokenStats = { input: 0, inputMax: 200000, output: 0, outputMax: 16000 };
+  let toolUsage = {};
+  let projectInfo = { framework: '', language: '', ui: '', style: '' };
+
+  // File content tracking
+  let fileContents = {}; // path -> content
+  let currentFileContent = null; // content of currently opened/edited file
+  let autoSaveTimer = null;
 
   const $ = id => document.getElementById(id);
+
+  // ===== Right Panel Render Functions =====
+  function formatNumber(num) {
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toString();
+  }
+
+  function renderProjectInfo() {
+    const el = $('projectInfo');
+    if (!projectInfo.framework && !projectInfo.language) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:4px 0;">未检测到项目信息</div>';
+      return;
+    }
+    let html = '';
+    if (projectInfo.framework) html += `<div class="context-item"><span class="context-item-label">框架</span><span class="context-item-value">${projectInfo.framework}</span></div>`;
+    if (projectInfo.language) html += `<div class="context-item"><span class="context-item-label">语言</span><span class="context-item-value">${projectInfo.language}</span></div>`;
+    if (projectInfo.ui) html += `<div class="context-item"><span class="context-item-label">UI</span><span class="context-item-value">${projectInfo.ui}</span></div>`;
+    if (projectInfo.style) html += `<div class="context-item"><span class="context-item-label">样式</span><span class="context-item-value">${projectInfo.style}</span></div>`;
+    el.innerHTML = html;
+  }
+
+  function renderTokenUsage() {
+    const el = $('tokenUsage');
+    const inputPct = Math.min((tokenStats.input / tokenStats.inputMax) * 100, 100);
+    const outputPct = Math.min((tokenStats.output / tokenStats.outputMax) * 100, 100);
+    el.innerHTML = `
+      <div class="context-item">
+        <span class="context-item-label">输入</span>
+        <span class="context-item-value">${formatNumber(tokenStats.input)} / ${formatNumber(tokenStats.inputMax)}</span>
+      </div>
+      <div class="progress-bar"><div class="progress-bar-fill" style="width:${inputPct}%"></div></div>
+      <div class="context-item" style="margin-top:6px;">
+        <span class="context-item-label">输出</span>
+        <span class="context-item-value">${formatNumber(tokenStats.output)} / ${formatNumber(tokenStats.outputMax)}</span>
+      </div>
+      <div class="progress-bar"><div class="progress-bar-fill" style="width:${outputPct}%;background:var(--green)"></div></div>
+    `;
+  }
+
+  function renderToolUsage() {
+    const el = $('toolUsageList');
+    const tools = Object.entries(toolUsage);
+    if (tools.length === 0) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:4px 0;">暂无工具使用记录</div>';
+      return;
+    }
+    const toolIcons = {
+      Read: '<svg class="icon" viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>',
+      Write: '<svg class="icon" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>',
+      Bash: '<svg class="icon" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>',
+      Grep: '<svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+      Glob: '<svg class="icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
+      Git: '<svg class="icon" viewBox="0 0 24 24"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>'
+    };
+    el.innerHTML = tools.map(([name, data]) => `
+      <div class="tool-usage-item">
+        <span class="tu-icon">${toolIcons[name] || '<svg class="icon" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>'}</span>
+        <span class="tu-name">${name}</span>
+        <span class="tu-count">${data.count}</span>
+        <span class="tu-time">${data.lastTime}</span>
+      </div>
+    `).join('');
+  }
+
+  function updateCurrentModel() {
+    const el = $('currentModelLabel');
+    if (activeModelId && savedModels.length > 0) {
+      const active = savedModels.find(m => m.id === activeModelId);
+      if (active) {
+        el.textContent = active.model.split('/').pop() || active.model;
+        return;
+      }
+    }
+    el.textContent = '未配置';
+  }
+
+  function recordToolUse(toolName) {
+    if (!toolUsage[toolName]) {
+      toolUsage[toolName] = { count: 0, lastTime: '' };
+    }
+    toolUsage[toolName].count++;
+    toolUsage[toolName].lastTime = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    renderToolUsage();
+  }
+
+  // Initial render
+  renderProjectInfo();
+  renderTokenUsage();
+  renderToolUsage();
+  updateCurrentModel();
 
   // ===== File Menu =====
   $('fileMenuBtn').addEventListener('click', (e) => {
@@ -1330,35 +1561,134 @@
   });
 
   // Menu item handlers
-  $('menuNewFile').addEventListener('click', () => {
-    const name = prompt('输入新文件名：');
-    if (name) {
-      addSystemMessage(`已创建新文件: ${name}`);
+
+  // ===== New File =====
+  $('menuNewFile').addEventListener('click', async () => {
+    if (!sessionId) {
+      appendChatMsg('system', '请先配置模型');
+      return;
+    }
+    const name = prompt('输入新文件名（支持路径，如 src/utils/helper.js）：');
+    if (!name) return;
+
+    try {
+      const res = await fetch('/api/files/' + sessionId + '/' + name, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-session-token': sessionToken || ''
+        },
+        body: JSON.stringify({ content: '' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        fileContents[name] = '';
+        currentFile = name;
+        currentFileContent = '';
+        $('currentFileLabel').textContent = name;
+        appendChatMsg('system', `已创建新文件: ${name}`);
+        loadFileTree();
+      } else {
+        appendChatMsg('system', `创建失败: ${data.error}`);
+      }
+    } catch (e) {
+      appendChatMsg('system', `创建失败: ${e.message}`);
     }
   });
 
-  // File open via hidden <input type="file">
+  // ===== Open File (from local disk) =====
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
   fileInput.style.display = 'none';
   fileInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (file) {
-      addSystemMessage(`已选择文件: ${file.name} (${(file.size/1024).toFixed(1)} KB)`);
-      // TODO: read file content and open in editor
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const content = ev.target.result;
+        // Track content
+        fileContents[file.name] = content;
+        currentFile = file.name;
+        currentFileContent = content;
+        $('currentFileLabel').textContent = file.name;
+        appendChatMsg('system', `已打开文件: ${file.name} (${(file.size/1024).toFixed(1)} KB)`);
+        appendChatMsg('assistant', `文件内容已加载，共 ${content.split('\n').length} 行`, null, [{
+          filename: file.name,
+          language: file.name.split('.').pop() || 'text',
+          code: content
+        }]);
+      };
+      reader.readAsText(file);
     }
+    fileInput.value = '';
   });
 
-  // Folder open via hidden <input type="file" webkitdirectory>
+  // ===== Open Folder (from local disk) =====
   const folderInput = document.createElement('input');
   folderInput.type = 'file';
   folderInput.webkitdirectory = true;
   folderInput.style.display = 'none';
   folderInput.addEventListener('change', (e) => {
     const files = Array.from(e.target.files);
-    addSystemMessage(`已选择文件夹: ${files.length} 个文件`);
-    files.slice(0, 5).forEach(f => addSystemMessage(`  - ${f.name}`));
-    if (files.length > 5) addSystemMessage(`  ... 还有 ${files.length - 5} 个文件`);
+    if (files.length === 0) return;
+
+    function buildTreeFromFiles(fileList) {
+      const root = { name: 'root', type: 'directory', children: [] };
+      const pathMap = new Map();
+      pathMap.set('', root);
+
+      for (const file of fileList) {
+        const parts = file.webkitRelativePath.split('/');
+        let currentPath = '';
+
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          const parentPath = currentPath;
+          currentPath = currentPath ? currentPath + '/' + part : part;
+
+          if (!pathMap.has(currentPath)) {
+            const isFile = i === parts.length - 1;
+            const node = {
+              name: part,
+              path: currentPath,
+              type: isFile ? 'file' : 'directory',
+              size: isFile ? file.size : undefined,
+              children: isFile ? undefined : []
+            };
+            pathMap.set(currentPath, node);
+
+            const parent = pathMap.get(parentPath);
+            if (parent && parent.children) {
+              parent.children.push(node);
+            }
+          }
+        }
+      }
+
+      function sortTree(node) {
+        if (node.children) {
+          node.children.sort((a, b) => {
+            if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+            return a.name.localeCompare(b.name);
+          });
+          node.children.forEach(sortTree);
+        }
+      }
+      sortTree(root);
+      return root.children;
+    }
+
+    const tree = buildTreeFromFiles(files);
+    appendChatMsg('system', `已加载文件夹: ${files.length} 个文件`);
+
+    $('fileTree').innerHTML = '';
+    renderFileTree(tree, $('fileTree'), 0);
+    collectAllFiles(tree);
+
+    if (window.innerWidth <= 768) {
+      $('leftPanel').classList.remove('open');
+      $('panelOverlay')?.classList.remove('show');
+    }
   });
 
   $('menuOpenFile').addEventListener('click', () => {
@@ -1372,10 +1702,8 @@
   // ===== Context Tab Switching =====
   document.querySelectorAll('.context-tab').forEach(tab => {
     tab.addEventListener('click', () => {
-      // Update active tab style
       document.querySelectorAll('.context-tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
-      // Show matching content panel
       const targetId = 'tab' + tab.dataset.tab.charAt(0).toUpperCase() + tab.dataset.tab.slice(1);
       document.querySelectorAll('#tabContext, #tabTools').forEach(p => p.classList.add('hidden'));
       const target = document.getElementById(targetId);
@@ -1383,23 +1711,88 @@
     });
   });
 
-  $('menuSave').addEventListener('click', () => {
-    if (currentFile) {
-      addSystemMessage(`已保存: ${currentFile}`);
+  // ===== Save =====
+  async function saveFile(filePath, content) {
+    if (!sessionId) {
+      appendChatMsg('system', '请先配置模型');
+      return false;
+    }
+    try {
+      const res = await fetch('/api/files/' + sessionId + '/' + filePath, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-session-token': sessionToken || ''
+        },
+        body: JSON.stringify({ content: content || '' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        fileContents[filePath] = content;
+        return true;
+      } else {
+        appendChatMsg('system', `保存失败: ${data.error}`);
+        return false;
+      }
+    } catch (e) {
+      appendChatMsg('system', `保存失败: ${e.message}`);
+      return false;
+    }
+  }
+
+  $('menuSave').addEventListener('click', async () => {
+    if (!currentFile) {
+      appendChatMsg('system', '没有打开的文件');
+      return;
+    }
+    const ok = await saveFile(currentFile, currentFileContent);
+    if (ok) appendChatMsg('system', `已保存: ${currentFile}`);
+  });
+
+  // ===== Save As =====
+  $('menuSaveAs').addEventListener('click', async () => {
+    if (!currentFile) {
+      appendChatMsg('system', '没有打开的文件');
+      return;
+    }
+    const name = prompt('另存为：', currentFile);
+    if (!name) return;
+    const ok = await saveFile(name, currentFileContent);
+    if (ok) {
+      currentFile = name;
+      $('currentFileLabel').textContent = name;
+      appendChatMsg('system', `已另存为: ${name}`);
+      loadFileTree();
     }
   });
 
-  $('menuSaveAs').addEventListener('click', () => {
-    if (currentFile) {
-      const name = prompt('另存为：', currentFile);
-      if (name) addSystemMessage(`已另存为: ${name}`);
+  // ===== Auto Save =====
+  function startAutoSave() {
+    stopAutoSave();
+    autoSaveTimer = setInterval(() => {
+      if (currentFile && currentFileContent !== undefined) {
+        saveFile(currentFile, currentFileContent);
+      }
+    }, 30000); // every 30 seconds
+  }
+
+  function stopAutoSave() {
+    if (autoSaveTimer) {
+      clearInterval(autoSaveTimer);
+      autoSaveTimer = null;
     }
-  });
+  }
 
   $('menuAutoSave').addEventListener('click', () => {
     autoSave = !autoSave;
     $('autoSaveCheck').textContent = autoSave ? '\u2713' : '';
-    addSystemMessage(`自动保存已${autoSave ? '开启' : '关闭'}`);
+    if (autoSave) {
+      startAutoSave();
+      appendChatMsg('system', '自动保存已开启（每 30 秒）');
+    } else {
+      stopAutoSave();
+      appendChatMsg('system', '自动保存已关闭');
+    }
   });
 
   // Keyboard shortcuts
@@ -1412,9 +1805,17 @@
       e.preventDefault();
       $('menuOpenFile').click();
     }
+    if (e.ctrlKey && e.shiftKey && e.key === 'O') {
+      e.preventDefault();
+      $('menuOpenFolder').click();
+    }
     if (e.ctrlKey && e.key === 's') {
       e.preventDefault();
       $('menuSave').click();
+    }
+    if (e.ctrlKey && e.shiftKey && e.key === 'S') {
+      e.preventDefault();
+      $('menuSaveAs').click();
     }
   });
 
@@ -1425,14 +1826,79 @@
   async function loadFileTree() {
     if (!sessionId) return;
     try {
-      const res = await fetch('/api/files/' + sessionId);
+      const res = await fetch('/api/files/' + sessionId, {
+        headers: { 'x-session-token': sessionToken || '' }
+      });
       const data = await res.json();
       if (data.tree) {
         renderFileTree(data.tree, $('fileTree'), 0);
+        detectProjectInfo(data.tree);
+        collectAllFiles(data.tree);
       }
     } catch (e) {
       console.error('Failed to load file tree:', e);
     }
+  }
+
+  function collectAllFiles(tree) {
+    allFiles = [];
+    function collect(items) {
+      for (const item of items) {
+        if (item.type === 'file') allFiles.push(item.path);
+        if (item.children) collect(item.children);
+      }
+    }
+    collect(tree);
+  }
+
+  function detectProjectInfo(tree) {
+    const files = [];
+    function collectFiles(items) {
+      for (const item of items) {
+        if (item.type === 'file') files.push(item.name.toLowerCase());
+        if (item.children) collectFiles(item.children);
+      }
+    }
+    collectFiles(tree);
+
+    // Detect framework
+    if (files.includes('next.config.js') || files.includes('next.config.ts') || files.includes('next.config.mjs')) {
+      projectInfo.framework = 'Next.js';
+    } else if (files.includes('vite.config.js') || files.includes('vite.config.ts')) {
+      projectInfo.framework = 'Vite';
+    } else if (files.includes('nuxt.config.js') || files.includes('nuxt.config.ts')) {
+      projectInfo.framework = 'Nuxt.js';
+    } else if (files.includes('angular.json')) {
+      projectInfo.framework = 'Angular';
+    } else if (files.includes('vue.config.js')) {
+      projectInfo.framework = 'Vue';
+    }
+
+    // Detect language
+    const hasTs = files.some(f => f.endsWith('.ts') || f.endsWith('.tsx'));
+    const hasJs = files.some(f => f.endsWith('.js') || f.endsWith('.jsx'));
+    if (hasTs) projectInfo.language = 'TypeScript';
+    else if (hasJs) projectInfo.language = 'JavaScript';
+
+    // Detect UI library
+    if (files.includes('components.json')) {
+      projectInfo.ui = 'shadcn/ui';
+    } else if (files.some(f => f.includes('antd') || f.includes('ant-design'))) {
+      projectInfo.ui = 'Ant Design';
+    } else if (files.some(f => f.includes('element-ui') || f.includes('element-plus'))) {
+      projectInfo.ui = 'Element UI';
+    }
+
+    // Detect style
+    if (files.includes('tailwind.config.js') || files.includes('tailwind.config.ts')) {
+      projectInfo.style = 'Tailwind CSS';
+    } else if (files.some(f => f.includes('.scss') || f.includes('.sass'))) {
+      projectInfo.style = 'Sass/SCSS';
+    } else if (files.some(f => f.includes('.less'))) {
+      projectInfo.style = 'Less';
+    }
+
+    renderProjectInfo();
   }
 
   function renderFileTree(items, parent, depth) {
@@ -1441,7 +1907,12 @@
       const div = document.createElement('div');
       div.className = 'tree-item' + (item.type === 'directory' ? ' folder' : '');
       div.style.paddingLeft = (depth * 16) + 'px';
+      div.setAttribute('role', 'treeitem');
+      div.setAttribute('tabindex', '0');
       if (item.type === 'file') div.dataset.file = item.path;
+      if (item.type === 'directory') {
+        div.setAttribute('aria-expanded', 'false');
+      }
 
       const arrow = document.createElement('span');
       arrow.className = 'arrow';
@@ -1461,20 +1932,75 @@
         const children = document.createElement('div');
         children.className = 'tree-children';
         children.id = 'dyn-tree-' + item.path.replace(/[^a-zA-Z0-9]/g, '_');
+        children.setAttribute('role', 'group');
         renderFileTree(item.children, children, depth + 1);
         parent.appendChild(div);
         parent.appendChild(children);
 
-        div.addEventListener('click', () => {
+        const toggleFolder = () => {
           children.classList.toggle('open');
-          arrow.innerHTML = children.classList.contains('open') ? '&#9660;' : '&#9656;';
+          const isOpen = children.classList.contains('open');
+          arrow.innerHTML = isOpen ? '&#9660;' : '&#9656;';
+          div.setAttribute('aria-expanded', isOpen.toString());
+        };
+
+        div.addEventListener('click', toggleFolder);
+        div.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleFolder();
+          } else if (e.key === 'ArrowRight' && !children.classList.contains('open')) {
+            e.preventDefault();
+            toggleFolder();
+          } else if (e.key === 'ArrowLeft' && children.classList.contains('open')) {
+            e.preventDefault();
+            toggleFolder();
+          } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            const next = div.nextElementSibling?.querySelector('.tree-item') || div.parentElement?.nextElementSibling?.querySelector('.tree-item');
+            if (next) next.focus();
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            const prev = div.previousElementSibling?.querySelector('.tree-item:last-child') || div.parentElement?.previousElementSibling?.querySelector('.tree-item');
+            if (prev) prev.focus();
+          }
         });
       } else {
-        div.addEventListener('click', () => {
+        const selectFile = async () => {
           currentFile = item.path;
           document.querySelectorAll('.tree-item').forEach(i => i.classList.remove('active'));
           div.classList.add('active');
           $('currentFileLabel').textContent = currentFile;
+
+          // Read file content from server
+          try {
+            const res = await fetch('/api/files/' + sessionId + '/' + item.path, {
+              headers: { 'x-session-token': sessionToken || '' }
+            });
+            const data = await res.json();
+            if (data.content !== undefined) {
+              fileContents[item.path] = data.content;
+              currentFileContent = data.content;
+            }
+          } catch (e) {
+            console.error('Failed to read file:', e);
+          }
+        };
+
+        div.addEventListener('click', selectFile);
+        div.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            selectFile();
+          } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            const next = div.nextElementSibling?.querySelector('.tree-item') || div.parentElement?.nextElementSibling?.querySelector('.tree-item');
+            if (next) next.focus();
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            const prev = div.previousElementSibling?.querySelector('.tree-item:last-child') || div.parentElement?.previousElementSibling?.querySelector('.tree-item');
+            if (prev) prev.focus();
+          }
         });
         parent.appendChild(div);
       }
@@ -1513,6 +2039,44 @@
     }
   });
 
+  // ===== Drag to Resize Panels =====
+  function initResizeHandle(handleId, panelId, isLeft) {
+    const handle = $(handleId);
+    const panel = $(panelId);
+    if (!handle || !panel) return;
+
+    let isResizing = false;
+    let startX = 0;
+    let startWidth = 0;
+
+    handle.addEventListener('mousedown', (e) => {
+      isResizing = true;
+      startX = e.clientX;
+      startWidth = panel.offsetWidth;
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isResizing) return;
+      const delta = isLeft ? (e.clientX - startX) : (startX - e.clientX);
+      const newWidth = Math.max(150, Math.min(500, startWidth + delta));
+      panel.style.width = newWidth + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isResizing) {
+        isResizing = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    });
+  }
+
+  initResizeHandle('resizeLeft', 'leftPanel', true);
+  initResizeHandle('resizeRight', 'rightPanel', false);
+
   // ===== Autocomplete =====
   const commands = [
     { label: '/help', desc: '显示可用命令' },
@@ -1525,18 +2089,8 @@
     { label: '/commit', desc: '提交更改' },
   ];
 
-  const fileSuggestions = [
-    'src/components/chat-area.tsx',
-    'src/components/code-block.tsx',
-    'src/components/command-input.tsx',
-    'src/components/file-browser.tsx',
-    'src/components/toolbar.tsx',
-    'src/app/page.tsx',
-    'src/app/globals.css',
-    'src/server.ts',
-    'package.json',
-    'tsconfig.json',
-  ];
+  // Dynamic file list (populated from file tree)
+  let allFiles = [];
 
   let acIndex = 0;
   let acItems = [];
@@ -1561,7 +2115,7 @@
       }
     } else if (input.includes('@')) {
       const afterAt = input.split('@').pop() || '';
-      const filtered = fileSuggestions.filter(f => f.toLowerCase().includes(afterAt.toLowerCase()));
+      const filtered = allFiles.filter(f => f.toLowerCase().includes(afterAt.toLowerCase()));
       acItems = filtered.map(f => ({ label: f }));
       acIndex = 0;
       if (filtered.length > 0) {
@@ -1615,11 +2169,13 @@
     });
   }
 
-  document.querySelectorAll('.autocomplete-item').forEach(el => {
-    el.addEventListener('click', () => {
-      acIndex = parseInt(el.dataset.idx);
+  // Use event delegation for autocomplete items (they are dynamically generated)
+  $('autocomplete').addEventListener('click', (e) => {
+    const item = e.target.closest('.autocomplete-item');
+    if (item && item.dataset.idx !== undefined) {
+      acIndex = parseInt(item.dataset.idx);
       selectAutocomplete();
-    });
+    }
   });
 
   // ===== Chat =====
@@ -1643,8 +2199,8 @@
       toolUse.forEach(t => {
         html += `<div class="tool-use-item">
           <span class="tool-use-icon">${t.icon || '&#9881;'}</span>
-          <span class="tool-use-name">${t.name}</span>
-          <span class="tool-use-detail">${t.detail}</span>
+          <span class="tool-use-name">${escapeHtml(t.name)}</span>
+          <span class="tool-use-detail">${escapeHtml(t.detail)}</span>
           <span class="tool-use-status ${t.status}">${t.status === 'done' ? '已完成' : '运行中'}</span>
         </div>`;
       });
@@ -1662,7 +2218,7 @@
         html += `<div class="chat-code-block">
           <div class="chat-code-header">
             <span class="file-icon">&#128196;</span>
-            <span class="file-name">${cb.filename || cb.language}</span>
+            <span class="file-name">${escapeHtml(cb.filename || cb.language)}</span>
             <button class="copy-btn" onclick="copyCode(this)">&#128203; 复制</button>
           </div>
           <div class="chat-code-body">${highlightCode(cb.code, cb.language)}</div>
@@ -1745,11 +2301,115 @@
       return;
     }
 
+    // ===== Handle Client Commands =====
+    if (text.startsWith('/')) {
+      const parts = text.split(/\s+/);
+      const cmd = parts[0].toLowerCase();
+
+      if (cmd === '/clear') {
+        $('chatMessages').innerHTML = '';
+        $('chatWelcome')?.classList.remove('hidden');
+        // Reset stats
+        tokenStats = { input: 0, inputMax: 200000, output: 0, outputMax: 16000 };
+        toolUsage = {};
+        renderTokenUsage();
+        renderToolUsage();
+        return;
+      }
+
+      if (cmd === '/cost') {
+        const inputPct = ((tokenStats.input / tokenStats.inputMax) * 100).toFixed(1);
+        const outputPct = ((tokenStats.output / tokenStats.outputMax) * 100).toFixed(1);
+        appendChatMsg('system', `Token 用量统计：\n输入：${formatNumber(tokenStats.input)} / ${formatNumber(tokenStats.inputMax)} (${inputPct}%)\n输出：${formatNumber(tokenStats.output)} / ${formatNumber(tokenStats.outputMax)} (${outputPct}%)`, null, null);
+        return;
+      }
+
+      if (cmd === '/help') {
+        let helpText = '可用命令：\n';
+        commands.forEach(c => { helpText += `  ${c.label} - ${c.desc}\n`; });
+        helpText += '\n快捷操作：\n  / 命令补全\n  @ 引用文件\n  Tab 自动补全';
+        appendChatMsg('system', helpText, null, null);
+        return;
+      }
+
+      if (cmd === '/model') {
+        openConfigModal();
+        return;
+      }
+
+      // Server-side commands: /compact, /init, /diff, /commit
+      // These are passed through to the backend CLI
+      isWaiting = true;
+      $('sendBtn').disabled = true;
+      showTyping();
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'input', data: text }));
+      } else {
+        removeTyping();
+        appendChatMsg('system', '未连接到服务器，请刷新页面重试');
+        isWaiting = false;
+        $('sendBtn').disabled = false;
+      }
+      return;
+    }
+
+    // ===== Handle @ File References =====
+    const atMatches = text.match(/@(\S+)/g);
+    if (atMatches && atMatches.length > 0) {
+      // Extract file references and remaining text
+      const fileRefs = atMatches.map(m => m.substring(1));
+      let promptText = text;
+      fileRefs.forEach(ref => { promptText = promptText.replace('@' + ref, ''); });
+      promptText = promptText.trim();
+
+      // Read file contents
+      let attachedContent = '';
+      let readCount = 0;
+      let readDone = () => {
+        readCount++;
+        if (readCount === fileRefs.length) {
+          // All files read, send combined message
+          const fullPrompt = promptText + (promptText ? '\n\n' : '') + attachedContent;
+          isWaiting = true;
+          $('sendBtn').disabled = true;
+          showTyping();
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'input', data: fullPrompt }));
+          } else {
+            removeTyping();
+            appendChatMsg('system', '未连接到服务器，请刷新页面重试');
+            isWaiting = false;
+            $('sendBtn').disabled = false;
+          }
+        }
+      };
+
+      fileRefs.forEach(filePath => {
+        fetch('/api/files/' + sessionId + '/' + filePath, {
+          headers: { 'x-session-token': sessionToken || '' }
+        })
+          .then(res => res.json())
+          .then(data => {
+            if (data.content) {
+              attachedContent += `\n--- ${filePath} ---\n${data.content}\n`;
+            } else {
+              attachedContent += `\n--- ${filePath} ---\n(无法读取文件内容)\n`;
+            }
+            readDone();
+          })
+          .catch(() => {
+            attachedContent += `\n--- ${filePath} ---\n(文件读取失败)\n`;
+            readDone();
+          });
+      });
+      return;
+    }
+
+    // ===== Normal Message =====
     isWaiting = true;
     $('sendBtn').disabled = true;
     showTyping();
 
-    // Send to server
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'input', data: text }));
     } else {
@@ -1757,9 +2417,6 @@
       appendChatMsg('system', '未连接到服务器，请刷新页面重试');
       isWaiting = false;
       $('sendBtn').disabled = false;
-    }// Real WebSocket
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'input', data: text }));
     }
   }
 
@@ -1851,7 +2508,12 @@
     let html = options.map(m =>
       `<div class="custom-select-option ${m.value === selectedModel ? 'selected' : ''}" data-value="${m.value}" data-label="${m.label}">${m.label}</div>`
     ).join('');
-    html += `<div class="custom-select-option ${selectedModel === '__custom__' ? 'selected' : ''}" data-value="__custom__" data-label="手动输入...">手动输入...</div>`;
+    html += `<div class="use-other-model" data-value="__custom__">
+      <div>
+        <div class="uom-label">使用其他模型</div>
+        <div class="uom-desc">配置自定义模型 ID 使用非列表内模型</div>
+      </div>
+    </div>`;
     modelDropdown.innerHTML = html;
   }
   renderModelOptions();
@@ -1862,8 +2524,15 @@
   });
 
   modelDropdown.addEventListener('click', (e) => {
-    const opt = e.target.closest('.custom-select-option');
+    const opt = e.target.closest('.custom-select-option, .use-other-model');
     if (!opt) return;
+    if (opt.classList.contains('use-other-model')) {
+      selectedModel = '__custom__';
+      modelTrigger.querySelector('.cs-label').textContent = '自定义模型';
+      closeAllDropdowns();
+      $('cfgModelCustom').style.display = 'block';
+      return;
+    }
     selectedModel = opt.dataset.value;
     modelTrigger.querySelector('.cs-label').textContent = opt.dataset.label;
     renderModelOptions();
@@ -1874,8 +2543,137 @@
   // Close dropdowns on outside click
   document.addEventListener('click', closeAllDropdowns);
 
+  // ===== Top Tab Switching =====
+  let currentConfigTab = 'provider';
+
+  function switchConfigTab(tab) {
+    currentConfigTab = tab;
+    document.querySelectorAll('.config-top-tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.tab === tab);
+    });
+    $('cfgTabProvider').classList.toggle('hidden', tab !== 'provider');
+    $('cfgTabCustom').classList.toggle('hidden', tab !== 'custom');
+    $('cfgTabManage').classList.toggle('hidden', tab !== 'manage');
+    if (tab === 'manage') renderModelList();
+  }
+
+  document.querySelectorAll('.config-top-tab').forEach(tab => {
+    tab.addEventListener('click', () => switchConfigTab(tab.dataset.tab));
+  });
+
+  // ===== Model Management =====
+  const providerIcons = {
+    openrouter: '&#9881;',
+    anthropic: '&#9881;',
+    openai: '&#9881;',
+    custom: '&#128295;'
+  };
+
+  function saveModels() {
+    localStorage.setItem('savedModels', JSON.stringify(savedModels));
+    localStorage.setItem('activeModelId', activeModelId);
+  }
+
+  function renderModelList() {
+    const list = $('modelList');
+    if (savedModels.length === 0) {
+      list.innerHTML = '<div class="model-list-empty"><div class="mle-icon">&#128268;</div>暂无已添加的模型<br><span style="font-size:12px;margin-top:4px;display:inline-block;">切换到"模型服务商"或"自定义配置"添加模型</span></div>';
+      return;
+    }
+    list.innerHTML = savedModels.map((m, i) => {
+      const isActive = m.id === activeModelId;
+      const iconClass = m.provider || 'custom';
+      const shortModel = m.model.split('/').pop() || m.model;
+      const providerLabel = m.provider ? m.provider.charAt(0).toUpperCase() + m.provider.slice(1) : '自定义';
+      return `<div class="model-item ${isActive ? 'active' : ''}" data-idx="${i}">
+        <div class="model-item-icon ${iconClass}">${providerIcons[iconClass] || '&#9881;'}</div>
+        <div class="model-item-info">
+          <div class="model-item-name">${shortModel}</div>
+          <div class="model-item-detail">${providerLabel} · ${m.model}</div>
+        </div>
+        ${isActive ? '<span class="active-badge">使用中</span>' : ''}
+        <div class="model-item-actions">
+          ${!isActive ? `<button class="model-item-btn switch-btn" data-action="switch" data-idx="${i}" title="切换到此模型">&#8644;</button>` : ''}
+          <button class="model-item-btn delete" data-action="delete" data-idx="${i}" title="删除模型">&#10005;</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  $('modelList').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const idx = parseInt(btn.dataset.idx);
+    if (btn.dataset.action === 'delete') {
+      if (confirm(`确定删除模型 "${savedModels[idx].model}" 吗？`)) {
+        if (savedModels[idx].id === activeModelId) activeModelId = '';
+        savedModels.splice(idx, 1);
+        saveModels();
+        renderModelList();
+      }
+    } else if (btn.dataset.action === 'switch') {
+      switchToModel(idx);
+    }
+  });
+
+  function switchToModel(idx) {
+    const m = savedModels[idx];
+    if (!m) return;
+    activeModelId = m.id;
+    saveModels();
+
+    const apiKey = sessionStorage.getItem(`apiKey_${m.id}`);
+    if (!apiKey) {
+      alert('API Key 已过期，请重新配置');
+      openConfigModal();
+      return;
+    }
+
+    const body = { apiKey, model: m.model };
+    if (m.provider) body.provider = m.provider;
+    if (m.baseUrl) body.baseUrl = m.baseUrl;
+
+    $('submitConfig').disabled = true;
+    $('submitConfig').textContent = '切换中...';
+
+    fetch('/api/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(res => res.json()).then(data => {
+      if (data.sessionId) {
+        // Close old WebSocket before creating new one
+        if (ws) { ws.onclose = null; ws.close(); ws = null; }
+        sessionId = data.sessionId;
+        sessionToken = data.token;
+        isConnected = true;
+        closeConfigModal();
+        const shortName = m.model.split('/').pop() || m.model;
+        $('modelName').textContent = shortName;
+        $('statusDot').style.background = 'var(--green)';
+        $('statusDot').classList.remove('disconnected');
+        $('statusText').textContent = '已连接';
+        // Update right panel
+        updateCurrentModel();
+        tokenStats = { input: 0, inputMax: 200000, output: 0, outputMax: 16000 };
+        toolUsage = {};
+        renderTokenUsage();
+        renderToolUsage();
+        appendChatMsg('system', `已切换到 ${m.model}`);
+        loadFileTree();
+        connectWebSocket();
+      }
+    }).catch(e => {
+      alert('切换失败: ' + e.message);
+    }).finally(() => {
+      $('submitConfig').disabled = false;
+      $('submitConfig').textContent = '添加模型';
+    });
+  }
+
   function openConfigModal() {
     $('configModal').classList.remove('hidden');
+    switchConfigTab('provider');
     renderProviderOptions();
     renderModelOptions();
   }
@@ -1889,34 +2687,82 @@
   $('configModal').addEventListener('click', (e) => { if (e.target === $('configModal')) closeConfigModal(); });
 
   $('submitConfig').addEventListener('click', async () => {
-    const provider = selectedProvider;
-    const model = selectedModel === '__custom__'
-      ? $('cfgModelCustom').value.trim()
-      : selectedModel;
-    const apiKey = $('cfgApiKey').value.trim();
-    if (!provider || !model || !apiKey) { alert('请填写所有必填项'); return; }
+    let provider, model, apiKey, baseUrl;
+
+    if (currentConfigTab === 'custom') {
+      // 自定义配置 Tab
+      model = $('cfgCustomModelId').value.trim();
+      apiKey = $('cfgCustomApiKey').value.trim();
+      baseUrl = $('cfgCustomBaseUrl').value.trim();
+      if (!model || !apiKey) { alert('请填写所有必填项'); return; }
+      provider = '';
+    } else {
+      // 模型服务商 Tab
+      provider = selectedProvider;
+      model = selectedModel === '__custom__'
+        ? $('cfgModelCustom').value.trim()
+        : selectedModel;
+      apiKey = $('cfgApiKey').value.trim();
+      if (!provider || !model || !apiKey) { alert('请填写所有必填项'); return; }
+    }
+
+    // 检查是否已存在相同模型
+    const existingIdx = savedModels.findIndex(m => m.model === model && m.provider === provider);
+    if (existingIdx !== -1) {
+      if (!confirm(`模型 "${model}" 已存在，是否覆盖？`)) return;
+      savedModels.splice(existingIdx, 1);
+    }
 
     $('submitConfig').disabled = true;
     $('submitConfig').textContent = '连接中...';
 
     try {
+      const body = { apiKey, model };
+      if (provider) body.provider = provider;
+      if (baseUrl) body.baseUrl = baseUrl;
+
       const res = await fetch('/api/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey, model, provider })
+        body: JSON.stringify(body)
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
+      // 保存到模型列表
+      const modelEntry = {
+        id: 'model_' + Date.now(),
+        model,
+        provider,
+        baseUrl: baseUrl || ''
+      };
+      // API Key 存储到 sessionStorage，不写入 localStorage
+      sessionStorage.setItem(`apiKey_${modelEntry.id}`, apiKey);
+      savedModels.push(modelEntry);
+      activeModelId = modelEntry.id;
+      saveModels();
+
+      // Close old WebSocket before creating new one
+      if (ws) { ws.onclose = null; ws.close(); ws = null; }
+
       sessionId = data.sessionId;
-        loadFileTree();
+      sessionToken = data.token;
+      loadFileTree();
       isConnected = true;
       closeConfigModal();
 
       const shortName = model.split('/').pop() || model;
       $('modelName').textContent = shortName;
       $('statusDot').style.background = 'var(--green)';
+      $('statusDot').classList.remove('disconnected');
       $('statusText').textContent = '已连接';
+
+      // Update right panel
+      updateCurrentModel();
+      tokenStats = { input: 0, inputMax: 200000, output: 0, outputMax: 16000 };
+      toolUsage = {};
+      renderTokenUsage();
+      renderToolUsage();
 
       appendChatMsg('system', `已连接到 ${model}`);
       connectWebSocket();
@@ -1924,18 +2770,62 @@
       alert(e.message);
     } finally {
       $('submitConfig').disabled = false;
-      $('submitConfig').textContent = '保存配置';
+      $('submitConfig').textContent = '添加模型';
     }
+  });
+
+  // ===== API Key Links =====
+  const apiKeyUrls = {
+    openrouter: 'https://openrouter.ai/keys',
+    anthropic: 'https://console.anthropic.com/settings/keys',
+    openai: 'https://platform.openai.com/api-keys'
+  };
+
+  function getApiKeyUrl() {
+    return apiKeyUrls[selectedProvider] || 'https://platform.openai.com/api-keys';
+  }
+
+  $('getApiKeyLink').addEventListener('click', (e) => {
+    e.preventDefault();
+    window.open(getApiKeyUrl(), '_blank');
+  });
+
+  $('getApiKeyLink2').addEventListener('click', (e) => {
+    e.preventDefault();
+    window.open('https://platform.openai.com/api-keys', '_blank');
   });
 
   // ===== WebSocket =====
   function connectWebSocket() {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     ws = new WebSocket(`${protocol}//${location.host}/ws`);
-    ws.onopen = () => ws.send(JSON.stringify({ type: 'init', sessionId }));
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ 
+        type: 'init', 
+        sessionId,
+        token: sessionToken
+      }));
+    };
     ws.onmessage = (e) => {
       const msg = JSON.parse(e.data);
-      if (msg.type === 'output') { removeTyping(); appendChatMsg('assistant', msg.data); }
+      if (msg.type === 'output') {
+        removeTyping();
+        appendChatMsg('assistant', msg.data);
+        // Track token usage
+        if (msg.usage) {
+          if (msg.usage.input_tokens) tokenStats.input = msg.usage.input_tokens;
+          if (msg.usage.output_tokens) tokenStats.output = msg.usage.output_tokens;
+          if (msg.usage.input_max) tokenStats.inputMax = msg.usage.input_max;
+          if (msg.usage.output_max) tokenStats.outputMax = msg.usage.output_max;
+          renderTokenUsage();
+        }
+      }
+      else if (msg.type === 'tool_use') {
+        // Track tool usage
+        if (msg.tool_name) {
+          recordToolUse(msg.tool_name);
+        }
+      }
       else if (msg.type === 'stderr') appendChatMsg('system', msg.data);
       else if (msg.type === 'exit') {
         if (msg.code !== 0) appendChatMsg('system', '进程退出，代码 ' + msg.code);
@@ -1947,11 +2837,24 @@
     };
     ws.onclose = () => {
       $('statusDot').style.background = 'var(--red)';
+      $('statusDot').classList.add('disconnected');
       $('statusText').textContent = '已断开';
       appendChatMsg('system', '连接已断开，正在重连...');
       setTimeout(connectWebSocket, 3000);
     };
   }
+
+  // ===== Page Load: Restore Active Model Display =====
+  (function() {
+    if (activeModelId && savedModels.length > 0) {
+      const active = savedModels.find(m => m.id === activeModelId);
+      if (active) {
+        const shortName = active.model.split('/').pop() || active.model;
+        $('modelName').textContent = shortName;
+        updateCurrentModel();
+      }
+    }
+  })();
 </script>
 </body>
 </html>

@@ -42,17 +42,21 @@ function stripAnsi(str) {
 
 function createSession(apiKey, model, provider) {
   const sessionId = uuidv4();
+  const sessionToken = uuidv4();
   const sessionDir = join(WORKSPACE_DIR, sessionId);
   if (!existsSync(WORKSPACE_DIR)) mkdir(WORKSPACE_DIR, { recursive: true }).catch(console.error);
   mkdir(sessionDir, { recursive: true }).catch(console.error);
-  const session = { id: sessionId, apiKey, model, provider, dir: sessionDir, createdAt: Date.now(), lastActivity: Date.now() };
+  const session = { id: sessionId, token: sessionToken, apiKey, model, provider, dir: sessionDir, createdAt: Date.now(), lastActivity: Date.now() };
   sessions.set(sessionId, session);
   return session;
 }
 
-function getSession(sessionId) {
+function getSession(sessionId, token) {
   const session = sessions.get(sessionId);
-  if (session) session.lastActivity = Date.now();
+  if (session) {
+    if (token && session.token !== token) return null;
+    session.lastActivity = Date.now();
+  }
   return session;
 }
 
@@ -136,8 +140,8 @@ async function spawnCli(session, prompt) {
 }
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+app.use(cors({ origin: true, credentials: true }));
+app.use(express.json({ limit: '50kb' }));
 app.use(express.static(join(__dirname, '../../public'), {
   setHeaders: (res) => {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -152,18 +156,20 @@ app.post('/api/session', async (req, res) => {
     if (!apiKey) return res.status(400).json({ error: 'API key is required' });
     if (sessions.size >= MAX_SESSIONS) return res.status(503).json({ error: 'Too many sessions' });
     const session = createSession(apiKey, model || 'nvidia/nemotron-3-ultra-550b-a55b:free', provider || 'openrouter');
-    res.json({ sessionId: session.id, dir: session.dir });
+    res.json({ sessionId: session.id, token: session.token });
   } catch (error) { res.status(500).json({ error: 'Failed to create session' }); }
 });
 
 app.get('/api/session/:id', (req, res) => {
-  const session = getSession(req.params.id);
-  if (!session) return res.status(404).json({ error: 'Session not found' });
-  res.json({ sessionId: session.id, dir: session.dir, model: session.model, provider: session.provider });
+  const token = req.headers['x-session-token'];
+  const session = getSession(req.params.id, token);
+  if (!session) return res.status(401).json({ error: 'Invalid session or token' });
+  res.json({ sessionId: session.id, model: session.model, provider: session.provider });
 });
 
 app.delete('/api/session/:id', async (req, res) => {
-  const session = sessions.get(req.params.id);
+  const token = req.headers['x-session-token'];
+  const session = getSession(req.params.id, token);
   if (session) {
     const oldProc = sessionProcesses.get(req.params.id);
     if (oldProc) { oldProc.kill(); sessionProcesses.delete(req.params.id); }
@@ -175,15 +181,16 @@ app.delete('/api/session/:id', async (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', version: VERSION, sessions: sessions.size, maxSessions: MAX_SESSIONS, uptime: process.uptime(), freeCodeDir: FREE_CODE_DIR });
+  res.json({ status: 'ok', version: VERSION, sessions: sessions.size, maxSessions: MAX_SESSIONS, uptime: process.uptime() });
 });
 
 
 // ===== File Tree API =====
 app.get('/api/files/:sessionId', async (req, res) => {
   try {
-    const session = getSession(req.params.sessionId);
-    if (!session) return res.status(404).json({ error: 'Session not found' });
+    const token = req.headers['x-session-token'];
+    const session = getSession(req.params.sessionId, token);
+    if (!session) return res.status(401).json({ error: 'Invalid session or token' });
     const { readdir, stat } = await import('fs/promises');
     async function buildTree(dirPath, basePath) {
       const entries = await readdir(dirPath, { withFileTypes: true });
@@ -212,12 +219,84 @@ app.get('/api/files/:sessionId', async (req, res) => {
   }
 });
 
+// ===== File Content API =====
+app.get('/api/files/:sessionId/*', async (req, res) => {
+  try {
+    const token = req.headers['x-session-token'];
+    const session = getSession(req.params.sessionId, token);
+    if (!session) return res.status(401).json({ error: 'Invalid session or token' });
+    const filePath = req.params[0];
+    const fullPath = join(session.dir, filePath);
+    const resolvedPath = require('path').resolve(fullPath);
+    const resolvedSessionDir = require('path').resolve(session.dir);
+    
+    // 防止路径遍历攻击
+    if (!resolvedPath.startsWith(resolvedSessionDir)) {
+      return res.status(403).json({ error: 'Access denied: path traversal detected' });
+    }
+    
+    const content = await readFile(fullPath, 'utf-8');
+    res.json({ content, path: filePath });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to read file: ' + error.message });
+  }
+});
+
+// ===== File Write API =====
+app.post('/api/files/:sessionId/*', async (req, res) => {
+  try {
+    const token = req.headers['x-session-token'];
+    const session = getSession(req.params.sessionId, token);
+    if (!session) return res.status(401).json({ error: 'Invalid session or token' });
+    const filePath = req.params[0];
+    const fullPath = join(session.dir, filePath);
+    const resolvedPath = require('path').resolve(fullPath);
+    const resolvedSessionDir = require('path').resolve(session.dir);
+    
+    // 防止路径遍历攻击
+    if (!resolvedPath.startsWith(resolvedSessionDir)) {
+      return res.status(403).json({ error: 'Access denied: path traversal detected' });
+    }
+    
+    const dir = pathDirname(fullPath);
+    if (!existsSync(dir)) await mkdir(dir, { recursive: true });
+    await writeFile(fullPath, req.body.content || '', 'utf-8');
+    res.json({ success: true, path: filePath });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to write file: ' + error.message });
+  }
+});
+
+// ===== File Delete API =====
+app.delete('/api/files/:sessionId/*', async (req, res) => {
+  try {
+    const token = req.headers['x-session-token'];
+    const session = getSession(req.params.sessionId, token);
+    if (!session) return res.status(401).json({ error: 'Invalid session or token' });
+    const filePath = req.params[0];
+    const fullPath = join(session.dir, filePath);
+    const resolvedPath = require('path').resolve(fullPath);
+    const resolvedSessionDir = require('path').resolve(session.dir);
+    
+    // 防止路径遍历攻击
+    if (!resolvedPath.startsWith(resolvedSessionDir)) {
+      return res.status(403).json({ error: 'Access denied: path traversal detected' });
+    }
+    
+    const { unlink } = await import('fs/promises');
+    await unlink(fullPath);
+    res.json({ success: true, path: filePath });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete file: ' + error.message });
+  }
+});
+
 const server = app.listen(
 PORT, HOST, () => {
   console.log('Free-code Web Server v' + VERSION + ' on ' + HOST + ':' + PORT);
 });
 
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024 });
 
 wss.on('connection', (ws) => {
   let sessionId = null;
@@ -228,9 +307,10 @@ wss.on('connection', (ws) => {
 
       if (message.type === 'init') {
         sessionId = message.sessionId;
-        const session = getSession(sessionId);
+        const token = message.token;
+        const session = getSession(sessionId, token);
         if (!session) {
-          ws.send(JSON.stringify({ type: 'error', message: 'Invalid session' }));
+          ws.send(JSON.stringify({ type: 'error', message: 'Invalid session or token' }));
           ws.close();
           return;
         }
@@ -247,7 +327,7 @@ wss.on('connection', (ws) => {
         const oldProc = sessionProcesses.get(sessionId);
         if (oldProc) oldProc.kill();
 
-        console.log('[INPUT] "' + message.data.substring(0, 100) + '"');
+        console.log('[INPUT] message length: ' + (message.data ? message.data.length : 0));
 
         const proc = await spawnCli(session, message.data);
         sessionProcesses.set(sessionId, proc);
