@@ -178,7 +178,42 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', version: VERSION, sessions: sessions.size, maxSessions: MAX_SESSIONS, uptime: process.uptime(), freeCodeDir: FREE_CODE_DIR });
 });
 
-const server = app.listen(PORT, HOST, () => {
+
+// ===== File Tree API =====
+app.get('/api/files/:sessionId', async (req, res) => {
+  try {
+    const session = getSession(req.params.sessionId);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    const { readdir, stat } = await import('fs/promises');
+    async function buildTree(dirPath, basePath) {
+      const entries = await readdir(dirPath, { withFileTypes: true });
+      const items = [];
+      for (const entry of entries) {
+        if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+        const fullPath = join(dirPath, entry.name);
+        const relative = basePath ? basePath + '/' + entry.name : entry.name;
+        try {
+          const s = await stat(fullPath);
+          if (entry.isDirectory()) {
+            const children = await buildTree(fullPath, relative);
+            items.push({ name: entry.name, path: relative, type: 'directory', children });
+          } else {
+            items.push({ name: entry.name, path: relative, type: 'file', size: s.size });
+          }
+        } catch (e) { /* skip */ }
+      }
+      items.sort((a, b) => a.type !== b.type ? (a.type === 'directory' ? -1 : 1) : a.name.localeCompare(b.name));
+      return items;
+    }
+    const tree = await buildTree(session.dir, '');
+    res.json({ tree });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to list files' });
+  }
+});
+
+const server = app.listen(
+PORT, HOST, () => {
   console.log('Free-code Web Server v' + VERSION + ' on ' + HOST + ':' + PORT);
 });
 
