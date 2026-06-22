@@ -25,11 +25,11 @@ const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
-const VERSION = '6.1.1';
+const VERSION = '7.0.0';
 
 const sessions = new Map();
 const sessionProcesses = new Map();
-const sessionMessages = new Map();
+const sessionProxies = new Map(); // proxy processes
 
 function stripAnsi(str) {
   str = str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
@@ -47,7 +47,6 @@ function createSession(apiKey, model, provider) {
   mkdir(sessionDir, { recursive: true }).catch(console.error);
   const session = { id: sessionId, apiKey, model, provider, dir: sessionDir, createdAt: Date.now(), lastActivity: Date.now() };
   sessions.set(sessionId, session);
-  sessionMessages.set(sessionId, []);
   return session;
 }
 
@@ -55,10 +54,6 @@ function getSession(sessionId) {
   const session = sessions.get(sessionId);
   if (session) session.lastActivity = Date.now();
   return session;
-}
-
-function getMessages(sessionId) {
-  return sessionMessages.get(sessionId) || [];
 }
 
 const OPENROUTER_MODELS = {
@@ -74,128 +69,63 @@ function resolveOpenRouterModel(model) {
   return OPENROUTER_MODELS[model] || model;
 }
 
-function getProviderEnv(provider) {
-  switch (provider) {
-    case 'openai': return { CLAUDE_CODE_USE_OPENAI: '1' };
-    case 'bedrock': return { CLAUDE_CODE_USE_BEDROCK: '1' };
-    case 'vertex': return { CLAUDE_CODE_USE_VERTEX: '1' };
-    case 'openrouter': return { ANTHROPIC_BASE_URL: 'https://openrouter.ai/api' };
-    default: return {};
-  }
-}
-
-async function spawnWithProxy(session, prompt, ws) {
-  const bridgePath = join(FREE_CODE_DIR, 'or_bridge.mjs');
+async function startProxy(session) {
+  const proxyPath = join(FREE_CODE_DIR, 'or_proxy.mjs');
   const model = resolveOpenRouterModel(session.model || 'nvidia/nemotron-3-ultra-550b-a55b:free');
-  console.log('[BRIDGE] node ' + bridgePath + ' --model ' + model);
+  console.log('[PROXY] starting or_proxy.mjs --model ' + model);
 
-  const bridge = spawn('node', [bridgePath, '--model', model], {
+  const proxy = spawn('node', [proxyPath, '--model', model], {
     cwd: session.dir,
-    env: { HOME: session.dir, ...process.env, ANTHROPIC_API_KEY: session.apiKey, NODE_ENV: 'production' },
+    env: { ...process.env, ANTHROPIC_API_KEY: session.apiKey, NODE_ENV: 'production' },
     stdio: ['pipe', 'pipe', 'pipe']
   });
 
-  let responseBuffer = '';
-  let startupReceived = false;
-
-  // Attach listeners BEFORE sending messages
-  bridge.stdout.on('data', (chunk) => {
-    const raw = chunk.toString();
-    const clean = stripAnsi(raw);
-    console.log('[BRIDGE stdout] ' + clean.substring(0, 100));
-
-    if (!startupReceived) {
-      const lines = clean.split('\n');
-      for (const line of lines) {
-        if (line.match(/^\d+$/)) {
-          startupReceived = true;
-          console.log('[BRIDGE] startup signal received');
-          continue;
-        }
-        if (line.trim()) {
-          responseBuffer += line + '\n';
-          if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ type: 'output', data: line + '\n' }));
-          }
-        }
-      }
-    } else {
-      responseBuffer += clean;
-      if (clean.trim() && ws.readyState === ws.OPEN) {
-        ws.send(JSON.stringify({ type: 'output', data: clean }));
-      }
-    }
-  });
-
-  bridge.stderr.on('data', (chunk) => {
-    const errStr = chunk.toString();
-    console.error('[BRIDGE stderr] ' + errStr.substring(0, 200));
-    if (ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify({ type: 'stderr', data: errStr }));
-    }
-  });
-
-  bridge.on('close', (code) => {
-    console.log('[BRIDGE] exited with code ' + code);
-    sessionProcesses.delete(session.id);
-
-    if (responseBuffer.trim()) {
-      const msgs = getMessages(session.id);
-      msgs.push({ role: 'user', content: prompt });
-      msgs.push({ role: 'assistant', content: responseBuffer.trim() });
-      if (msgs.length > 20) msgs.splice(0, msgs.length - 20);
-      sessionMessages.set(session.id, msgs);
-      console.log('[HISTORY] ' + msgs.length + ' messages');
-    }
-
-    if (ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify({ type: 'exit', code }));
-    }
-  });
-
-  bridge.on('error', (err) => {
-    console.error('[BRIDGE error] ' + err.message);
-    if (ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify({ type: 'error', message: 'Bridge failed: ' + err.message }));
-    }
-  });
-
-  // Wait for startup signal
-  await new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error('Bridge startup timeout')), 10000);
-    const checkStartup = () => {
-      if (startupReceived) {
+  let proxyOutput = '';
+  const portPromise = new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('Proxy startup timeout')), 10000);
+    proxy.stdout.on('data', (chunk) => {
+      proxyOutput += chunk.toString();
+      const portMatch = proxyOutput.match(/(\d{4,5})/);
+      if (portMatch) {
         clearTimeout(t);
-        resolve();
-      } else {
-        setTimeout(checkStartup, 100);
+        resolve(parseInt(portMatch[1], 10));
       }
-    };
-    checkStartup();
-    bridge.on('close', (c) => { clearTimeout(t); reject(new Error('Bridge exited ' + c)); });
+    });
+    proxy.stderr.on('data', (chunk) => {
+      console.error('[PROXY stderr] ' + chunk.toString().trim());
+    });
+    proxy.on('error', (e) => { clearTimeout(t); reject(e); });
+    proxy.on('close', (c) => { clearTimeout(t); reject(new Error('Proxy exited ' + c)); });
   });
 
-  console.log('[BRIDGE] sending messages');
-  const messages = [...getMessages(session.id), { role: 'user', content: prompt }];
-  bridge.stdin.write(JSON.stringify(messages));
-  bridge.stdin.end();
-
-  return bridge;
+  const port = await portPromise;
+  console.log('[PROXY] listening on port ' + port);
+  return { process: proxy, port };
 }
 
-async function spawnCli(session, prompt, ws) {
-  if (session.provider === 'openrouter') {
-    return spawnWithProxy(session, prompt, ws);
-  }
-
+async function spawnCli(session, prompt) {
   const cliPath = join(FREE_CODE_DIR, 'cli-dev');
   const cliArgs = ['--print'];
   if (session.model) cliArgs.push('--model', session.model);
 
-  const providerEnv = getProviderEnv(session.provider);
+  const env = {
+    HOME: session.dir,
+    ...process.env,
+    ANTHROPIC_API_KEY: session.apiKey,
+    NODE_ENV: 'production'
+  };
+
+  // For OpenRouter: start proxy and point CLI at it
+  if (session.provider === 'openrouter') {
+    const { process: proxy, port } = await startProxy(session);
+    sessionProxies.set(session.id, proxy);
+    env.ANTHROPIC_BASE_URL = 'http://127.0.0.1:' + port;
+    console.log('[CLI] ANTHROPIC_BASE_URL=' + env.ANTHROPIC_BASE_URL);
+  }
+
   const proc = spawn(cliPath, cliArgs, {
     cwd: session.dir,
-    env: { HOME: session.dir, ...process.env, ANTHROPIC_API_KEY: session.apiKey, ...providerEnv, NODE_ENV: 'production' },
+    env,
     stdio: ['pipe', 'pipe', 'pipe']
   });
 
@@ -237,8 +167,9 @@ app.delete('/api/session/:id', async (req, res) => {
   if (session) {
     const oldProc = sessionProcesses.get(req.params.id);
     if (oldProc) { oldProc.kill(); sessionProcesses.delete(req.params.id); }
+    const oldProxy = sessionProxies.get(req.params.id);
+    if (oldProxy) { oldProxy.kill(); sessionProxies.delete(req.params.id); }
     sessions.delete(req.params.id);
-    sessionMessages.delete(req.params.id);
   }
   res.json({ success: true });
 });
@@ -283,43 +214,41 @@ wss.on('connection', (ws) => {
 
         console.log('[INPUT] "' + message.data.substring(0, 100) + '"');
 
-        const proc = await spawnCli(session, message.data, ws);
+        const proc = await spawnCli(session, message.data);
         sessionProcesses.set(sessionId, proc);
 
-        // For non-openrouter providers, attach stdout listener here
-        if (session.provider !== 'openrouter') {
-          let responseBuffer = '';
-          proc.stdout.on('data', (chunk) => {
-            const clean = stripAnsi(chunk.toString());
-            responseBuffer += clean;
-            if (clean.trim() && ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({ type: 'output', data: clean }));
-            }
-          });
+        proc.stdout.on('data', (chunk) => {
+          const clean = stripAnsi(chunk.toString());
+          if (clean.trim() && ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ type: 'output', data: clean }));
+          }
+        });
 
-          proc.stderr.on('data', (chunk) => {
-            const errStr = chunk.toString();
-            console.error('[STDERR] ' + errStr.substring(0, 200));
-            if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({ type: 'stderr', data: errStr }));
-            }
-          });
+        proc.stderr.on('data', (chunk) => {
+          const errStr = chunk.toString();
+          console.error('[STDERR] ' + errStr.substring(0, 200));
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ type: 'stderr', data: errStr }));
+          }
+        });
 
-          proc.on('close', (code) => {
-            console.log('[DONE] exit code ' + code);
-            sessionProcesses.delete(sessionId);
-            if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({ type: 'exit', code }));
-            }
-          });
+        proc.on('close', (code) => {
+          console.log('[DONE] exit code ' + code);
+          sessionProcesses.delete(sessionId);
+          // Kill proxy too
+          const proxy = sessionProxies.get(sessionId);
+          if (proxy) { proxy.kill(); sessionProxies.delete(sessionId); }
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ type: 'exit', code }));
+          }
+        });
 
-          proc.on('error', (err) => {
-            console.error('[ERROR] ' + err.message);
-            if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({ type: 'error', message: 'Failed to start CLI: ' + err.message }));
-            }
-          });
-        }
+        proc.on('error', (err) => {
+          console.error('[ERROR] ' + err.message);
+          if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Failed to start CLI: ' + err.message }));
+          }
+        });
       }
 
     } catch (error) {
@@ -331,6 +260,8 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     const proc = sessionProcesses.get(sessionId);
     if (proc) { proc.kill(); sessionProcesses.delete(sessionId); }
+    const proxy = sessionProxies.get(sessionId);
+    if (proxy) { proxy.kill(); sessionProxies.delete(sessionId); }
   });
 });
 
