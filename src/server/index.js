@@ -75,10 +75,17 @@ function resolveOpenRouterModel(model) {
 
 async function startProxy(session) {
   const proxyPath = join(FREE_CODE_DIR, 'or_proxy.mjs');
-  const model = resolveOpenRouterModel(session.model || 'nvidia/nemotron-3-ultra-550b-a55b:free');
+  const model = session.provider === 'openrouter'
+    ? resolveOpenRouterModel(session.model || 'nvidia/nemotron-3-ultra-550b-a55b:free')
+    : (session.model || 'deepseek-v4-pro');
   console.log('[PROXY] starting or_proxy.mjs --model ' + model);
 
-  const proxy = spawn('node', [proxyPath, '--model', model], {
+  const proxyArgs = [proxyPath, '--model', model];
+  if (session.provider === 'deepseek') {
+    proxyArgs.push('--base-url', 'https://api.deepseek.com/v1');
+  }
+
+  const proxy = spawn('node', proxyArgs, {
     cwd: session.dir,
     env: { ...process.env, ANTHROPIC_API_KEY: session.apiKey, NODE_ENV: 'production' },
     stdio: ['pipe', 'pipe', 'pipe']
@@ -120,7 +127,7 @@ async function spawnCli(session, prompt) {
   };
 
   // For OpenRouter: start proxy and point CLI at it
-  if (session.provider === 'openrouter') {
+  if (session.provider === 'openrouter' || session.provider === 'deepseek') {
     const { process: proxy, port } = await startProxy(session);
     sessionProxies.set(session.id, proxy);
     env.ANTHROPIC_BASE_URL = 'http://127.0.0.1:' + port;
