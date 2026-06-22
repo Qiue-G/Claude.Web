@@ -105,7 +105,7 @@ async function startProxy(session) {
 
 async function spawnCli(session, prompt) {
   const cliPath = join(FREE_CODE_DIR, 'cli-dev');
-  const cliArgs = ['--print'];
+  const cliArgs = ['-p', '--bare'];
   if (session.model) cliArgs.push('--model', session.model);
 
   const env = {
