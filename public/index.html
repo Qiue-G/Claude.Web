@@ -953,7 +953,19 @@
       }
       .left-panel.open { left: 0; }
       #resizeLeft { display: none; }
-      .right-panel { display: none; }
+      .right-panel {
+        position: fixed;
+        right: -280px;
+        top: 40px;
+        bottom: 0;
+        z-index: 100;
+        width: 280px;
+        transition: right 0.25s ease;
+        box-shadow: -2px 0 12px rgba(0,0,0,0.3);
+        border-left: 1px solid var(--border);
+      }
+      .right-panel.open { right: 0; }
+      .right-panel.collapsed { width: 0; border-left: none; }
       #resizeRight { display: none; }
 
       /* Chat area full width */
@@ -1485,12 +1497,20 @@
   if (overlay) {
     overlay.addEventListener('click', () => {
       $('leftPanel').classList.remove('open');
+      $('rightPanel').classList.remove('open');
       overlay.classList.remove('show');
     });
   }
 
   $('toggleRight').addEventListener('click', () => {
-    $('rightPanel').classList.toggle('collapsed');
+    const panel = $('rightPanel');
+    const overlay = $('panelOverlay');
+    if (window.innerWidth <= 768) {
+      panel.classList.toggle('open');
+      if (overlay) overlay.classList.toggle('show');
+    } else {
+      panel.classList.toggle('collapsed');
+    }
   });
 
   // ===== Autocomplete =====
