@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// or-bridge: stdin/stdout bridge calling OpenRouter Chat Completions.
-// Reads prompt from stdin, writes response to stdout, errors to stderr.
-// Outputs "0" as first stdout line so spawner knows it started.
+// or-bridge v2: stdin/stdout bridge calling OpenRouter Chat Completions.
+// stdin: JSON array of messages [{"role":"user","content":"..."},{"role":"assistant","content":"..."}]
+// stdout: response text (first line is "0" startup signal)
+// stderr: errors
 
 const args = process.argv.slice(2);
 const modelIdx = args.indexOf('--model');
@@ -11,10 +12,20 @@ const KEY = process.env.ANTHROPIC_API_KEY || '';
 process.stdout.write('0\n');
 
 async function main() {
-  let prompt = '';
-  for await (const chunk of process.stdin) { prompt += chunk; }
-  
-  if (!prompt.trim()) { process.exit(0); }
+  let raw = '';
+  for await (const chunk of process.stdin) { raw += chunk; }
+
+  let messages;
+  try {
+    messages = JSON.parse(raw);
+    if (!Array.isArray(messages)) throw new Error('Not an array');
+  } catch (e) {
+    messages = [{ role: 'user', content: raw.trim() }];
+  }
+
+  if (!messages.length || !messages.some(m => m.content && m.content.trim())) {
+    process.exit(0);
+  }
 
   try {
     const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -27,19 +38,21 @@ async function main() {
       },
       body: JSON.stringify({
         model: MODEL,
-        messages: [{ role: 'user', content: prompt.trim() }],
-        max_tokens: 4096, temperature: 0.7,
+        messages: messages,
+        max_tokens: 4096,
+        temperature: 0.7,
       }),
       signal: AbortSignal.timeout(120000),
     });
 
     if (!resp.ok) {
-      process.stderr.write('OpenRouter error ' + resp.status + ': ' + (await resp.text()).substring(0,200) + '\n');
+      process.stderr.write('OpenRouter error ' + resp.status + ': ' + (await resp.text()).substring(0, 300) + '\n');
       process.exit(1);
     }
 
     const data = await resp.json();
-    process.stdout.write(data.choices?.[0]?.message?.content || '');
+    const reply = data.choices?.[0]?.message?.content || '';
+    process.stdout.write(reply);
     process.exit(0);
   } catch (e) {
     process.stderr.write('Bridge error: ' + e.message + '\n');
