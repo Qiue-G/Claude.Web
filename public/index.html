@@ -2843,15 +2843,54 @@
     };
   }
 
-  // ===== Page Load: Restore Active Model Display =====
-  (function() {
-    if (activeModelId && savedModels.length > 0) {
-      const active = savedModels.find(m => m.id === activeModelId);
-      if (active) {
-        const shortName = active.model.split('/').pop() || active.model;
-        $('modelName').textContent = shortName;
-        updateCurrentModel();
-      }
+  // ===== Page Load: Restore Session =====
+  (async function() {
+    if (!activeModelId || savedModels.length === 0) return;
+
+    const active = savedModels.find(m => m.id === activeModelId);
+    if (!active) return;
+
+    const apiKey = sessionStorage.getItem(`apiKey_${activeModelId}`);
+    if (!apiKey) {
+      // API key expired, just update display
+      const shortName = active.model.split('/').pop() || active.model;
+      $('modelName').textContent = shortName;
+      updateCurrentModel();
+      return;
+    }
+
+    // Update display immediately
+    const shortName = active.model.split('/').pop() || active.model;
+    $('modelName').textContent = shortName;
+    updateCurrentModel();
+
+    // Auto-reconnect session
+    try {
+      const body = { apiKey, model: active.model };
+      if (active.provider) body.provider = active.provider;
+      if (active.baseUrl) body.baseUrl = active.baseUrl;
+
+      const res = await fetch('/api/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      sessionId = data.sessionId;
+      sessionToken = data.token;
+      isConnected = true;
+
+      $('statusDot').style.background = 'var(--green)';
+      $('statusDot').classList.remove('disconnected');
+      $('statusText').textContent = '已连接';
+
+      connectWebSocket();
+      loadFileTree();
+    } catch (e) {
+      console.warn('Session restore failed:', e.message);
+      $('statusText').textContent = '重连失败';
     }
   })();
 </script>
