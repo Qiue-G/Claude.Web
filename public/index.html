@@ -922,20 +922,29 @@
     .syn-tag { color: #f07178; }
     .syn-attr { color: #ffcb6b; }
   
-    /* ===== Mobile Responsive ===== */
+        /* ===== Mobile Responsive ===== */
     @media (max-width: 768px) {
-      /* Header */
-      .header { padding: 0 12px; }
-      .header-left { gap: 6px; }
-      #toggleLeft { display: flex; }
-      #currentFileLabel { display: none; }
-      .header-right { gap: 6px; }
+      /* ── Toolbar compact ── */
+      .toolbar {
+        height: 40px;
+        padding: 0 8px;
+        gap: 4px;
+      }
+      .menu-btn { font-size: 12px; padding: 4px 6px; }
+      .toolbar-sep { margin: 0 2px; height: 14px; }
+      .toolbar-btn { font-size: 14px; padding: 3px; }
+      .toolbar-btn svg { width: 16px; height: 16px; }
+      .toolbar-project .name { font-size: 12px; }
+      .toolbar-model { font-size: 11px; padding: 3px 6px; gap: 2px; }
+      .toolbar-model .cpu-icon { font-size: 12px; }
+      .toolbar-status { font-size: 10px; gap: 3px; }
+      #statusText { display: none; }
 
       /* Left panel as overlay drawer */
       .left-panel {
         position: fixed;
         left: -280px;
-        top: 48px;
+        top: 40px;
         bottom: 0;
         z-index: 100;
         width: 280px;
@@ -965,7 +974,6 @@
       .chat-message .role { font-size: 10px; padding: 1px 6px; }
 
       /* Command input */
-      /* Chat input */
       .command-area {
         padding: 8px 12px 12px;
         position: sticky;
@@ -974,7 +982,7 @@
         z-index: 10;
       }
       .command-input-box { padding: 8px 10px; border-radius: 8px; }
-      .command-input-box input { font-size: 15px; } /* 16px prevents iOS zoom */
+      .command-input-box input { font-size: 15px; }
       .command-input-box .prefix { font-size: 13px; }
       .command-input-box .send-btn { width: 32px; height: 32px; flex-shrink: 0; }
       .command-input-box .send-btn svg { width: 16px; height: 16px; }
@@ -984,10 +992,6 @@
       /* Code blocks */
       .code-block { margin: 4px 0; }
       .code-block pre { font-size: 12px; padding: 10px; }
-
-      /* Toolbar buttons */
-      .tool-btn { width: 32px; height: 32px; }
-      .tool-btn svg { width: 14px; height: 14px; }
 
       /* Overlay for left panel */
       .panel-overlay {
@@ -1001,13 +1005,16 @@
     }
 
     @media (max-width: 480px) {
-      .header { height: 44px; padding: 0 8px; }
-      .header .brand { font-size: 12px; }
+      .toolbar { height: 36px; padding: 0 4px; gap: 2px; }
+      .menu-btn { font-size: 11px; padding: 3px 5px; }
+      .toolbar-btn { padding: 2px; }
+      .toolbar-btn svg { width: 14px; height: 14px; }
+      .toolbar-project .name { font-size: 11px; }
+      .toolbar-model { font-size: 10px; padding: 2px 4px; }
+      .toolbar-status .dot { width: 5px; height: 5px; }
       .chat-welcome .title { font-size: 18px; }
       .command-area { padding: 6px 8px 8px; }
-    }
-
-  </style>
+    }  </style>
 </head>
 <body>
 
