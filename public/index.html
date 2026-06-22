@@ -535,12 +535,13 @@
       background: var(--bg-raised);
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 10px 14px;
+      padding: 18px 20px;
+      min-height: 64px;
       transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
     .command-input-box:focus-within {
-      border-color: var(--amber);
-      box-shadow: 0 0 0 3px rgba(217,119,6,0.1);
+      border-color: var(--border-subtle, var(--border));
+      box-shadow: none;
     }
 
     .command-input-box .prefix {
@@ -560,9 +561,7 @@
       font-family: var(--font-sans);
     }
     .command-input-box input:focus-visible {
-      outline: 2px solid var(--amber);
-      outline-offset: 2px;
-      border-radius: 4px;
+      outline: none;
     }
     .command-input-box input::placeholder { color: var(--text-dim); }
 
@@ -1086,7 +1085,7 @@
         background: var(--bg-base);
         z-index: 10;
       }
-      .command-input-box { padding: 8px 10px; border-radius: 8px; }
+      .command-input-box { padding: 16px 14px; border-radius: 8px; min-height: 56px; }
       .command-input-box input { font-size: 15px; }
       .command-input-box .prefix { font-size: 13px; }
       .command-input-box .send-btn { width: 32px; height: 32px; flex-shrink: 0; }
