@@ -221,12 +221,10 @@
     }
 
     function sendInput() {
-      const text = input.value;
-      if (!text && text !== '') return;
+      const text = input.value.trim();
+      if (!text) return;
 
-      if (text) {
-        addLine('user', `$ ${text}`);
-      }
+      addLine('user', `$ ${text}`);
 
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'input', data: text }));
@@ -250,3 +248,4 @@
   </script>
 </body>
 </html>
+
