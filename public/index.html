@@ -921,6 +921,83 @@
     .syn-var { color: #f07178; }
     .syn-tag { color: #f07178; }
     .syn-attr { color: #ffcb6b; }
+  
+    /* ===== Mobile Responsive ===== */
+    @media (max-width: 768px) {
+      /* Header */
+      .header { padding: 0 12px; }
+      .header-left { gap: 6px; }
+      #toggleLeft { display: flex; }
+      #currentFileLabel { display: none; }
+      .header-right { gap: 6px; }
+
+      /* Left panel as overlay drawer */
+      .left-panel {
+        position: fixed;
+        left: -280px;
+        top: 48px;
+        bottom: 0;
+        z-index: 100;
+        width: 280px;
+        transition: left 0.25s ease;
+        box-shadow: 2px 0 12px rgba(0,0,0,0.3);
+      }
+      .left-panel.open { left: 0; }
+      #resizeLeft { display: none; }
+
+      /* Chat area full width */
+      .chat-area { flex: 1; }
+      .chat-messages { padding: 8px 0; }
+
+      /* Welcome */
+      .chat-welcome { padding: 24px 16px; }
+      .chat-welcome .logo { margin-bottom: 12px; }
+      .chat-welcome .title { font-size: 20px; }
+      .chat-welcome .subtitle { font-size: 13px; }
+      .suggestions { flex-wrap: wrap; gap: 6px; }
+      .suggestion { font-size: 12px; padding: 6px 10px; }
+
+      /* Chat messages */
+      .chat-message { padding: 6px 12px; }
+      .chat-message .content { font-size: 13px; }
+      .chat-message .role { font-size: 10px; padding: 1px 6px; }
+
+      /* Command input */
+      .command-area { padding: 8px 12px 12px; }
+      .command-input-box { padding: 8px 10px; border-radius: 8px; }
+      .command-input-box input { font-size: 15px; } /* 16px prevents iOS zoom */
+      .command-input-box .prefix { font-size: 13px; }
+      .command-input-box .send-btn { width: 32px; height: 32px; flex-shrink: 0; }
+      .command-input-box .send-btn svg { width: 16px; height: 16px; }
+      .command-hints { display: none; }
+      .command-wrapper { max-width: 100%; }
+
+      /* Code blocks */
+      .code-block { margin: 4px 0; }
+      .code-block pre { font-size: 12px; padding: 10px; }
+
+      /* Toolbar buttons */
+      .tool-btn { width: 32px; height: 32px; }
+      .tool-btn svg { width: 14px; height: 14px; }
+
+      /* Overlay for left panel */
+      .panel-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 99;
+        background: rgba(0,0,0,0.4);
+      }
+      .panel-overlay.show { display: block; }
+    }
+
+    @media (max-width: 480px) {
+      .header { height: 44px; padding: 0 8px; }
+      .header .brand { font-size: 12px; }
+      .chat-welcome .title { font-size: 18px; }
+      .command-area { padding: 6px 8px 8px; }
+    }
+
   </style>
 </head>
 <body>
@@ -1017,7 +1094,8 @@
     </div>
 
     <!-- Resize -->
-    <div class="resize-v" id="resizeLeft"></div>
+    <div class="resize-v" id="resizeLeft">
+    <div class="panel-overlay" id="panelOverlay"></div></div>
 
     <!-- Center: Chat Area -->
     <div class="chat-area">
@@ -1338,18 +1416,20 @@
   }
 
   // ===== Panel Toggles =====
-  $('toggleLeft').addEventListener('click', () => $('leftPanel').classList.toggle('collapsed'));
-  $('toggleRight').addEventListener('click', () => $('rightPanel').classList.toggle('collapsed'));
-
-  // ===== Context Tabs =====
-  document.querySelectorAll('.context-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.context-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      const name = tab.dataset.tab;
-      $('tabContext').classList.toggle('hidden', name !== 'context');
-      $('tabTools').classList.toggle('hidden', name !== 'tools');
+  $('toggleLeft').addEventListener('click', () => {
+    const panel = $('leftPanel');
+    const overlay = $('panelOverlay');
+    panel.classList.toggle('open');
+    if (overlay) overlay.classList.toggle('show');
+  });
+  // Close panel when clicking overlay
+  const overlay = $('panelOverlay');
+  if (overlay) {
+    overlay.addEventListener('click', () => {
+      $('leftPanel').classList.remove('open');
+      overlay.classList.remove('show');
     });
+  }
   });
 
   // ===== Autocomplete =====
