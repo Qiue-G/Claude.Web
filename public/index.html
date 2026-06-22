@@ -2802,6 +2802,7 @@
   });
 
   // ===== WebSocket =====
+  let retryCount = 0;
   function connectWebSocket() {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     ws = new WebSocket(`${protocol}//${location.host}/ws`);
@@ -2846,7 +2847,19 @@
       $('statusDot').classList.add('disconnected');
       $('statusText').textContent = '已断开';
       appendChatMsg('system', '连接已断开，正在重连...');
-      setTimeout(connectWebSocket, 3000);
+
+      // Exponential backoff: 1s, 2s, 4s, 8s … cap at 30s
+      const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
+      retryCount++;
+      appendChatMsg('system', `${Math.round(delay/1000)}s 后自动重连...`);
+      setTimeout(() => {
+        connectWebSocket();
+      }, delay);
+    };
+    ws.onopen = () => {
+      retryCount = 0; // reset backoff on successful connection
+      $('statusDot').style.background = 'var(--green)';
+      $('statusDot').classList.remove('disconnected');
     };
   }
 

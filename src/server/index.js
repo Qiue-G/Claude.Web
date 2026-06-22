@@ -1,6 +1,7 @@
 import express from 'express';
 import { WebSocketServer } from 'ws';
 import cors from 'cors';
+import helmet from 'helmet';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -25,11 +26,44 @@ const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
-const VERSION = '7.0.0';
+const VERSION = '7.1.0';
+
+// ===== Rate Limiter (token bucket, per-IP) =====
+const rateLimits = new Map();
+const RATE_WINDOW = 60000;      // 1 minute window
+const RATE_MAX_CREATE = 5;      // max session creates per window per IP
+const RATE_MAX_INPUT = 20;      // max WebSocket inputs per window per session
+
+function checkRateLimit(key, max, windowMs) {
+  const now = Date.now();
+  let entry = rateLimits.get(key);
+  if (!entry || now - entry.windowStart > windowMs) {
+    entry = { windowStart: now, count: 0 };
+    rateLimits.set(key, entry);
+  }
+  entry.count++;
+  return entry.count <= max;
+}
+
+function getRateRemaining(key, max, windowMs) {
+  const now = Date.now();
+  const entry = rateLimits.get(key);
+  if (!entry || now - entry.windowStart > windowMs) return max;
+  return Math.max(0, max - entry.count);
+}
+
+// Clean stale rate-limit entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimits) {
+    if (now - entry.windowStart > RATE_WINDOW * 2) rateLimits.delete(key);
+  }
+}, 300000);
 
 const sessions = new Map();
 const sessionProcesses = new Map();
 const sessionProxies = new Map(); // proxy processes
+const wsProcCount = new Map();    // active process count per session
 
 function stripAnsi(str) {
   str = str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
@@ -146,19 +180,58 @@ async function spawnCli(session, prompt) {
   return proc;
 }
 
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : undefined;
+
 const app = express();
-app.use(cors({ origin: true, credentials: true }));
+
+// Security headers (helmet)
+app.use(helmet({
+  contentSecurityPolicy: false, // frontend loads external fonts
+  crossOriginEmbedderPolicy: false,
+}));
+
+// Strict CORS
+app.use(cors({
+  origin: ALLOWED_ORIGINS
+    ? ALLOWED_ORIGINS
+    : function (origin, callback) {
+        // In production, only allow same-origin or known origins
+        if (!origin || origin.startsWith('https://claudefree') || origin.startsWith('http://localhost') || origin.startsWith('https://')) {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
+      },
+  credentials: true,
+  maxAge: 86400,
+}));
+
 app.use(express.json({ limit: '50kb' }));
 app.use(express.static(join(__dirname, '../../public'), {
   setHeaders: (res) => {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '0');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
   }
 }));
 
 app.post('/api/session', async (req, res) => {
   try {
+    const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
+    if (!checkRateLimit('create:' + clientIp, RATE_MAX_CREATE, RATE_WINDOW)) {
+      return res.status(429).json({
+        error: 'Too many session requests. Please wait before creating another.',
+        retryAfter: 60
+      });
+    }
+
     const { apiKey, model, provider } = req.body;
     if (!apiKey) return res.status(400).json({ error: 'API key is required' });
     if (sessions.size >= MAX_SESSIONS) return res.status(503).json({ error: 'Too many sessions' });
@@ -331,11 +404,31 @@ wss.on('connection', (ws) => {
           return;
         }
 
+        // Rate limit: max RATE_MAX_INPUT inputs per minute per session
+        if (!checkRateLimit('input:' + sessionId, RATE_MAX_INPUT, RATE_WINDOW)) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Too many requests. Please slow down.' }));
+          return;
+        }
+
+        // Session token re-validation on input
+        if (message.token && session.token !== message.token) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Session token mismatch' }));
+          return;
+        }
+
+        // Max 2 concurrent processes per session
+        const currentCount = wsProcCount.get(sessionId) || 0;
+        if (currentCount >= 2) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Already processing. Wait for completion.' }));
+          return;
+        }
+
         const oldProc = sessionProcesses.get(sessionId);
         if (oldProc) oldProc.kill();
 
         console.log('[INPUT] message length: ' + (message.data ? message.data.length : 0));
 
+        wsProcCount.set(sessionId, (wsProcCount.get(sessionId) || 0) + 1);
         const proc = await spawnCli(session, message.data);
         sessionProcesses.set(sessionId, proc);
 
@@ -357,6 +450,7 @@ wss.on('connection', (ws) => {
         proc.on('close', (code) => {
           console.log('[DONE] exit code ' + code);
           sessionProcesses.delete(sessionId);
+          wsProcCount.set(sessionId, Math.max(0, (wsProcCount.get(sessionId) || 0) - 1));
           // Kill proxy too
           const proxy = sessionProxies.get(sessionId);
           if (proxy) { proxy.kill(); sessionProxies.delete(sessionId); }
@@ -367,6 +461,7 @@ wss.on('connection', (ws) => {
 
         proc.on('error', (err) => {
           console.error('[ERROR] ' + err.message);
+          wsProcCount.set(sessionId, Math.max(0, (wsProcCount.get(sessionId) || 0) - 1));
           if (ws.readyState === ws.OPEN) {
             ws.send(JSON.stringify({ type: 'error', message: 'Failed to start CLI: ' + err.message }));
           }
