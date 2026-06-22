@@ -25,10 +25,11 @@ const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
-const VERSION = '6.0.3';
+const VERSION = '6.1.0';
 
 const sessions = new Map();
 const sessionProcesses = new Map();
+const sessionMessages = new Map(); // conversation history per session
 
 function stripAnsi(str) {
   str = str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
@@ -45,8 +46,8 @@ function createSession(apiKey, model, provider) {
   if (!existsSync(WORKSPACE_DIR)) mkdir(WORKSPACE_DIR, { recursive: true }).catch(console.error);
   mkdir(sessionDir, { recursive: true }).catch(console.error);
   const session = { id: sessionId, apiKey, model, provider, dir: sessionDir, createdAt: Date.now(), lastActivity: Date.now() };
-  
   sessions.set(sessionId, session);
+  sessionMessages.set(sessionId, []);
   return session;
 }
 
@@ -54,6 +55,10 @@ function getSession(sessionId) {
   const session = sessions.get(sessionId);
   if (session) session.lastActivity = Date.now();
   return session;
+}
+
+function getMessages(sessionId) {
+  return sessionMessages.get(sessionId) || [];
 }
 
 // OpenRouter model name mapping
@@ -84,13 +89,14 @@ async function spawnWithProxy(session, prompt) {
   const bridgePath = join(FREE_CODE_DIR, 'or_bridge.mjs');
   const model = resolveOpenRouterModel(session.model || 'nvidia/nemotron-3-ultra-550b-a55b:free');
   console.log('[BRIDGE] node ' + bridgePath + ' --model ' + model);
-  
+
   const bridge = spawn('node', [bridgePath, '--model', model], {
     cwd: session.dir,
     env: { HOME: session.dir, ...process.env, ANTHROPIC_API_KEY: session.apiKey, NODE_ENV: 'production' },
     stdio: ['pipe', 'pipe', 'pipe']
   });
-  
+
+  // Wait for startup signal "0\n"
   await new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('Bridge startup timeout')), 10000);
     bridge.stdout.once('data', (c) => {
@@ -101,29 +107,31 @@ async function spawnWithProxy(session, prompt) {
     bridge.on('error', (e) => { clearTimeout(t); reject(e); });
     bridge.on('close', (c) => { clearTimeout(t); reject(new Error('Bridge exited ' + c)); });
   });
-  
-  console.log('[BRIDGE] ready');
-  bridge.stdin.write(prompt);
+
+  console.log('[BRIDGE] ready, sending messages');
+
+  // Build messages: history + new user message
+  const messages = [...getMessages(session.id), { role: 'user', content: prompt }];
+  bridge.stdin.write(JSON.stringify(messages));
   bridge.stdin.end();
+
   return bridge;
 }
 
 async function spawnCli(session, prompt) {
-  // OpenRouter: start local proxy → free-code CLI connects to proxy
-  // Proxy translates Anthropic Messages API → OpenRouter Chat Completions
   if (session.provider === 'openrouter') {
     return spawnWithProxy(session, prompt);
   }
-  
+
   const cliPath = join(FREE_CODE_DIR, 'cli-dev');
   const cliArgs = ['--print'];
-  
+
   if (session.model) {
     cliArgs.push('--model', session.model);
   }
-  
+
   const providerEnv = getProviderEnv(session.provider);
-  
+
   const proc = spawn(cliPath, cliArgs, {
     cwd: session.dir,
     env: {
@@ -135,10 +143,10 @@ async function spawnCli(session, prompt) {
     },
     stdio: ['pipe', 'pipe', 'pipe']
   });
-  
+
   proc.stdin.write(prompt + '\n');
   proc.stdin.end();
-  
+
   return proc;
 }
 
@@ -175,6 +183,7 @@ app.delete('/api/session/:id', async (req, res) => {
     const oldProc = sessionProcesses.get(req.params.id);
     if (oldProc) { oldProc.kill(); sessionProcesses.delete(req.params.id); }
     sessions.delete(req.params.id);
+    sessionMessages.delete(req.params.id);
   }
   res.json({ success: true });
 });
@@ -214,22 +223,37 @@ wss.on('connection', (ws) => {
           return;
         }
 
-        // Kill previous process if still running
         const oldProc = sessionProcesses.get(sessionId);
         if (oldProc) oldProc.kill();
 
         console.log(`[INPUT] "${message.data.substring(0, 100)}"`);
-        
+
         const proc = await spawnCli(session, message.data);
         sessionProcesses.set(sessionId, proc);
 
-        let buffer = '';
+        let responseBuffer = '';
+        let startupSkipped = false;
+
         proc.stdout.on('data', (chunk) => {
-          buffer += chunk.toString();
-          // Flush periodically for streaming
-          if (ws.readyState === ws.OPEN) {
-            const clean = stripAnsi(chunk.toString());
-            if (clean.trim()) {
+          const raw = chunk.toString();
+          const clean = stripAnsi(raw);
+
+          // For bridge: skip the "0\n" startup signal
+          if (!startupSkipped && session.provider === 'openrouter') {
+            const lines = clean.split('\n');
+            for (const line of lines) {
+              if (line.match(/^\d+$/)) continue; // skip startup signal
+              if (line.trim()) {
+                startupSkipped = true;
+                responseBuffer += line + '\n';
+                if (ws.readyState === ws.OPEN) {
+                  ws.send(JSON.stringify({ type: 'output', data: line + '\n' }));
+                }
+              }
+            }
+          } else {
+            responseBuffer += clean;
+            if (clean.trim() && ws.readyState === ws.OPEN) {
               ws.send(JSON.stringify({ type: 'output', data: clean }));
             }
           }
@@ -246,6 +270,18 @@ wss.on('connection', (ws) => {
         proc.on('close', (code) => {
           console.log(`[DONE] exit code ${code}`);
           sessionProcesses.delete(sessionId);
+
+          // Save assistant response to conversation history
+          if (session.provider === 'openrouter' && responseBuffer.trim()) {
+            const msgs = getMessages(sessionId);
+            msgs.push({ role: 'user', content: message.data });
+            msgs.push({ role: 'assistant', content: responseBuffer.trim() });
+            // Keep last 20 messages to avoid token overflow
+            if (msgs.length > 20) msgs.splice(0, msgs.length - 20);
+            sessionMessages.set(sessionId, msgs);
+            console.log(`[HISTORY] ${msgs.length} messages in session`);
+          }
+
           if (ws.readyState === ws.OPEN) {
             ws.send(JSON.stringify({ type: 'exit', code }));
           }
@@ -275,4 +311,3 @@ process.on('SIGTERM', () => {
   console.log('Shutting down...');
   server.close(() => process.exit(0));
 });
-
