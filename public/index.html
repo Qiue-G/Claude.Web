@@ -406,6 +406,7 @@
       overflow: hidden;
       flex-shrink: 0;
       min-width: 40px;
+      white-space: pre;
     }
 
     .editor-content {
@@ -1816,6 +1817,8 @@
           appendChatMsg('system', `已打开文件: ${file.name} (${(file.size/1024).toFixed(1)} KB)`);
           // Open in editor even without session
           openEditorTab(file.name, content);
+          // Refresh file tree to show this file locally
+          loadFileTree();
         }
       };
       reader.readAsText(file);
@@ -2053,19 +2056,32 @@
   const FILE_ICON = '<svg class="icon" viewBox="0 0 24 24" style="color:var(--text-muted)"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>';
 
   async function loadFileTree() {
-    if (!sessionId) return;
-    try {
-      const res = await fetch('/api/files/' + sessionId, {
-        headers: { 'x-session-token': sessionToken || '' }
-      });
-      const data = await res.json();
-      if (data.tree) {
-        renderFileTree(data.tree, $('fileTree'), 0);
-        detectProjectInfo(data.tree);
-        collectAllFiles(data.tree);
+    if (sessionId) {
+      try {
+        const res = await fetch('/api/files/' + sessionId, {
+          headers: { 'x-session-token': sessionToken || '' }
+        });
+        const data = await res.json();
+        if (data.tree) {
+          renderFileTree(data.tree, $('fileTree'), 0);
+          detectProjectInfo(data.tree);
+          collectAllFiles(data.tree);
+          return;
+        }
+      } catch (e) {
+        console.error('Failed to load file tree:', e);
       }
-    } catch (e) {
-      console.error('Failed to load file tree:', e);
+    }
+    // Fallback: build tree from local fileContents (no session or fetch failed)
+    const localFiles = Object.keys(fileContents);
+    if (localFiles.length > 0) {
+      const tree = localFiles.map(path => {
+        const parts = path.split('/');
+        const name = parts.pop();
+        return { name, path, type: 'file' };
+      });
+      renderFileTree(tree, $('fileTree'), 0);
+      collectAllFiles(tree);
     }
   }
 
