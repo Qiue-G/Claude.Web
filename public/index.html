@@ -1608,19 +1608,46 @@
     const file = e.target.files[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = (ev) => {
+      reader.onload = async (ev) => {
         const content = ev.target.result;
-        // Track content
-        fileContents[file.name] = content;
-        currentFile = file.name;
         currentFileContent = content;
-        $('currentFileLabel').textContent = file.name;
-        appendChatMsg('system', `已打开文件: ${file.name} (${(file.size/1024).toFixed(1)} KB)`);
-        appendChatMsg('assistant', `文件内容已加载，共 ${content.split('\n').length} 行`, null, [{
-          filename: file.name,
-          language: file.name.split('.').pop() || 'text',
-          code: content
-        }]);
+
+        // Upload to server workspace if session exists
+        if (sessionId) {
+          try {
+            const res = await fetch('/api/files/' + sessionId + '/' + file.name, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-session-token': sessionToken || ''
+              },
+              body: JSON.stringify({ content: content || '' })
+            });
+            const data = await res.json();
+            if (data.success) {
+              fileContents[file.name] = content;
+              currentFile = file.name;
+              $('currentFileLabel').textContent = file.name;
+              appendChatMsg('system', `已打开文件: ${file.name} (${(file.size/1024).toFixed(1)} KB)`);
+              loadFileTree();
+              // Open left panel on mobile to show file tree
+              if (window.innerWidth <= 768) {
+                $('leftPanel').classList.add('open');
+                $('panelOverlay')?.classList.add('show');
+              }
+            } else {
+              appendChatMsg('system', `打开文件失败: ${data.error}`);
+            }
+          } catch (err) {
+            appendChatMsg('system', `打开文件失败: ${err.message}`);
+          }
+        } else {
+          // No session, just load locally
+          fileContents[file.name] = content;
+          currentFile = file.name;
+          $('currentFileLabel').textContent = file.name;
+          appendChatMsg('system', `已打开文件: ${file.name} (${(file.size/1024).toFixed(1)} KB)`);
+        }
       };
       reader.readAsText(file);
     }
@@ -1689,9 +1716,10 @@
     renderFileTree(tree, $('fileTree'), 0);
     collectAllFiles(tree);
 
+    // Open left panel on mobile to show file tree
     if (window.innerWidth <= 768) {
-      $('leftPanel').classList.remove('open');
-      $('panelOverlay')?.classList.remove('show');
+      $('leftPanel').classList.add('open');
+      $('panelOverlay')?.classList.add('show');
     }
   });
 
