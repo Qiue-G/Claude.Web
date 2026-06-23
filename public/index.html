@@ -2539,57 +2539,50 @@
   });
 
   async function deleteFileOrFolder(path, type, element) {
-    if (!sessionId) {
-      appendChatMsg('system', '请先配置模型');
-      return;
-    }
-
     const typeName = type === 'directory' ? '文件夹' : '文件';
     const name = path.split('/').pop() || path;
     if (!confirm(`确定要删除${typeName}「${name}」吗？此操作不可撤销。`)) return;
 
-    try {
-      const res = await fetch('/api/files/' + sessionId + '/' + path, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-session-token': sessionToken || '',
-          'x-csrf-token': csrfToken || ''
-        }
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        // Remove from local fileContents cache
-        delete fileContents[path];
-        // Also remove any entries that start with this path (for folders)
-        if (type === 'directory') {
-          const prefix = path + '/';
-          for (const key of Object.keys(fileContents)) {
-            if (key.startsWith(prefix)) delete fileContents[key];
-          }
-        }
-        persistFileContents();
-
-        // Close editor tab if this file is open
-        closeEditorTab(path);
-
-        // Refresh file tree
-        loadFileTree();
-
-        appendChatMsg('system', `已删除${typeName}：${name}`);
-      } else {
-        const errMap = {
-          'Permission denied': '权限不足，文件可能正在使用中',
-          'not found': '文件或文件夹不存在',
-          'path traversal': '安全验证失败'
-        };
-        const friendly = Object.keys(errMap).find(k => data.error.includes(k));
-        appendChatMsg('system', `删除失败: ${friendly ? errMap[friendly] : data.error}`);
+    // Remove from local fileContents cache first
+    delete fileContents[path];
+    if (type === 'directory') {
+      const prefix = path + '/';
+      for (const key of Object.keys(fileContents)) {
+        if (key.startsWith(prefix)) delete fileContents[key];
       }
-    } catch (e) {
-      appendChatMsg('system', `删除失败: ${e.message}`);
     }
+    persistFileContents();
+
+    // Close editor tab if this file is open
+    closeEditorTab(path);
+
+    if (sessionId) {
+      // Delete from server workspace
+      try {
+        const res = await fetch('/api/files/' + sessionId + '/' + path, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-session-token': sessionToken || '',
+            'x-csrf-token': csrfToken || ''
+          }
+        });
+        const data = await res.json();
+
+        if (!data.success) {
+          // Restore local cache if server delete failed
+          appendChatMsg('system', `服务器删除失败: ${data.error || '未知错误'}`);
+        }
+      } catch (e) {
+        appendChatMsg('system', `服务器删除失败: ${e.message}`);
+      }
+    } else {
+      appendChatMsg('system', `已从本地移除${typeName}：${name}（未连接到服务器）`);
+    }
+
+    // Refresh file tree
+    loadFileTree();
+    appendChatMsg('system', `已删除${typeName}：${name}`);
   }
 
   // ===== Panel Toggles =====
