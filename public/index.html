@@ -2492,6 +2492,14 @@
   }
 
   // ===== File/Folder Context Menu =====
+  // Create context menu element early so it exists when event listeners are set up
+  const ctxMenu = document.createElement('div');
+  ctxMenu.className = 'context-menu';
+  ctxMenu.id = 'fileContextMenu';
+  ctxMenu.style.display = 'none';
+  ctxMenu.innerHTML = '<div class="context-menu-item danger" data-action="delete"><span class="cm-icon">&#128465;</span><span class="cm-label">删除</span></div>';
+  document.body.appendChild(ctxMenu);
+
   let contextTarget = null; // { path, type, element }
 
   function showFileContextMenu(e, item) {
@@ -4193,15 +4201,6 @@
       $('statusText').textContent = '重连失败';
     }
   })();
-
-  // ===== File/Folder Context Menu (must be before </script>) =====
-  // Context menu HTML is injected here so elements exist when JS runs
-  const ctxMenu = document.createElement('div');
-  ctxMenu.className = 'context-menu';
-  ctxMenu.id = 'fileContextMenu';
-  ctxMenu.style.display = 'none';
-  ctxMenu.innerHTML = '<div class="context-menu-item danger" data-action="delete"><span class="cm-icon">&#128465;</span><span class="cm-label">删除</span></div>';
-  document.body.appendChild(ctxMenu);
 </script>
 
 </body>
