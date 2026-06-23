@@ -2126,6 +2126,10 @@
           renderFileTree(data.tree, $('fileTree'), 0);
           detectProjectInfo(data.tree);
           collectAllFiles(data.tree);
+          // Reconcile: if fileContents has a bare-name entry (e.g. "HISTORY.md"
+          // from fileInput) that matches a tree file (e.g. "deepseek-v4-pro/HISTORY.md"),
+          // map it to the tree path so selectFile can find it
+          reconcileFileContentsWithTree(data.tree);
           return;
         }
       } catch (e) {
@@ -2143,6 +2147,37 @@
       renderFileTree(tree, $('fileTree'), 0);
       collectAllFiles(tree);
     }
+  }
+
+  // Walk the server's file tree and map any bare-name keys in fileContents
+  // (e.g. "HISTORY.md") to their full-path equivalents ("deepseek-v4-pro/HISTORY.md")
+  function reconcileFileContentsWithTree(tree) {
+    function visit(items) {
+      for (const item of items) {
+        if (item.type === 'file') {
+          const baseName = item.path.split('/').pop();
+          // If tree path doesn't have content but a bare-name key does, copy it
+          if (fileContents[item.path] === undefined) {
+            if (fileContents[baseName] !== undefined) {
+              fileContents[item.path] = fileContents[baseName];
+              delete fileContents[baseName];
+            } else {
+              // Check any other key that ends with /baseName
+              const match = Object.keys(fileContents).find(k =>
+                k !== item.path && k.split('/').pop() === baseName
+              );
+              if (match) {
+                fileContents[item.path] = fileContents[match];
+                delete fileContents[match];
+              }
+            }
+          }
+        }
+        if (item.children) visit(item.children);
+      }
+    }
+    visit(tree);
+    persistFileContents();
   }
 
   function collectAllFiles(tree) {
@@ -2277,6 +2312,17 @@
           div.classList.add('active');
           $('currentFileLabel').textContent = currentFile;
 
+          // Helper: find any locally cached file that matches this path,
+          // either exactly or by file name (so a file opened via "Open File"
+          // with bare name "HISTORY.md" matches a tree item with full path
+          // "deepseek-v4-pro/HISTORY.md")
+          const findCachedContent = (treePath) => {
+            if (fileContents[treePath] !== undefined) return fileContents[treePath];
+            const baseName = treePath.split('/').pop();
+            const match = Object.keys(fileContents).find(k => k === baseName || k.endsWith('/' + baseName));
+            return match !== undefined ? fileContents[match] : undefined;
+          };
+
           // Read file content from server
           try {
             const res = await fetch('/api/files/' + sessionId + '/' + item.path, {
@@ -2288,12 +2334,19 @@
               currentFileContent = data.content;
               persistFileContents();
             }
-            // Open in editor
-            openEditorTab(item.path, data.content || '');
+            // Open in editor: prefer local cached content (from fileInput/import)
+            // over the freshly fetched server content, since the local copy
+            // is likely the user's intended/imported version
+            const cached = findCachedContent(item.path);
+            const contentToShow = (cached !== undefined && cached.length > 0)
+              ? cached
+              : (data.content || '');
+            openEditorTab(item.path, contentToShow);
           } catch (e) {
             console.error('Failed to read file:', e);
             // Still open with cached content
-            openEditorTab(item.path, fileContents[item.path] || '');
+            const cached = findCachedContent(item.path);
+            openEditorTab(item.path, cached || '');
           }
         };
 
