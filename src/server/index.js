@@ -404,6 +404,9 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
 
 const app = express();
 
+// Trust proxy for correct client IP behind Railway reverse proxy
+app.set('trust proxy', 1);
+
 // Security headers (helmet)
 app.use(helmet({
   contentSecurityPolicy: {
@@ -609,7 +612,13 @@ app.post('/api/files/:sessionId/*', async (req, res) => {
     
     const dir = pathDirname(fullPath);
     if (!existsSync(dir)) await mkdir(dir, { recursive: true });
-    await writeFile(fullPath, req.body.content || '', 'utf-8');
+    const content = req.body.content || '';
+    // Limit file size to 5MB
+    const MAX_FILE_SIZE = 5 * 1024 * 1024;
+    if (content.length > MAX_FILE_SIZE) {
+      return res.status(413).json({ error: 'File too large (max 5MB)' });
+    }
+    await writeFile(fullPath, content, 'utf-8');
     res.json({ success: true, path: filePath });
   } catch (error) {
     console.error('[ERROR] write file:', error.message);
@@ -786,19 +795,23 @@ wss.on('connection', (ws, req) => {
 
         proc.stdout.on('data', (chunk) => {
           const clean = stripAnsi(chunk.toString());
-          if (clean.trim() && ws.readyState === ws.OPEN) {
+          // Mask sensitive data in process output
+          const masked = maskSensitive(clean, session.apiKey);
+          if (masked.trim() && ws.readyState === ws.OPEN) {
             const MAX_WS_MSG = 1024 * 1024; // 1MB
-            const data = clean.length > MAX_WS_MSG ? clean.substring(0, MAX_WS_MSG) + '\n[output truncated]' : clean;
+            const data = masked.length > MAX_WS_MSG ? masked.substring(0, MAX_WS_MSG) + '\n[output truncated]' : masked;
             ws.send(JSON.stringify({ type: 'output', data }));
           }
         });
 
         proc.stderr.on('data', (chunk) => {
           const errStr = chunk.toString();
-          console.error('[STDERR] ' + errStr.substring(0, 200));
+          // Mask sensitive data in process output
+          const masked = maskSensitive(errStr, session.apiKey);
+          console.error('[STDERR] ' + masked.substring(0, 200));
           if (ws.readyState === ws.OPEN) {
             const MAX_WS_ERR = 1024 * 1024; // 1MB
-            const data = errStr.length > MAX_WS_ERR ? errStr.substring(0, MAX_WS_ERR) + '\n[output truncated]' : errStr;
+            const data = masked.length > MAX_WS_ERR ? masked.substring(0, MAX_WS_ERR) + '\n[output truncated]' : masked;
             ws.send(JSON.stringify({ type: 'stderr', data }));
           }
         });
@@ -882,6 +895,9 @@ setInterval(async () => {
       if (proc) { try { proc.kill(); } catch (e) {} sessionProcesses.delete(id); }
       const proxy = sessionProxies.get(id);
       if (proxy) { try { proxy.kill(); } catch (e) {} sessionProxies.delete(id); }
+
+      // Clear sensitive data before deletion
+      session.apiKey = null;
 
       // Clean up workspace directory
       try {
