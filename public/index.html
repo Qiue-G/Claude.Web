@@ -2597,9 +2597,20 @@
       tab = { path, content, original: content, modified: false };
       editorState.tabs.push(tab);
     } else {
-      tab.content = content;
-      tab.original = content;
-      tab.modified = false;
+      // Tab already exists. Don't blindly overwrite - that would discard
+      // local content if the caller (e.g. file-tree click) reads back a
+      // shorter/empty version from the server. Only update if:
+      //  - the new content is longer (likely the freshest version), OR
+      //  - the tab is unmodified AND the caller is explicitly reloading
+      // For safety we always preserve the longer content.
+      const existingLen = (tab.content || '').length;
+      const newLen = (content || '').length;
+      if (newLen > existingLen) {
+        tab.content = content;
+        tab.original = content;
+        tab.modified = false;
+      }
+      // If newLen <= existingLen, keep what's in the tab (don't overwrite)
     }
     switchEditorTab(path);
     renderEditorTabs();
