@@ -163,16 +163,6 @@ async function callModel(anthropicBody) {
 
         if (resp.ok) {
           attempted.push(`${model} (ok)`);
-          // Capture usage from response for non-streaming
-          if (!isStream) {
-            const respClone = resp.clone();
-            respClone.json().then(data => {
-              const usage = data.usage;
-              if (usage) {
-                console.error(`[proxy] usage: input=${usage.prompt_tokens || 0} output=${usage.completion_tokens || 0} model=${modelUsed}`);
-              }
-            }).catch(() => {});
-          }
           return { response: resp, modelUsed: model, attempts: attempted };
         }
 

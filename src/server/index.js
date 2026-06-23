@@ -2,6 +2,7 @@ import express from 'express';
 import { WebSocketServer } from 'ws';
 import cors from 'cors';
 import helmet from 'helmet';
+import dotenv from 'dotenv';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, resolve } from 'path';
@@ -14,13 +15,8 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = pathDirname(__filename);
 
-try {
-  const envContent = await readFile('.env', 'utf-8');
-  envContent.split('\n').forEach(line => {
-    const [key, ...valueParts] = line.split('=');
-    if (key && valueParts.length > 0) process.env[key.trim()] = valueParts.join('=').trim();
-  });
-} catch (e) {}
+// Load environment variables using dotenv
+dotenv.config();
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -208,6 +204,27 @@ function stripAnsi(str) {
   str = str.replace(/\x1b\[\d+;\d+[A-H]/g, '');
   str = str.replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(parseInt(n)));
   return str;
+}
+
+// Safe process kill with SIGKILL timeout
+function safeKillProc(proc, timeoutMs = 5000) {
+  if (!proc || proc.killed || proc.exitCode !== null) return;
+  try {
+    proc.kill('SIGTERM');
+    const killTimer = setTimeout(() => {
+      try {
+        if (proc.exitCode === null) {
+          console.error('[PROC] Process did not exit after SIGTERM, sending SIGKILL');
+          proc.kill('SIGKILL');
+        }
+      } catch (e) {
+        // Process already exited
+      }
+    }, timeoutMs);
+    proc.once('exit', () => clearTimeout(killTimer));
+  } catch (e) {
+    // Process already exited
+  }
 }
 
 // Sanitize user input to prevent injection attacks
@@ -480,9 +497,9 @@ app.delete('/api/session/:id', async (req, res) => {
     const csrfToken = req.headers['x-csrf-token'];
     if (!csrfToken || csrfToken !== session.csrfToken) return res.status(403).json({ error: 'CSRF token missing or invalid' });
     const oldProc = sessionProcesses.get(req.params.id);
-    if (oldProc) { oldProc.kill(); sessionProcesses.delete(req.params.id); }
+    if (oldProc) { safeKillProc(oldProc); sessionProcesses.delete(req.params.id); }
     const oldProxy = sessionProxies.get(req.params.id);
-    if (oldProxy) { oldProxy.kill(); sessionProxies.delete(req.params.id); }
+    if (oldProxy) { safeKillProc(oldProxy); sessionProxies.delete(req.params.id); }
     // Clear sensitive data before deletion
     session.apiKey = null;
     sessions.delete(req.params.id);
@@ -783,7 +800,7 @@ wss.on('connection', (ws, req) => {
         }
 
         const oldProc = sessionProcesses.get(sessionId);
-        if (oldProc) oldProc.kill();
+        if (oldProc) safeKillProc(oldProc);
 
         // Sanitize user input
         const sanitizedData = sanitizeInput(message.data);
@@ -822,7 +839,7 @@ wss.on('connection', (ws, req) => {
           wsProcCount.set(sessionId, Math.max(0, (wsProcCount.get(sessionId) || 0) - 1));
           // Kill proxy too
           const proxy = sessionProxies.get(sessionId);
-          if (proxy) { proxy.kill(); sessionProxies.delete(sessionId); }
+          if (proxy) { safeKillProc(proxy); sessionProxies.delete(sessionId); }
           if (ws.readyState === ws.OPEN) {
             ws.send(JSON.stringify({ type: 'exit', code }));
           }
@@ -855,9 +872,9 @@ wss.on('connection', (ws, req) => {
       if (clients) { clients.delete(ws); if (clients.size === 0) sessionClients.delete(sessionId); }
     }
     const proc = sessionProcesses.get(sessionId);
-    if (proc) { proc.kill(); sessionProcesses.delete(sessionId); }
+    if (proc) { safeKillProc(proc); sessionProcesses.delete(sessionId); }
     const proxy = sessionProxies.get(sessionId);
-    if (proxy) { proxy.kill(); sessionProxies.delete(sessionId); }
+    if (proxy) { safeKillProc(proxy); sessionProxies.delete(sessionId); }
   });
 });
 
@@ -892,9 +909,9 @@ setInterval(async () => {
   for (const [id, session] of sessions) {
     if (now - session.lastActivity > SESSION_TIMEOUT) {
       const proc = sessionProcesses.get(id);
-      if (proc) { try { proc.kill(); } catch (e) {} sessionProcesses.delete(id); }
+      if (proc) { safeKillProc(proc); sessionProcesses.delete(id); }
       const proxy = sessionProxies.get(id);
-      if (proxy) { try { proxy.kill(); } catch (e) {} sessionProxies.delete(id); }
+      if (proxy) { safeKillProc(proxy); sessionProxies.delete(id); }
 
       // Clear sensitive data before deletion
       session.apiKey = null;
