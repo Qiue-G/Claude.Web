@@ -5,7 +5,7 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join, resolve } from 'path';
+import { join, resolve, sep } from 'path';
 import { spawn } from 'child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
@@ -686,8 +686,8 @@ app.get('/api/files/:sessionId/*', async (req, res) => {
     const resolvedPath = resolve(fullPath);
     const resolvedSessionDir = resolve(session.dir);
     
-    // 防止路径遍历攻击
-    if (!resolvedPath.startsWith(resolvedSessionDir)) {
+    // 防止路径遍历攻击（确保匹配完整目录路径 + 分隔符）
+    if (resolvedPath !== resolvedSessionDir && !resolvedPath.startsWith(resolvedSessionDir + sep)) {
       return res.status(403).json({ error: 'Access denied: path traversal detected' });
     }
     
@@ -710,8 +710,8 @@ app.post('/api/files/:sessionId/*', async (req, res) => {
     const resolvedPath = resolve(fullPath);
     const resolvedSessionDir = resolve(session.dir);
     
-    // 防止路径遍历攻击
-    if (!resolvedPath.startsWith(resolvedSessionDir)) {
+    // 防止路径遍历攻击（确保匹配完整目录路径 + 分隔符）
+    if (resolvedPath !== resolvedSessionDir && !resolvedPath.startsWith(resolvedSessionDir + sep)) {
       return res.status(403).json({ error: 'Access denied: path traversal detected' });
     }
     
@@ -737,13 +737,20 @@ app.delete('/api/files/:sessionId/*', async (req, res) => {
     const token = req.headers['x-session-token'];
     const session = getSession(req.params.sessionId, token);
     if (!session) return res.status(401).json({ error: 'Invalid session or token' });
+
+    // CSRF token check
+    const csrfToken = req.headers['x-csrf-token'];
+    if (!csrfToken || csrfToken !== session.csrfToken) {
+      return res.status(403).json({ error: 'CSRF token mismatch' });
+    }
+
     const filePath = req.params[0];
     const fullPath = join(session.dir, filePath);
     const resolvedPath = resolve(fullPath);
     const resolvedSessionDir = resolve(session.dir);
     
-    // 防止路径遍历攻击
-    if (!resolvedPath.startsWith(resolvedSessionDir)) {
+    // 防止路径遍历攻击（确保匹配完整目录路径 + 分隔符）
+    if (resolvedPath !== resolvedSessionDir && !resolvedPath.startsWith(resolvedSessionDir + sep)) {
       return res.status(403).json({ error: 'Access denied: path traversal detected' });
     }
     
@@ -753,8 +760,9 @@ app.delete('/api/files/:sessionId/*', async (req, res) => {
     }
     
     const stat = await import('fs/promises').then(fs => fs.stat(resolvedPath));
+    const isDir = stat.isDirectory();
     
-    if (stat.isDirectory()) {
+    if (isDir) {
       // 删除文件夹（递归）
       await import('fs/promises').then(fs => fs.rm(resolvedPath, { recursive: true, force: true }));
     } else {
@@ -762,7 +770,7 @@ app.delete('/api/files/:sessionId/*', async (req, res) => {
       await import('fs/promises').then(fs => fs.unlink(resolvedPath));
     }
     
-    res.json({ success: true, path: filePath, type: stat.isDirectory() ? 'directory' : 'file' });
+    res.json({ success: true, path: filePath, type: isDir ? 'directory' : 'file' });
   } catch (error) {
     console.error('[ERROR] delete file/folder:', error.message);
     if (error.code === 'EPERM' || error.code === 'EACCES') {
