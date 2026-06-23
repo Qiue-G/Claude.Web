@@ -9,6 +9,7 @@ import { spawn } from 'child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import { dirname as pathDirname } from 'path';
+import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = pathDirname(__filename);
@@ -167,6 +168,33 @@ const sessionProxies = new Map(); // proxy processes
 const wsProcCount = new Map();    // active process count per session
 const sessionClients = new Map(); // sessionId → WebSocket (for model health push)
 
+// ===== API Key Encryption (AES-256-GCM) =====
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || randomBytes(32).toString('hex');
+const IV_LENGTH = 16;
+const AUTH_TAG_LENGTH = 16;
+
+function encryptApiKey(plainKey) {
+  const iv = randomBytes(IV_LENGTH);
+  const cipher = createCipheriv('aes-256-gcm', Buffer.from(ENCRYPTION_KEY, 'hex'), iv);
+  let encrypted = cipher.update(plainKey, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const authTag = cipher.getAuthTag().toString('hex');
+  return iv.toString('hex') + ':' + authTag + ':' + encrypted;
+}
+
+function decryptApiKey(encryptedKey) {
+  const parts = encryptedKey.split(':');
+  if (parts.length !== 3) return encryptedKey; // Not encrypted
+  const [ivHex, authTagHex, encrypted] = parts;
+  const iv = Buffer.from(ivHex, 'hex');
+  const authTag = Buffer.from(authTagHex, 'hex');
+  const decipher = createDecipheriv('aes-256-gcm', Buffer.from(ENCRYPTION_KEY, 'hex'), iv);
+  decipher.setAuthTag(authTag);
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}
+
 function maskSensitive(text, apiKey) {
   if (!apiKey || apiKey.length < 12) return text;
   const masked = apiKey.substring(0, 8) + '***' + apiKey.substring(apiKey.length - 4);
@@ -182,6 +210,19 @@ function stripAnsi(str) {
   return str;
 }
 
+// Sanitize user input to prevent injection attacks
+function sanitizeInput(input) {
+  if (!input || typeof input !== 'string') return '';
+  // Limit length to 100KB
+  const MAX_INPUT_LENGTH = 100 * 1024;
+  let sanitized = input.length > MAX_INPUT_LENGTH ? input.substring(0, MAX_INPUT_LENGTH) : input;
+  // Remove null bytes
+  sanitized = sanitized.replace(/\0/g, '');
+  // Remove control characters except newlines and tabs
+  sanitized = sanitized.replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+  return sanitized;
+}
+
 function createSession(apiKey, model, provider) {
   const sessionId = uuidv4();
   const sessionToken = uuidv4();
@@ -189,7 +230,9 @@ function createSession(apiKey, model, provider) {
   const sessionDir = join(WORKSPACE_DIR, sessionId);
   if (!existsSync(WORKSPACE_DIR)) mkdir(WORKSPACE_DIR, { recursive: true }).catch(console.error);
   mkdir(sessionDir, { recursive: true }).catch(console.error);
-  const session = { id: sessionId, token: sessionToken, csrfToken, apiKey, model, provider, dir: sessionDir, createdAt: Date.now(), lastActivity: Date.now(), currentModel: model, modelHealth: 'connecting' };
+  // Encrypt API key at rest
+  const encryptedKey = encryptApiKey(apiKey);
+  const session = { id: sessionId, token: sessionToken, csrfToken, apiKey: encryptedKey, model, provider, dir: sessionDir, createdAt: Date.now(), lastActivity: Date.now(), currentModel: model, modelHealth: 'connecting' };
   sessions.set(sessionId, session);
   return session;
 }
@@ -240,9 +283,11 @@ async function startProxy(session) {
     proxyArgs.push('--fallback-model', fallback);
   }
 
+  // Decrypt API key for proxy use
+  const decryptedKey = decryptApiKey(session.apiKey);
   const proxy = spawn('node', proxyArgs, {
     cwd: session.dir,
-    env: { ...process.env, ANTHROPIC_API_KEY: session.apiKey, NODE_ENV: 'production' },
+    env: { ...process.env, ANTHROPIC_API_KEY: decryptedKey, NODE_ENV: 'production' },
     stdio: ['pipe', 'pipe', 'pipe']
   });
 
@@ -261,7 +306,9 @@ async function startProxy(session) {
     });
     proxy.stderr.on('data', (chunk) => {
       const text = chunk.toString().trim();
-      console.error('[PROXY stderr] ' + text);
+      // Mask sensitive data (API keys) in logs
+      const maskedText = maskSensitive(text, session.apiKey);
+      console.error('[PROXY stderr] ' + maskedText);
 
       // Parse model health events from proxy v5
       // "→ modelX" / "→ modelX [retry 1/2]" → retrying
@@ -433,7 +480,10 @@ app.delete('/api/session/:id', async (req, res) => {
     if (oldProc) { oldProc.kill(); sessionProcesses.delete(req.params.id); }
     const oldProxy = sessionProxies.get(req.params.id);
     if (oldProxy) { oldProxy.kill(); sessionProxies.delete(req.params.id); }
+    // Clear sensitive data before deletion
+    session.apiKey = null;
     sessions.delete(req.params.id);
+    usageStats.delete(req.params.id);
   }
   res.json({ success: true });
 });
@@ -668,6 +718,12 @@ wss.on('connection', (ws, req) => {
 
   ws.on('message', async (data) => {
     try {
+      // Enforce message size limit (1MB)
+      if (data.length > 1024 * 1024) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Message too large' }));
+        return;
+      }
+
       const message = JSON.parse(data.toString());
 
       if (message.type === 'init') {
@@ -720,10 +776,12 @@ wss.on('connection', (ws, req) => {
         const oldProc = sessionProcesses.get(sessionId);
         if (oldProc) oldProc.kill();
 
-        console.log('[INPUT] message length: ' + (message.data ? message.data.length : 0));
+        // Sanitize user input
+        const sanitizedData = sanitizeInput(message.data);
+        console.log('[INPUT] message length: ' + (sanitizedData ? sanitizedData.length : 0));
 
         wsProcCount.set(sessionId, (wsProcCount.get(sessionId) || 0) + 1);
-        const proc = await spawnCli(session, message.data);
+        const proc = await spawnCli(session, sanitizedData);
         sessionProcesses.set(sessionId, proc);
 
         proc.stdout.on('data', (chunk) => {
