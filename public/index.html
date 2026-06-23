@@ -1348,6 +1348,38 @@
     html.dark {
       color-scheme: dark;
     }
+
+    /* Context Menu */
+    .context-menu {
+      position: fixed;
+      z-index: 10000;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 0;
+      min-width: 140px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    .context-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text-primary);
+      transition: background 0.15s;
+    }
+    .context-menu-item:hover {
+      background: var(--bg-hover);
+    }
+    .context-menu-item.danger {
+      color: var(--red);
+    }
+    .context-menu-item.danger:hover {
+      background: rgba(239,68,68,0.1);
+    }
+    .cm-icon { font-size: 14px; }
   </style>
 </head>
 <body>
@@ -2350,6 +2382,13 @@
       name.textContent = item.name;
       div.appendChild(name);
 
+      // Right-click context menu for both files and folders
+      div.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        showFileContextMenu(e, item);
+      });
+
       if (item.type === 'directory') {
         const children = document.createElement('div');
         children.className = 'tree-children';
@@ -2449,6 +2488,99 @@
         });
         parent.appendChild(div);
       }
+    }
+  }
+
+  // ===== File/Folder Context Menu =====
+  let contextTarget = null; // { path, type, element }
+
+  function showFileContextMenu(e, item) {
+    const menu = $('fileContextMenu');
+    contextTarget = { path: item.path, type: item.type, element: e.currentTarget };
+
+    // Position menu
+    menu.style.display = 'block';
+    const x = Math.min(e.clientX, window.innerWidth - 160);
+    const y = Math.min(e.clientY, window.innerHeight - 50);
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+  }
+
+  function hideFileContextMenu() {
+    $('fileContextMenu').style.display = 'none';
+    contextTarget = null;
+  }
+
+  // Close context menu on click elsewhere
+  document.addEventListener('click', hideFileContextMenu);
+  document.addEventListener('scroll', hideFileContextMenu, true);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') hideFileContextMenu();
+  });
+
+  // Context menu action handler
+  $('fileContextMenu').addEventListener('click', (e) => {
+    const actionItem = e.target.closest('[data-action]');
+    if (!actionItem || !contextTarget) return;
+
+    const action = actionItem.dataset.action;
+    if (action === 'delete') {
+      deleteFileOrFolder(contextTarget.path, contextTarget.type, contextTarget.element);
+    }
+    hideFileContextMenu();
+  });
+
+  async function deleteFileOrFolder(path, type, element) {
+    if (!sessionId) {
+      appendChatMsg('system', '请先配置模型');
+      return;
+    }
+
+    const typeName = type === 'directory' ? '文件夹' : '文件';
+    const name = path.split('/').pop() || path;
+    if (!confirm(`确定要删除${typeName}「${name}」吗？此操作不可撤销。`)) return;
+
+    try {
+      const res = await fetch('/api/files/' + sessionId + '/' + path, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-session-token': sessionToken || '',
+          'x-csrf-token': csrfToken || ''
+        }
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        // Remove from local fileContents cache
+        delete fileContents[path];
+        // Also remove any entries that start with this path (for folders)
+        if (type === 'directory') {
+          const prefix = path + '/';
+          for (const key of Object.keys(fileContents)) {
+            if (key.startsWith(prefix)) delete fileContents[key];
+          }
+        }
+        persistFileContents();
+
+        // Close editor tab if this file is open
+        closeEditorTab(path);
+
+        // Refresh file tree
+        loadFileTree();
+
+        appendChatMsg('system', `已删除${typeName}：${name}`);
+      } else {
+        const errMap = {
+          'Permission denied': '权限不足，文件可能正在使用中',
+          'not found': '文件或文件夹不存在',
+          'path traversal': '安全验证失败'
+        };
+        const friendly = Object.keys(errMap).find(k => data.error.includes(k));
+        appendChatMsg('system', `删除失败: ${friendly ? errMap[friendly] : data.error}`);
+      }
+    } catch (e) {
+      appendChatMsg('system', `删除失败: ${e.message}`);
     }
   }
 
@@ -4062,5 +4194,13 @@
     }
   })();
 </script>
+  <!-- Context Menu for File Tree -->
+  <div class="context-menu" id="fileContextMenu" style="display:none;">
+    <div class="context-menu-item danger" data-action="delete">
+      <span class="cm-icon">&#128465;</span>
+      <span class="cm-label">删除</span>
+    </div>
+  </div>
+
 </body>
 </html>

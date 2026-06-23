@@ -731,7 +731,7 @@ app.post('/api/files/:sessionId/*', async (req, res) => {
   }
 });
 
-// ===== File Delete API =====
+// ===== File/Folder Delete API =====
 app.delete('/api/files/:sessionId/*', async (req, res) => {
   try {
     const token = req.headers['x-session-token'];
@@ -747,12 +747,31 @@ app.delete('/api/files/:sessionId/*', async (req, res) => {
       return res.status(403).json({ error: 'Access denied: path traversal detected' });
     }
     
-    const { unlink } = await import('fs/promises');
-    await unlink(fullPath);
-    res.json({ success: true, path: filePath });
+    // 检查路径是否存在
+    if (!existsSync(resolvedPath)) {
+      return res.status(404).json({ error: 'File or folder not found' });
+    }
+    
+    const stat = await import('fs/promises').then(fs => fs.stat(resolvedPath));
+    
+    if (stat.isDirectory()) {
+      // 删除文件夹（递归）
+      await import('fs/promises').then(fs => fs.rm(resolvedPath, { recursive: true, force: true }));
+    } else {
+      // 删除文件
+      await import('fs/promises').then(fs => fs.unlink(resolvedPath));
+    }
+    
+    res.json({ success: true, path: filePath, type: stat.isDirectory() ? 'directory' : 'file' });
   } catch (error) {
-    console.error('[ERROR] delete file:', error.message);
-    res.status(500).json({ error: 'Failed to delete file' });
+    console.error('[ERROR] delete file/folder:', error.message);
+    if (error.code === 'EPERM' || error.code === 'EACCES') {
+      return res.status(403).json({ error: 'Permission denied: file may be in use' });
+    }
+    if (error.code === 'ENOTEMPTY') {
+      return res.status(403).json({ error: 'Folder is not empty' });
+    }
+    res.status(500).json({ error: 'Failed to delete: ' + error.message });
   }
 });
 
