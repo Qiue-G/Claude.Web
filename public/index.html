@@ -305,6 +305,147 @@
     .resize-v:hover { background: var(--border-hover); width: 3px; }
     .resize-v:hover::after { opacity: 0.3; }
 
+    /* ===== Code Editor Panel ===== */
+    .editor-panel {
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-base);
+      border-bottom: 1px solid var(--border);
+      overflow: hidden;
+      transition: height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .editor-panel.collapsed { height: 0 !important; border-bottom: none; }
+
+    .editor-tabs {
+      display: flex;
+      align-items: center;
+      background: var(--bg-toolbar);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      overflow-y: hidden;
+      flex-shrink: 0;
+      min-height: 32px;
+    }
+    .editor-tabs::-webkit-scrollbar { height: 2px; }
+    .editor-tabs::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
+
+    .editor-tab {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      cursor: pointer;
+      border-right: 1px solid var(--border);
+      white-space: nowrap;
+      transition: background 0.15s ease, color 0.15s ease;
+      flex-shrink: 0;
+    }
+    .editor-tab:hover { background: var(--bg-hover); color: var(--text-secondary); }
+    .editor-tab.active { background: var(--bg-base); color: var(--amber-bright); border-bottom: 2px solid var(--amber); }
+    .editor-tab .tab-close {
+      width: 14px; height: 14px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 3px;
+      opacity: 0.5;
+      transition: opacity 0.15s ease, background 0.15s ease;
+    }
+    .editor-tab:hover .tab-close { opacity: 1; }
+    .editor-tab .tab-close:hover { background: rgba(255,255,255,0.1); }
+    .editor-tab .tab-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--amber); flex-shrink: 0; }
+
+    .editor-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 12px;
+      background: var(--bg-toolbar);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      min-height: 28px;
+    }
+    .editor-toolbar .et-info {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+    }
+    .editor-toolbar .et-actions { margin-left: auto; display: flex; gap: 4px; }
+    .editor-toolbar .et-btn {
+      padding: 3px 10px;
+      font-size: 11px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--bg-hover);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-family: var(--font-sans);
+    }
+    .editor-toolbar .et-btn:hover { background: var(--bg-accent-dim); color: var(--amber-bright); border-color: var(--border-hover); }
+    .editor-toolbar .et-btn.primary { background: var(--amber); color: var(--bg-base); border-color: var(--amber); font-weight: 600; }
+    .editor-toolbar .et-btn.primary:hover { background: var(--amber-bright); }
+
+    .editor-body {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .editor-gutter {
+      padding: 8px 8px 8px 12px;
+      text-align: right;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--text-dim);
+      user-select: none;
+      background: var(--bg-base);
+      overflow: hidden;
+      flex-shrink: 0;
+      min-width: 40px;
+    }
+
+    .editor-content {
+      flex: 1;
+      overflow: auto;
+      position: relative;
+    }
+    .editor-content::-webkit-scrollbar { width: 6px; height: 6px; }
+    .editor-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+
+    .editor-textarea {
+      width: 100%;
+      min-height: 100%;
+      padding: 8px 12px;
+      background: transparent;
+      border: none;
+      outline: none;
+      resize: none;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--text-primary);
+      white-space: pre;
+      overflow: visible;
+      tab-size: 2;
+      caret-color: var(--amber);
+    }
+
+    .editor-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--text-dim);
+      gap: 8px;
+    }
+    .editor-empty .ee-icon { opacity: 0.3; }
+    .editor-empty .ee-text { font-size: 13px; }
+
     /* ===== Center (Chat Area) ===== */
     .chat-area {
       flex: 1;
@@ -1271,8 +1412,27 @@
     <!-- Resize -->
     <div class="resize-v" id="resizeLeft"></div>
 
-    <!-- Center: Chat Area -->
+    <!-- Center: Editor + Chat -->
     <div class="chat-area">
+      <!-- Code Editor Panel -->
+      <div class="editor-panel collapsed" id="editorPanel" style="height: 0;">
+        <div class="editor-tabs" id="editorTabs"></div>
+        <div class="editor-toolbar" id="editorToolbar" style="display:none;">
+          <span class="et-info" id="editorFileInfo"></span>
+          <div class="et-actions">
+            <button class="et-btn" id="editorFormatBtn" title="格式化">格式化</button>
+            <button class="et-btn primary" id="editorSaveBtn" title="保存 (Ctrl+S)">保存</button>
+          </div>
+        </div>
+        <div class="editor-body" id="editorBody">
+          <div class="editor-empty" id="editorEmpty">
+            <svg class="icon icon-md" viewBox="0 0 24 24" style="width:32px;height:32px;color:var(--text-dim)"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            <span class="ee-text">点击文件树中的文件以打开编辑器</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat Messages -->
       <div class="chat-messages" id="chatMessages" aria-live="polite" aria-atomic="false">
         <div class="chat-welcome" id="chatWelcome">
           <div class="logo"><svg class="icon icon-md" viewBox="0 0 24 24" style="color:var(--amber)"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
@@ -2014,8 +2174,12 @@
               fileContents[item.path] = data.content;
               currentFileContent = data.content;
             }
+            // Open in editor
+            openEditorTab(item.path, data.content || '');
           } catch (e) {
             console.error('Failed to read file:', e);
+            // Still open with cached content
+            openEditorTab(item.path, fileContents[item.path] || '');
           }
         };
 
@@ -2289,6 +2453,239 @@
     html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
     return html;
   }
+
+  // ===== Code Editor =====
+  const editorState = {
+    tabs: [],        // { path, content, original, modified }
+    activeTab: null,
+  };
+
+  function getLanguageFromPath(path) {
+    const ext = path.split('.').pop().toLowerCase();
+    const map = {
+      js: 'javascript', mjs: 'javascript', jsx: 'javascript',
+      ts: 'typescript', tsx: 'typescript',
+      py: 'python', rb: 'ruby', go: 'go', rs: 'rust',
+      java: 'java', c: 'c', cpp: 'cpp', h: 'c',
+      html: 'html', css: 'css', scss: 'scss',
+      json: 'json', yml: 'yaml', yaml: 'yaml',
+      md: 'markdown', sh: 'bash', sql: 'sql',
+      xml: 'xml', svg: 'xml', vue: 'vue',
+    };
+    return map[ext] || 'text';
+  }
+
+  function getFileIcon(path) {
+    const ext = path.split('.').pop().toLowerCase();
+    const icons = {
+      js: 'JS', mjs: 'JS', jsx: 'JS',
+      ts: 'TS', tsx: 'TS',
+      py: 'PY', json: '{}',
+      html: '<>', css: '#', md: 'M',
+      sh: '$', yml: 'Y', yaml: 'Y',
+    };
+    return icons[ext] || 'F';
+  }
+
+  function openEditorTab(path, content) {
+    // Check if tab already exists
+    let tab = editorState.tabs.find(t => t.path === path);
+    if (!tab) {
+      tab = { path, content, original: content, modified: false };
+      editorState.tabs.push(tab);
+    } else {
+      tab.content = content;
+      tab.original = content;
+      tab.modified = false;
+    }
+    switchEditorTab(path);
+    renderEditorTabs();
+    renderEditorContent(path);
+  }
+
+  function closeEditorTab(path) {
+    const idx = editorState.tabs.findIndex(t => t.path === path);
+    if (idx === -1) return;
+    const tab = editorState.tabs[idx];
+    if (tab.modified && !confirm(`"${path}" 有未保存的修改，确定关闭？`)) return;
+    editorState.tabs.splice(idx, 1);
+    if (editorState.activeTab === path) {
+      const next = editorState.tabs[idx] || editorState.tabs[idx - 1];
+      if (next) {
+        switchEditorTab(next.path);
+        renderEditorContent(next.path);
+      } else {
+        editorState.activeTab = null;
+        showEditorEmpty();
+      }
+    }
+    renderEditorTabs();
+  }
+
+  function switchEditorTab(path) {
+    editorState.activeTab = path;
+    renderEditorTabs();
+    renderEditorContent(path);
+  }
+
+  function showEditorEmpty() {
+    const panel = $('editorPanel');
+    panel.classList.add('collapsed');
+    panel.style.height = '0';
+    $('editorToolbar').style.display = 'none';
+    $('editorBody').innerHTML = `<div class="editor-empty" id="editorEmpty">
+      <svg viewBox="0 0 24 24" style="width:32px;height:32px;color:var(--text-dim);opacity:0.3" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+      <span class="ee-text">点击文件树中的文件以打开编辑器</span>
+    </div>`;
+  }
+
+  function renderEditorTabs() {
+    const container = $('editorTabs');
+    if (editorState.tabs.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+    container.innerHTML = editorState.tabs.map(t => {
+      const isActive = t.path === editorState.activeTab;
+      const icon = getFileIcon(t.path);
+      const name = t.path.split('/').pop();
+      return `<div class="editor-tab ${isActive ? 'active' : ''}" data-path="${escapeHtml(t.path)}" onclick="switchEditorTab('${escapeHtml(t.path)}')">
+        ${t.modified ? '<span class="tab-dot"></span>' : ''}
+        <span style="opacity:0.6;font-size:10px">${icon}</span>
+        <span>${escapeHtml(name)}</span>
+        <span class="tab-close" onclick="event.stopPropagation();closeEditorTab('${escapeHtml(t.path)}')">
+          <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </span>
+      </div>`;
+    }).join('');
+  }
+
+  function renderEditorContent(path) {
+    const tab = editorState.tabs.find(t => t.path === path);
+    if (!tab) return;
+
+    const panel = $('editorPanel');
+    panel.classList.remove('collapsed');
+    panel.style.height = '40%';
+    $('editorToolbar').style.display = 'flex';
+
+    const lang = getLanguageFromPath(path);
+    const lineCount = tab.content.split('\n').length;
+    $('editorFileInfo').textContent = `${path} · ${lang} · ${lineCount} 行${tab.modified ? ' · 已修改' : ''}`;
+
+    // Build gutter + textarea
+    const gutterLines = Array.from({ length: lineCount }, (_, i) => i + 1).join('\n');
+    $('editorBody').innerHTML = `
+      <div class="editor-gutter" id="editorGutter">${escapeHtml(gutterLines)}</div>
+      <div class="editor-content" id="editorContent">
+        <textarea class="editor-textarea" id="editorTextarea" spellcheck="false"
+          autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+      </div>
+    `;
+    const ta = $('editorTextarea');
+    ta.value = tab.content;
+
+    // Sync scroll
+    const content = $('editorContent');
+    const gutter = $('editorGutter');
+    content.addEventListener('scroll', () => {
+      gutter.scrollTop = content.scrollTop;
+    });
+
+    // Track changes
+    ta.addEventListener('input', () => {
+      tab.content = ta.value;
+      tab.modified = ta.value !== tab.original;
+      const newLineCount = ta.value.split('\n').length;
+      $('editorFileInfo').textContent = `${path} · ${lang} · ${newLineCount} 行${tab.modified ? ' · 已修改' : ''}`;
+      // Update gutter
+      const newGutter = Array.from({ length: newLineCount }, (_, i) => i + 1).join('\n');
+      gutter.textContent = newGutter;
+      // Update tab dot
+      renderEditorTabs();
+    });
+
+    // Tab key inserts spaces
+    ta.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = ta.selectionStart;
+        const end = ta.selectionEnd;
+        ta.value = ta.value.substring(0, start) + '  ' + ta.value.substring(end);
+        ta.selectionStart = ta.selectionEnd = start + 2;
+        ta.dispatchEvent(new Event('input'));
+      }
+      // Ctrl+S to save
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        saveEditorFile();
+      }
+    });
+
+    ta.focus();
+  }
+
+  async function saveEditorFile() {
+    if (!editorState.activeTab || !sessionId) return;
+    const tab = editorState.tabs.find(t => t.path === editorState.activeTab);
+    if (!tab) return;
+
+    const saveBtn = $('editorSaveBtn');
+    const originalText = saveBtn.textContent;
+    saveBtn.textContent = '保存中...';
+    saveBtn.disabled = true;
+
+    try {
+      const res = await fetch('/api/files/' + sessionId + '/' + tab.path, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-session-token': sessionToken || ''
+        },
+        body: JSON.stringify({ content: tab.content })
+      });
+      const data = await res.json();
+      if (data.success) {
+        tab.original = tab.content;
+        tab.modified = false;
+        fileContents[tab.path] = tab.content;
+        currentFileContent = tab.content;
+        const lang = getLanguageFromPath(tab.path);
+        const lineCount = tab.content.split('\n').length;
+        $('editorFileInfo').textContent = `${tab.path} · ${lang} · ${lineCount} 行`;
+        renderEditorTabs();
+        appendChatMsg('system', `已保存: ${tab.path}`);
+      } else {
+        appendChatMsg('system', `保存失败: ${data.error}`);
+      }
+    } catch (e) {
+      appendChatMsg('system', `保存失败: ${e.message}`);
+    } finally {
+      saveBtn.textContent = originalText;
+      saveBtn.disabled = false;
+    }
+  }
+
+  // Wire up save button
+  document.addEventListener('DOMContentLoaded', () => {
+    const saveBtn = $('editorSaveBtn');
+    if (saveBtn) saveBtn.addEventListener('click', saveEditorFile);
+    const fmtBtn = $('editorFormatBtn');
+    if (fmtBtn) fmtBtn.addEventListener('click', () => {
+      if (!editorState.activeTab) return;
+      const tab = editorState.tabs.find(t => t.path === editorState.activeTab);
+      if (!tab) return;
+      const ta = $('editorTextarea');
+      if (!ta) return;
+      // Simple format: trim trailing spaces, ensure final newline
+      let formatted = ta.value.split('\n').map(l => l.replace(/\s+$/, '')).join('\n');
+      if (formatted && !formatted.endsWith('\n')) formatted += '\n';
+      ta.value = formatted;
+      tab.content = formatted;
+      tab.modified = formatted !== tab.original;
+      ta.dispatchEvent(new Event('input'));
+    });
+  });
 
   function escapeHtml(text) {
     if (text == null) return '';
