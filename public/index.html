@@ -1939,7 +1939,7 @@
         // Upload to server workspace if session exists
         if (sessionId) {
           try {
-            const res = await fetch('/api/files/' + sessionId + '/' + encodeURIComponent(file.name), {
+            const res = await fetch('/api/files/' + sessionId + '/' + encodeFilePath(file.name), {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',

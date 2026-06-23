@@ -845,6 +845,12 @@ app.get('/api/usage/:sessionId', (req, res) => {
   res.json(stats);
 });
 
+// Catch-all for API routes: return JSON error instead of HTML
+app.use('/api', (req, res) => {
+  console.warn('[API] Unmatched route:', req.method, req.originalUrl);
+  res.status(404).json({ error: 'API endpoint not found: ' + req.method + ' ' + req.originalUrl });
+});
+
 const server = app.listen(
 PORT, HOST, () => {
   console.log('Free-code Web Server v' + VERSION + ' on ' + HOST + ':' + PORT);
