@@ -1720,6 +1720,7 @@
   let ws = null;
   let sessionId = null;
   let sessionToken = null;
+  let csrfToken = null;
   let isWaiting = false;
   let currentFile = null;
   let autoSave = false;
@@ -1893,7 +1894,8 @@
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'x-session-token': sessionToken || ''
+          'x-session-token': sessionToken || '',
+          'x-csrf-token': csrfToken || ''
         },
         body: JSON.stringify({ content: '' })
       });
@@ -1944,7 +1946,8 @@
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'x-session-token': sessionToken || ''
+                'x-session-token': sessionToken || '',
+                'x-csrf-token': csrfToken || ''
               },
               body: JSON.stringify({ content: content || '' })
             });
@@ -2066,7 +2069,8 @@
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'x-session-token': sessionToken || ''
+              'x-session-token': sessionToken || '',
+              'x-csrf-token': csrfToken || ''
             },
             body: JSON.stringify({ content: content || '' })
           });
@@ -2126,7 +2130,8 @@
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'x-session-token': sessionToken || ''
+          'x-session-token': sessionToken || '',
+          'x-csrf-token': csrfToken || ''
         },
         body: JSON.stringify({ content: content || '' })
       });
@@ -3076,7 +3081,8 @@
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-session-token': sessionToken || ''
+          'x-session-token': sessionToken || '',
+          'x-csrf-token': csrfToken || ''
         },
         body: JSON.stringify({ content: tab.content })
       });
@@ -3860,6 +3866,7 @@
         if (ws) { ws.onclose = null; ws.close(); ws = null; }
         sessionId = data.sessionId;
         sessionToken = data.token;
+        csrfToken = data.csrfToken;
         isConnected = true;
         closeConfigModal();
         const shortName = m.model.split('/').pop() || m.model;
@@ -3961,6 +3968,7 @@
 
       sessionId = data.sessionId;
       sessionToken = data.token;
+      csrfToken = data.csrfToken;
       loadFileTree();
       isConnected = true;
       closeConfigModal();
@@ -4187,6 +4195,7 @@
 
       sessionId = data.sessionId;
       sessionToken = data.token;
+      csrfToken = data.csrfToken;
       isConnected = true;
 
       $('statusDot').style.background = 'var(--green)';
