@@ -346,14 +346,26 @@
     .editor-tab:hover { background: var(--bg-hover); color: var(--text-secondary); }
     .editor-tab.active { background: var(--bg-base); color: var(--amber-bright); border-bottom: 2px solid var(--amber); }
     .editor-tab .tab-close {
-      width: 14px; height: 14px;
+      width: 18px; height: 18px;
       display: flex; align-items: center; justify-content: center;
       border-radius: 3px;
-      opacity: 0.5;
+      opacity: 0.6;
       transition: opacity 0.15s ease, background 0.15s ease;
+      cursor: pointer;
+      flex-shrink: 0;
+      margin-left: 2px;
     }
-    .editor-tab:hover .tab-close { opacity: 1; }
+    .editor-tab .tab-close:hover { opacity: 1; }
     .editor-tab .tab-close:hover { background: rgba(255,255,255,0.1); }
+    .editor-tab .tab-close.confirming {
+      background: var(--red);
+      color: white;
+      opacity: 1;
+      padding: 0 4px;
+      width: auto;
+      font-size: 10px;
+      font-family: var(--font-sans);
+    }
     .editor-tab .tab-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--amber); flex-shrink: 0; }
 
     .editor-toolbar {
@@ -2618,11 +2630,38 @@
     persistEditorTabs();
   }
 
+  // State for inline tab-close confirmation (per-tab path)
+  let tabCloseConfirming = null;
+  let tabCloseConfirmTimer = null;
+
   function closeEditorTab(path) {
     const idx = editorState.tabs.findIndex(t => t.path === path);
     if (idx === -1) return;
     const tab = editorState.tabs[idx];
-    if (tab.modified && !confirm(`"${path}" 有未保存的修改，确定关闭？`)) return;
+
+    // If tab has unsaved changes, require a second click to confirm
+    if (tab.modified) {
+      if (tabCloseConfirming === path) {
+        // Second click within the confirm window -> really close
+        clearTimeout(tabCloseConfirmTimer);
+        tabCloseConfirming = null;
+      } else {
+        // First click -> show inline "再点关闭" prompt
+        tabCloseConfirming = path;
+        renderEditorTabs();
+        // Re-render after 2s to reset state if user doesn't click again
+        clearTimeout(tabCloseConfirmTimer);
+        tabCloseConfirmTimer = setTimeout(() => {
+          if (tabCloseConfirming === path) {
+            tabCloseConfirming = null;
+            renderEditorTabs();
+          }
+        }, 2000);
+        return;
+      }
+    }
+
+    // Actually close the tab
     editorState.tabs.splice(idx, 1);
     if (editorState.activeTab === path) {
       const next = editorState.tabs[idx] || editorState.tabs[idx - 1];
@@ -2665,13 +2704,15 @@
       const isActive = t.path === editorState.activeTab;
       const icon = getFileIcon(t.path);
       const name = t.path.split('/').pop();
+      const confirming = tabCloseConfirming === t.path;
+      const closeContent = confirming
+        ? '<span style="white-space:nowrap;padding:0 2px;">再点关闭</span>'
+        : '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
       return `<div class="editor-tab ${isActive ? 'active' : ''}" data-path="${escapeHtml(t.path)}" onclick="switchEditorTab('${escapeHtml(t.path)}')">
         ${t.modified ? '<span class="tab-dot"></span>' : ''}
         <span style="opacity:0.6;font-size:10px">${icon}</span>
         <span>${escapeHtml(name)}</span>
-        <span class="tab-close" onclick="event.stopPropagation();closeEditorTab('${escapeHtml(t.path)}')">
-          <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </span>
+        <span class="tab-close ${confirming ? 'confirming' : ''}" onclick="event.stopPropagation();closeEditorTab('${escapeHtml(t.path)}')" title="${confirming ? '再次点击确认关闭' : '关闭'}">${closeContent}</span>
       </div>`;
     }).join('');
   }
