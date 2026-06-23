@@ -52,6 +52,70 @@ function getFallbackModel(provider) {
 }
 
 
+// ===== Dynamic Model List & Pricing =====
+const dynamicModels = new Map(); // provider -> { models: [], lastUpdate: timestamp }
+const MODEL_CACHE_TTL = 3600000; // 1 hour
+
+async function fetchOpenRouterModels() {
+  try {
+    const resp = await fetch('https://openrouter.ai/api/v1/models', {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (!resp.ok) throw new Error('Failed to fetch');
+    const data = await resp.json();
+    const models = (data.data || []).map(m => ({
+      id: m.id,
+      name: m.name || m.id.split('/').pop(),
+      context: m.context_length || 0,
+      pricing: {
+        prompt: parseFloat(m.pricing?.prompt || 0) * 1000000, // per 1M tokens
+        completion: parseFloat(m.pricing?.completion || 0) * 1000000,
+        currency: 'USD'
+      },
+      tier: (m.pricing?.prompt === '0' || m.pricing?.prompt === 0) ? 'free' : 'paid'
+    }));
+    dynamicModels.set('openrouter', { models, lastUpdate: Date.now() });
+    console.log(`[MODELS] Fetched ${models.length} models from OpenRouter`);
+  } catch (e) {
+    console.error('[MODELS] Failed to fetch OpenRouter models:', e.message);
+  }
+}
+
+// Fetch models on startup
+fetchOpenRouterModels();
+// Refresh every hour
+setInterval(fetchOpenRouterModels, MODEL_CACHE_TTL);
+
+function getModelPricing(provider, modelId) {
+  const cached = dynamicModels.get(provider);
+  if (!cached) return null;
+  const model = cached.models.find(m => m.id === modelId);
+  return model?.pricing || null;
+}
+
+// ===== Usage Tracking =====
+const usageStats = new Map(); // sessionId -> { inputTokens, outputTokens, cost, requests, lastRequest }
+
+function recordUsage(sessionId, inputTokens, outputTokens, modelId, provider) {
+  let stats = usageStats.get(sessionId);
+  if (!stats) {
+    stats = { inputTokens: 0, outputTokens: 0, cost: 0, requests: 0, lastRequest: null, model: modelId, provider };
+    usageStats.set(sessionId, stats);
+  }
+  stats.inputTokens += inputTokens || 0;
+  stats.outputTokens += outputTokens || 0;
+  stats.requests++;
+  stats.lastRequest = Date.now();
+  stats.model = modelId;
+  stats.provider = provider;
+
+  // Calculate cost
+  const pricing = getModelPricing(provider, modelId);
+  if (pricing) {
+    stats.cost += (inputTokens * pricing.prompt / 1000000) + (outputTokens * pricing.completion / 1000000);
+  }
+}
+
 // ===== Rate Limiter (token bucket, per-IP) =====
 const rateLimits = new Map();
 const RATE_WINDOW = 60000;      // 1 minute window
@@ -218,6 +282,28 @@ async function startProxy(session) {
         session.modelHealth = 'error';
         recordModelFail(session.currentModel || session.model, text);
         notifyModelUpdate(session);
+      }
+      // Parse usage info: "[proxy] usage: input=XXX output=YYY model=ZZZ"
+      const usageMatch = text.match(/\[proxy\] usage: input=(\d+) output=(\d+) model=(\S+)/);
+      if (usageMatch) {
+        const inputTokens = parseInt(usageMatch[1], 10);
+        const outputTokens = parseInt(usageMatch[2], 10);
+        const modelUsed = usageMatch[3];
+        recordUsage(session.id, inputTokens, outputTokens, modelUsed, session.provider);
+        // Notify client of usage update
+        const clients = sessionClients.get(session.id);
+        if (clients) {
+          clients.forEach(ws => {
+            if (ws.readyState === 1) {
+              ws.send(JSON.stringify({
+                type: 'usage_update',
+                inputTokens,
+                outputTokens,
+                model: modelUsed
+              }));
+            }
+          });
+        }
       }
     });
     proxy.on('error', (e) => { clearTimeout(t); reject(e); });
@@ -517,6 +603,48 @@ app.get('/api/config', (req, res) => {
     };
   }
   res.json({ version: VERSION, defaults: DEFAULTS, providers, maxSessions: MAX_SESSIONS });
+});
+
+// ===== Dynamic Models API =====
+app.get('/api/models', (req, res) => {
+  const provider = req.query.provider || 'openrouter';
+  const cached = dynamicModels.get(provider);
+
+  if (!cached) {
+    return res.json({ models: [], lastUpdate: null, provider });
+  }
+
+  // Return top models (free first, then by context size)
+  const sorted = [...cached.models].sort((a, b) => {
+    if (a.tier !== b.tier) return a.tier === 'free' ? -1 : 1;
+    return (b.context || 0) - (a.context || 0);
+  });
+
+  res.json({
+    models: sorted.slice(0, 50), // Top 50
+    lastUpdate: cached.lastUpdate,
+    provider,
+    total: cached.models.length
+  });
+});
+
+// ===== Usage Stats API =====
+app.get('/api/usage/:sessionId', (req, res) => {
+  const token = req.headers['x-session-token'];
+  const session = getSession(req.params.sessionId, token);
+  if (!session) return res.status(401).json({ error: 'Invalid session or token' });
+
+  const stats = usageStats.get(req.params.sessionId) || {
+    inputTokens: 0,
+    outputTokens: 0,
+    cost: 0,
+    requests: 0,
+    lastRequest: null,
+    model: session.currentModel,
+    provider: session.provider
+  };
+
+  res.json(stats);
 });
 
 const server = app.listen(

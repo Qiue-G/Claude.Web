@@ -1530,6 +1530,10 @@
               <span class="context-item-label" id="currentModelLabel">未配置</span>
             </div>
           </div>
+          <div class="context-section">
+            <div class="context-section-title"><svg class="icon icon-sm" viewBox="0 0 24 24" style="color:var(--amber-bright)" aria-hidden="true"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> 费用统计</div>
+            <div id="costStats"></div>
+          </div>
         </div>
         <!-- Tools Tab -->
         <div id="tabTools" class="hidden">
@@ -1697,6 +1701,7 @@
 
   // Right panel dynamic data
   let tokenStats = { input: 0, inputMax: 200000, output: 0, outputMax: 16000 };
+  let costStats = { totalCost: 0, requestCount: 0, lastModel: '', lastUpdate: null };
   let toolUsage = {};
   let projectInfo = { framework: '', language: '', ui: '', style: '' };
 
@@ -1742,6 +1747,27 @@
         <span class="context-item-value">${formatNumber(tokenStats.output)} / ${formatNumber(tokenStats.outputMax)}</span>
       </div>
       <div class="progress-bar"><div class="progress-bar-fill" style="width:${outputPct}%;background:var(--green)"></div></div>
+    `;
+  }
+
+  function renderCostStats() {
+    const el = $('costStats');
+    if (!el) return;
+    const costStr = costStats.totalCost > 0 ? '$' + costStats.totalCost.toFixed(4) : '$0.00';
+    const timeStr = costStats.lastUpdate ? new Date(costStats.lastUpdate).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '--';
+    el.innerHTML = `
+      <div class="context-item">
+        <span class="context-item-label">本次会话费用</span>
+        <span class="context-item-value" style="color:var(--green);font-weight:600;">${costStr}</span>
+      </div>
+      <div class="context-item">
+        <span class="context-item-label">请求次数</span>
+        <span class="context-item-value">${costStats.requestCount}</span>
+      </div>
+      <div class="context-item">
+        <span class="context-item-label">最后更新</span>
+        <span class="context-item-value">${timeStr}</span>
+      </div>
     `;
   }
 
@@ -1794,6 +1820,7 @@
   // Initial render
   renderProjectInfo();
   renderTokenUsage();
+  renderCostStats();
   renderToolUsage();
   updateCurrentModel();
 
@@ -3038,6 +3065,103 @@
     });
   };
 
+  // ===== Smart Model Recommendation =====
+  function analyzeComplexity(text) {
+    const len = text.length;
+    const hasCode = /```|function|class|const|let|var|import|export|def|return|if|else|for|while/.test(text);
+    const hasFiles = text.includes('@');
+    const hasQuestions = /\?|为什么|如何|怎么|explain|how|why/.test(text);
+    const isComplex = len > 500 || (hasCode && len > 200) || (hasFiles && len > 300);
+    const isSimple = len < 100 && !hasCode && !hasQuestions;
+
+    if (isComplex) return { level: 'complex', reason: '内容较长或包含代码/文件引用' };
+    if (isSimple) return { level: 'simple', reason: '简短问题' };
+    return { level: 'medium', reason: '一般复杂度' };
+  }
+
+  function recommendModel(complexity) {
+    const activeModel = savedModels.find(m => m.id === activeModelId);
+    if (!activeModel) return null;
+
+    const provider = activeModel.provider || 'openrouter';
+    const currentModel = activeModel.model;
+
+    // Model recommendations by complexity
+    const recommendations = {
+      simple: {
+        openrouter: ['anthropic/claude-haiku-4.5', 'openai/gpt-4o-mini', 'google/gemini-flash-1.5'],
+        deepseek: ['deepseek-chat'],
+        anthropic: ['claude-haiku-4-5-20251001'],
+        openai: ['gpt-4o-mini']
+      },
+      medium: {
+        openrouter: ['anthropic/claude-sonnet-4', 'openai/gpt-4o', 'google/gemini-pro-1.5'],
+        deepseek: ['deepseek-chat'],
+        anthropic: ['claude-sonnet-4-20250514'],
+        openai: ['gpt-4o']
+      },
+      complex: {
+        openrouter: ['anthropic/claude-sonnet-4', 'anthropic/claude-opus-4', 'openai/gpt-4o'],
+        deepseek: ['deepseek-chat'],
+        anthropic: ['claude-sonnet-4-20250514', 'claude-opus-4-20250514'],
+        openai: ['gpt-4o']
+      }
+    };
+
+    const providerRecs = recommendations[complexity.level]?.[provider] || [];
+    const betterModel = providerRecs.find(m => m !== currentModel);
+
+    return {
+      current: currentModel,
+      recommended: betterModel,
+      reason: complexity.reason,
+      level: complexity.level
+    };
+  }
+
+  function showModelRecommendation(rec) {
+    if (!rec || !rec.recommended) return;
+
+    const levelLabels = {
+      simple: '简单',
+      medium: '中等',
+      complex: '复杂'
+    };
+
+    const msg = `💡 智能选路建议：\n检测到「${rec.reason}」（${levelLabels[rec.level]}任务）\n当前模型：${rec.current.split('/').pop()}\n推荐模型：${rec.recommended.split('/').pop()}\n\n是否切换？`;
+
+    if (confirm(msg)) {
+      // Find or create model entry
+      let targetModel = savedModels.find(m => m.model === rec.recommended);
+      if (!targetModel) {
+        // Create new model entry with same API key
+        const activeModel = savedModels.find(m => m.id === activeModelId);
+        if (activeModel) {
+          const apiKey = sessionStorage.getItem(`apiKey_${activeModel.id}`);
+          if (apiKey) {
+            const newModel = {
+              id: 'model_' + Date.now(),
+              model: rec.recommended,
+              provider: activeModel.provider,
+              baseUrl: activeModel.baseUrl || ''
+            };
+            sessionStorage.setItem(`apiKey_${newModel.id}`, apiKey);
+            savedModels.push(newModel);
+            saveModels();
+            switchToModel(savedModels.length - 1);
+            appendChatMsg('system', `已切换到推荐模型：${rec.recommended.split('/').pop()}`);
+          }
+        }
+      } else {
+        const idx = savedModels.findIndex(m => m.id === targetModel.id);
+        if (idx >= 0) {
+          switchToModel(idx);
+          appendChatMsg('system', `已切换到推荐模型：${rec.recommended.split('/').pop()}`);
+        }
+      }
+    }
+  }
+
   function sendCommand() {
     const text = $('commandInput').value.trim();
     if (!text || isWaiting) return;
@@ -3048,6 +3172,16 @@
     if (!isConnected) {
       appendChatMsg('system', '请先配置模型（点击工具栏的模型名称）', null, null);
       return;
+    }
+
+    // Smart model recommendation (only for non-command messages)
+    if (!text.startsWith('/')) {
+      const complexity = analyzeComplexity(text);
+      const recommendation = recommendModel(complexity);
+      if (recommendation && recommendation.recommended) {
+        // Show recommendation asynchronously
+        setTimeout(() => showModelRecommendation(recommendation), 100);
+      }
     }
 
     // ===== Handle Client Commands =====
@@ -3255,13 +3389,42 @@
   const modelTrigger = document.querySelector('#csModel .custom-select-trigger');
   const modelDropdown = $('csModelDropdown');
 
+  // Dynamic model list with pricing
+  let dynamicModelCache = {}; // provider -> models[]
+
+  async function fetchDynamicModels(provider) {
+    if (dynamicModelCache[provider]) return dynamicModelCache[provider];
+    try {
+      const res = await fetch('/api/models?provider=' + provider);
+      const data = await res.json();
+      if (data.models && data.models.length > 0) {
+        dynamicModelCache[provider] = data.models;
+      }
+      return data.models || [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function formatPrice(pricePer1M) {
+    if (!pricePer1M || pricePer1M === 0) return '免费';
+    if (pricePer1M < 0.01) return '$' + pricePer1M.toFixed(4);
+    return '$' + pricePer1M.toFixed(2);
+  }
+
   function renderModelOptions() {
     const options = selectedProvider && modelOptions[selectedProvider]
       ? modelOptions[selectedProvider]
       : [];
+
+    // Show static options first, then dynamic ones will be loaded
     let html = options.map(m =>
       `<div class="custom-select-option ${m.value === selectedModel ? 'selected' : ''}" data-value="${m.value}" data-label="${m.label}">${m.label}</div>`
     ).join('');
+
+    // Show loading indicator for dynamic models
+    html += `<div class="custom-select-option" style="color:var(--text-dim);pointer-events:none;" id="dynamicModelsLoading">加载中...</div>`;
+
     html += `<div class="use-other-model" data-value="__custom__">
       <div>
         <div class="uom-label">使用其他模型</div>
@@ -3269,6 +3432,39 @@
       </div>
     </div>`;
     modelDropdown.innerHTML = html;
+
+    // Fetch dynamic models with pricing
+    if (selectedProvider) {
+      fetchDynamicModels(selectedProvider).then(models => {
+        if (!models.length) {
+          const loading = $('dynamicModelsLoading');
+          if (loading) loading.remove();
+          return;
+        }
+        // Replace loading with dynamic models
+        const loading = $('dynamicModelsLoading');
+        if (loading) loading.remove();
+
+        const dynamicHtml = models.slice(0, 20).map(m => {
+          const priceLabel = m.tier === 'free' ? '免费' : `${formatPrice(m.pricing?.prompt)}/${formatPrice(m.pricing?.completion)}`;
+          const ctxLabel = m.context ? (m.context >= 1000000 ? (m.context/1000000).toFixed(1)+'M' : (m.context/1000).toFixed(0)+'K') : '';
+          return `<div class="custom-select-option ${m.id === selectedModel ? 'selected' : ''}" data-value="${m.id}" data-label="${m.name || m.id}">
+            <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
+              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${m.name || m.id}</span>
+              <span style="font-size:10px;color:var(--text-dim);margin-left:8px;white-space:nowrap;">${priceLabel}${ctxLabel ? ' · '+ctxLabel : ''}</span>
+            </div>
+          </div>`;
+        }).join('');
+
+        // Insert before "use other model"
+        const useOther = modelDropdown.querySelector('.use-other-model');
+        if (useOther) {
+          useOther.insertAdjacentHTML('beforebegin', dynamicHtml);
+        } else {
+          modelDropdown.innerHTML += dynamicHtml;
+        }
+      });
+    }
   }
   renderModelOptions();
 
@@ -3603,6 +3799,22 @@
         if (msg.tool_name) {
           recordToolUse(msg.tool_name);
         }
+      }
+      else if (msg.type === 'usage_update') {
+        // Update cost stats from proxy usage info
+        costStats.requestCount++;
+        costStats.lastModel = msg.model || costStats.lastModel;
+        costStats.lastUpdate = Date.now();
+        // Estimate cost based on model pricing (simplified)
+        // This is a rough estimate; actual cost depends on provider pricing
+        if (msg.model && msg.model.includes('free')) {
+          // Free model, no cost
+        } else {
+          // Rough estimate: $0.00001 per token (very approximate)
+          const estimatedCost = (msg.inputTokens + msg.outputTokens) * 0.00001;
+          costStats.totalCost += estimatedCost;
+        }
+        renderCostStats();
       }
       else if (msg.type === 'stderr') {
         // Detect proxy error codes and show friendly messages

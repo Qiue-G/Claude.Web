@@ -163,6 +163,16 @@ async function callModel(anthropicBody) {
 
         if (resp.ok) {
           attempted.push(`${model} (ok)`);
+          // Capture usage from response for non-streaming
+          if (!isStream) {
+            const respClone = resp.clone();
+            respClone.json().then(data => {
+              const usage = data.usage;
+              if (usage) {
+                console.error(`[proxy] usage: input=${usage.prompt_tokens || 0} output=${usage.completion_tokens || 0} model=${modelUsed}`);
+              }
+            }).catch(() => {});
+          }
           return { response: resp, modelUsed: model, attempts: attempted };
         }
 
@@ -234,6 +244,7 @@ const server = createServer(async (req, res) => {
         const decoder = new TextDecoder();
         let buffer = '';
         let totalChars = 0;
+        let usageInfo = null;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -255,6 +266,10 @@ const server = createServer(async (req, res) => {
 
             try {
               const orChunk = JSON.parse(dataStr);
+              // Capture usage from streaming response (OpenRouter sends usage in final chunks)
+              if (orChunk.usage && !usageInfo) {
+                usageInfo = orChunk.usage;
+              }
               const chunk = translateStreamChunk(orChunk);
               if (chunk) {
                 totalChars += (chunk.delta?.text?.length || 0);
@@ -264,6 +279,10 @@ const server = createServer(async (req, res) => {
           }
         }
 
+        // Log usage info for streaming
+        if (usageInfo) {
+          console.error(`[proxy] usage: input=${usageInfo.prompt_tokens || 0} output=${usageInfo.completion_tokens || 0} model=${modelUsed}`);
+        }
         console.error(`[proxy] ← streamed ~${totalChars} chars via ${modelUsed}`);
         res.end();
       } else {
