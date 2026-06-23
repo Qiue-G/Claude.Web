@@ -51,10 +51,5 @@ ENV FREE_CODE_DIR=/free-code
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:3000/api/health || exit 1
 
-# Create non-root user
-RUN groupadd -r appuser && useradd -r -g appuser -d /app appuser     && chown -R appuser:appuser /app /workspace /free-code
-
-USER appuser
-
 # Start command
 CMD ["node", "src/server/index.js"]
