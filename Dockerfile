@@ -6,16 +6,17 @@ RUN apt-get update && apt-get install -y curl unzip git build-essential python3 
     && ln -s /root/.bun/bin/bun /usr/local/bin/bun \
     && groupadd -r appuser && useradd -r -g appuser -m -d /home/appuser appuser \
     && mkdir -p /workspace /free-code /app \
-    && chown appuser:appuser /workspace /free-code /app
+    && chown appuser:appuser /workspace /free-code /app \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
 
 # Copy package files
-COPY package.json ./
+COPY package.json package-lock.json ./
 
 # Install dependencies (includes node-pty)
-RUN npm install
+RUN npm ci
 
 # Copy app files
 COPY src/ ./src/

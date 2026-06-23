@@ -188,7 +188,16 @@ const app = express();
 
 // Security headers (helmet)
 app.use(helmet({
-  contentSecurityPolicy: false, // frontend loads external fonts
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:"],
+      connectSrc: ["'self'", "ws:", "wss:"],
+    },
+  },
   crossOriginEmbedderPolicy: false,
 }));
 
@@ -233,7 +242,10 @@ app.post('/api/session', async (req, res) => {
     }
 
     const { apiKey, model, provider } = req.body;
-    if (!apiKey) return res.status(400).json({ error: 'API key is required' });
+    if (!apiKey || typeof apiKey !== 'string' || apiKey.length > 200) return res.status(400).json({ error: 'Invalid API key' });
+    if (model && (typeof model !== 'string' || model.length > 100)) return res.status(400).json({ error: 'Invalid model' });
+    const VALID_PROVIDERS = ['openrouter', 'anthropic', 'openai', 'deepseek'];
+    if (provider && !VALID_PROVIDERS.includes(provider)) return res.status(400).json({ error: 'Invalid provider' });
     if (sessions.size >= MAX_SESSIONS) return res.status(503).json({ error: 'Too many sessions' });
     const session = createSession(apiKey, model || 'nvidia/nemotron-3-ultra-550b-a55b:free', provider || 'openrouter');
     res.json({ sessionId: session.id, token: session.token });
@@ -264,6 +276,17 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', version: VERSION, sessions: sessions.size, maxSessions: MAX_SESSIONS, uptime: process.uptime() });
 });
 
+
+// ===== File API rate limiter =====
+const RATE_MAX_FILE = 60; // max file API calls per minute per session
+app.use('/api/files/', (req, res, next) => {
+  const parts = req.path.split('/');
+  const sid = parts[1] || 'unknown';
+  if (!checkRateLimit('file:' + sid, RATE_MAX_FILE, RATE_WINDOW)) {
+    return res.status(429).json({ error: 'Too many file requests. Please slow down.' });
+  }
+  next();
+});
 
 // ===== File Tree API =====
 app.get('/api/files/:sessionId', async (req, res) => {
@@ -318,7 +341,8 @@ app.get('/api/files/:sessionId/*', async (req, res) => {
     const content = await readFile(fullPath, 'utf-8');
     res.json({ content, path: filePath });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to read file: ' + error.message });
+    console.error('[ERROR] read file:', error.message);
+    res.status(500).json({ error: 'Failed to read file' });
   }
 });
 
@@ -343,7 +367,8 @@ app.post('/api/files/:sessionId/*', async (req, res) => {
     await writeFile(fullPath, req.body.content || '', 'utf-8');
     res.json({ success: true, path: filePath });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to write file: ' + error.message });
+    console.error('[ERROR] write file:', error.message);
+    res.status(500).json({ error: 'Failed to write file' });
   }
 });
 
@@ -367,7 +392,8 @@ app.delete('/api/files/:sessionId/*', async (req, res) => {
     await unlink(fullPath);
     res.json({ success: true, path: filePath });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to delete file: ' + error.message });
+    console.error('[ERROR] delete file:', error.message);
+    res.status(500).json({ error: 'Failed to delete file' });
   }
 });
 
@@ -380,6 +406,8 @@ const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024 });
 
 wss.on('connection', (ws) => {
   let sessionId = null;
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
 
   ws.on('message', async (data) => {
     try {
@@ -435,7 +463,9 @@ wss.on('connection', (ws) => {
         proc.stdout.on('data', (chunk) => {
           const clean = stripAnsi(chunk.toString());
           if (clean.trim() && ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ type: 'output', data: clean }));
+            const MAX_WS_MSG = 1024 * 1024; // 1MB
+            const data = clean.length > MAX_WS_MSG ? clean.substring(0, MAX_WS_MSG) + '\n[output truncated]' : clean;
+            ws.send(JSON.stringify({ type: 'output', data }));
           }
         });
 
@@ -443,7 +473,9 @@ wss.on('connection', (ws) => {
           const errStr = chunk.toString();
           console.error('[STDERR] ' + errStr.substring(0, 200));
           if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ type: 'stderr', data: errStr }));
+            const MAX_WS_ERR = 1024 * 1024; // 1MB
+            const data = errStr.length > MAX_WS_ERR ? errStr.substring(0, MAX_WS_ERR) + '\n[output truncated]' : errStr;
+            ws.send(JSON.stringify({ type: 'stderr', data }));
           }
         });
 
@@ -463,15 +495,21 @@ wss.on('connection', (ws) => {
           console.error('[ERROR] ' + err.message);
           wsProcCount.set(sessionId, Math.max(0, (wsProcCount.get(sessionId) || 0) - 1));
           if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ type: 'error', message: 'Failed to start CLI: ' + err.message }));
+            ws.send(JSON.stringify({ type: 'error', message: 'Failed to start CLI' }));
           }
         });
       }
 
     } catch (error) {
       console.error('WebSocket error:', error);
-      ws.send(JSON.stringify({ type: 'error', message: error.message }));
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Internal server error' }));
+      }
     }
+  });
+
+  ws.on('error', (err) => {
+    console.error('[WS] error:', err.message);
   });
 
   ws.on('close', () => {
@@ -486,3 +524,38 @@ process.on('SIGTERM', () => {
   console.log('Shutting down...');
   server.close(() => process.exit(0));
 });
+
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught exception:', err);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] Unhandled rejection:', reason);
+});
+
+// ===== WebSocket heartbeat =====
+const HEARTBEAT_INTERVAL = 30000;
+setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) return ws.terminate();
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, HEARTBEAT_INTERVAL);
+
+// ===== Session timeout cleanup =====
+const SESSION_TIMEOUT = parseInt(process.env.SESSION_TIMEOUT || '3600000');
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, session] of sessions) {
+    if (now - session.lastActivity > SESSION_TIMEOUT) {
+      const proc = sessionProcesses.get(id);
+      if (proc) { try { proc.kill(); } catch (e) {} sessionProcesses.delete(id); }
+      const proxy = sessionProxies.get(id);
+      if (proxy) { try { proxy.kill(); } catch (e) {} sessionProxies.delete(id); }
+      sessions.delete(id);
+      console.log('[SESSION] Expired:', id);
+    }
+  }
+}, 60000);
