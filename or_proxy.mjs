@@ -278,6 +278,10 @@ const server = createServer(async (req, res) => {
       } else {
         const orData = await orResp.json();
         const anthropicResp = translateToAnthropic(orData, modelUsed);
+        // Log usage for non-streaming response
+        if (orData.usage) {
+          console.error(`[proxy] usage: input=${orData.usage.prompt_tokens || 0} output=${orData.usage.completion_tokens || 0} model=${modelUsed}`);
+        }
         console.error(`[proxy] ← ${anthropicResp.content[0]?.text?.length || 0} chars via ${modelUsed}`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(anthropicResp));
