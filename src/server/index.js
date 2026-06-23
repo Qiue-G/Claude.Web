@@ -26,6 +26,19 @@ const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
 const CONFIG_PATH = process.env.AGENT_CONFIG_PATH || join(FREE_CODE_DIR, 'agent-config.json');
 const VERSION = '7.3.0';
 
+// ===== Constants =====
+const MODEL_CACHE_TTL = 3600000;        // 1 hour
+const HEALTH_CHECK_INTERVAL = 600000;   // 10 minutes
+const HEALTH_CHECK_TIMEOUT = 15000;     // 15s per check
+const SESSION_TIMEOUT = parseInt(process.env.SESSION_TIMEOUT || '3600000'); // 1 hour
+const MAX_INPUT_LENGTH = 100 * 1024;    // 100KB
+const MAX_FILE_SIZE = 5 * 1024 * 1024;  // 5MB
+const MAX_WS_MSG = 1024 * 1024;         // 1MB
+const RATE_WINDOW = 60000;              // 1 minute
+const RATE_MAX_CREATE = 5;              // max session creates per window per IP
+const RATE_MAX_INPUT = 20;              // max WebSocket inputs per window per session
+const RATE_MAX_FILE = 60;               // max file API calls per minute per session
+
 // ===== Load agent config (ModelHub-inspired) =====
 let agentConfig = { defaults: { provider: 'openrouter', model: '' }, providers: {} };
 try {
@@ -51,7 +64,6 @@ function getFallbackModel(provider) {
 
 // ===== Dynamic Model List & Pricing =====
 const dynamicModels = new Map(); // provider -> { models: [], lastUpdate: timestamp }
-const MODEL_CACHE_TTL = 3600000; // 1 hour
 
 async function fetchOpenRouterModels() {
   try {
@@ -115,9 +127,6 @@ function recordUsage(sessionId, inputTokens, outputTokens, modelId, provider) {
 
 // ===== Rate Limiter (token bucket, per-IP) =====
 const rateLimits = new Map();
-const RATE_WINDOW = 60000;      // 1 minute window
-const RATE_MAX_CREATE = 5;      // max session creates per window per IP
-const RATE_MAX_INPUT = 20;      // max WebSocket inputs per window per session
 
 function checkRateLimit(key, max, windowMs) {
   const now = Date.now();
@@ -159,8 +168,6 @@ function recordModelFail(modelId, errorDetail) {
 }
 
 // ===== Proactive Model Health Check =====
-const HEALTH_CHECK_INTERVAL = 600000; // 10 minutes
-const HEALTH_CHECK_TIMEOUT = 15000;   // 15s timeout per check
 
 async function checkModelHealth(modelId, provider, baseUrl, apiKey) {
   const startTime = Date.now();
@@ -268,7 +275,7 @@ function encryptApiKey(plainKey) {
 
 function decryptApiKey(encryptedKey) {
   const parts = encryptedKey.split(':');
-  if (parts.length !== 3) return encryptedKey; // Not encrypted
+  if (parts.length !== 3) return null; // Invalid format
   const [ivHex, authTagHex, encrypted] = parts;
   const iv = Buffer.from(ivHex, 'hex');
   const authTag = Buffer.from(authTagHex, 'hex');
@@ -319,7 +326,6 @@ function safeKillProc(proc, timeoutMs = 5000) {
 function sanitizeInput(input) {
   if (!input || typeof input !== 'string') return '';
   // Limit length to 100KB
-  const MAX_INPUT_LENGTH = 100 * 1024;
   let sanitized = input.length > MAX_INPUT_LENGTH ? input.substring(0, MAX_INPUT_LENGTH) : input;
   // Remove null bytes
   sanitized = sanitized.replace(/\0/g, '');
@@ -390,6 +396,9 @@ async function startProxy(session) {
 
   // Decrypt API key for proxy use
   const decryptedKey = decryptApiKey(session.apiKey);
+  if (!decryptedKey) {
+    throw new Error('API key decryption failed');
+  }
   const proxy = spawn('node', proxyArgs, {
     cwd: session.dir,
     env: { ...process.env, ANTHROPIC_API_KEY: decryptedKey, NODE_ENV: 'production' },
@@ -631,7 +640,6 @@ app.use('/api/files/', (req, res, next) => {
 });
 
 // ===== File API rate limiter =====
-const RATE_MAX_FILE = 60; // max file API calls per minute per session
 app.use('/api/files/', (req, res, next) => {
   const parts = req.path.split('/');
   const sid = parts[1] || 'unknown';
@@ -719,7 +727,6 @@ app.post('/api/files/:sessionId/*', async (req, res) => {
     if (!existsSync(dir)) await mkdir(dir, { recursive: true });
     const content = req.body.content || '';
     // Limit file size to 5MB
-    const MAX_FILE_SIZE = 5 * 1024 * 1024;
     if (content.length > MAX_FILE_SIZE) {
       return res.status(413).json({ error: 'File too large (max 5MB)' });
     }
@@ -930,7 +937,6 @@ wss.on('connection', (ws, req) => {
           // Mask sensitive data in process output
           const masked = maskSensitive(clean, session.apiKey);
           if (masked.trim() && ws.readyState === ws.OPEN) {
-            const MAX_WS_MSG = 1024 * 1024; // 1MB
             const data = masked.length > MAX_WS_MSG ? masked.substring(0, MAX_WS_MSG) + '\n[output truncated]' : masked;
             ws.send(JSON.stringify({ type: 'output', data }));
           }
@@ -1018,7 +1024,6 @@ setInterval(() => {
 }, HEARTBEAT_INTERVAL);
 
 // ===== Session timeout cleanup =====
-const SESSION_TIMEOUT = parseInt(process.env.SESSION_TIMEOUT || '3600000');
 setInterval(async () => {
   const now = Date.now();
   for (const [id, session] of sessions) {
@@ -1040,6 +1045,7 @@ setInterval(async () => {
         console.error('[SESSION] Failed to clean workspace:', e.message);
       }
 
+      wsProcCount.delete(id);
       sessions.delete(id);
       console.log('[SESSION] Expired:', id);
     }
