@@ -2556,7 +2556,6 @@
     // Close editor tab if this file is open
     closeEditorTab(path);
 
-    let serverDeleteFailed = false;
     if (sessionId) {
       // Delete from server workspace
       try {
@@ -2571,23 +2570,19 @@
         const data = await res.json();
 
         if (!data.success) {
-          serverDeleteFailed = true;
+          // Restore local cache if server delete failed
           appendChatMsg('system', `服务器删除失败: ${data.error || '未知错误'}`);
         }
       } catch (e) {
-        serverDeleteFailed = true;
         appendChatMsg('system', `服务器删除失败: ${e.message}`);
       }
-    }
-
-    // Refresh file tree (await to ensure it completes)
-    await loadFileTree();
-
-    if (serverDeleteFailed) {
-      appendChatMsg('system', `${typeName}「${name}」已从本地移除，但服务器删除失败`);
     } else {
-      appendChatMsg('system', `已删除${typeName}：${name}`);
+      appendChatMsg('system', `已从本地移除${typeName}：${name}（未连接到服务器）`);
     }
+
+    // Refresh file tree
+    loadFileTree();
+    appendChatMsg('system', `已删除${typeName}：${name}`);
   }
 
   // ===== Panel Toggles =====
