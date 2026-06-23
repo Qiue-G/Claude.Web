@@ -1828,7 +1828,7 @@
   folderInput.type = 'file';
   folderInput.webkitdirectory = true;
   folderInput.style.display = 'none';
-  folderInput.addEventListener('change', (e) => {
+  folderInput.addEventListener('change', async (e) => {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
 
