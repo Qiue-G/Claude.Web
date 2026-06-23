@@ -1665,6 +1665,11 @@
 </div>
 
 <script>
+  // Encode file path for URL: encode each segment but preserve '/' separators
+  function encodeFilePath(p) {
+    return p.split('/').map(encodeURIComponent).join('/');
+  }
+
   // ===== Persistence (localStorage) =====
   // Store file contents and editor tabs so they survive page reloads
   // (e.g. when switching UA on mobile browser)
@@ -1883,7 +1888,7 @@
     if (!name) return;
 
     try {
-      const res = await fetch('/api/files/' + sessionId + '/' + encodeURIComponent(name), {
+      const res = await fetch('/api/files/' + sessionId + '/' + encodeFilePath(name), {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -2056,7 +2061,7 @@
         try {
           const content = await file.text();
           const filePath = file.webkitRelativePath;
-          await fetch('/api/files/' + sessionId + '/' + encodeURIComponent(filePath), {
+          await fetch('/api/files/' + sessionId + '/' + encodeFilePath(filePath), {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -2116,7 +2121,7 @@
       return false;
     }
     try {
-      const res = await fetch('/api/files/' + sessionId + '/' + encodeURIComponent(filePath), {
+      const res = await fetch('/api/files/' + sessionId + '/' + encodeFilePath(filePath), {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -2446,7 +2451,7 @@
 
           // Read file content from server
           try {
-            const res = await fetch('/api/files/' + sessionId + '/' + encodeURIComponent(item.path), {
+            const res = await fetch('/api/files/' + sessionId + '/' + encodeFilePath(item.path), {
               headers: { 'x-session-token': sessionToken || '' }
             });
             const data = await res.json();
@@ -2559,7 +2564,7 @@
     if (sessionId) {
       // Delete from server workspace
       try {
-        const res = await fetch('/api/files/' + sessionId + '/' + encodeURIComponent(path), {
+        const res = await fetch('/api/files/' + sessionId + '/' + encodeFilePath(path), {
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json',
@@ -3066,7 +3071,7 @@
     saveBtn.disabled = true;
 
     try {
-      const res = await fetch('/api/files/' + sessionId + '/' + encodeURIComponent(tab.path), {
+      const res = await fetch('/api/files/' + sessionId + '/' + encodeFilePath(tab.path), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -3475,7 +3480,7 @@
       };
 
       fileRefs.forEach(filePath => {
-        fetch('/api/files/' + sessionId + '/' + encodeURIComponent(filePath), {
+        fetch('/api/files/' + sessionId + '/' + encodeFilePath(filePath), {
           headers: { 'x-session-token': sessionToken || '' }
         })
           .then(res => res.json())
