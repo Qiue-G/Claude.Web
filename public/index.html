@@ -1077,6 +1077,18 @@
     .use-other-model .uom-label { font-size: 13px; color: var(--text-primary); font-weight: 500; }
     .use-other-model .uom-desc { font-size: 11px; color: var(--text-dim); }
 
+    /* ===== Password Toggle ===== */
+    .password-wrapper { position: relative; }
+    .password-wrapper input { padding-right: 36px; }
+    .password-toggle {
+      position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; color: var(--text-dim); cursor: pointer;
+      padding: 4px; display: flex; align-items: center; justify-content: center;
+      transition: color 0.2s;
+    }
+    .password-toggle:hover { color: var(--text-secondary); }
+    .password-toggle svg { width: 16px; height: 16px; }
+
     /* ===== Model Management List ===== */
     .model-list { padding: 4px 0; }
     .model-list-empty {
@@ -1573,7 +1585,12 @@
         </div>
         <div class="form-group">
           <label style="color:var(--red);">* API 密钥 <a href="javascript:void(0)" id="getApiKeyLink" style="float:right;font-size:12px;color:var(--amber);text-decoration:none;">获取 API 密钥</a></label>
-          <input type="password" id="cfgApiKey" placeholder="输入 API 密钥" autocomplete="off">
+          <div class="password-wrapper">
+            <input type="password" id="cfgApiKey" placeholder="输入 API 密钥" autocomplete="off">
+            <button type="button" class="password-toggle" data-target="cfgApiKey" title="显示/隐藏">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
         </div>
       </div>
       <!-- Custom Tab -->
@@ -1584,7 +1601,12 @@
         </div>
         <div class="form-group">
           <label style="color:var(--red);">* API 密钥 <a href="javascript:void(0)" id="getApiKeyLink2" style="float:right;font-size:12px;color:var(--amber);text-decoration:none;">获取 API 密钥</a></label>
-          <input type="password" id="cfgCustomApiKey" placeholder="输入 API 密钥" autocomplete="off">
+          <div class="password-wrapper">
+            <input type="password" id="cfgCustomApiKey" placeholder="输入 API 密钥" autocomplete="off">
+            <button type="button" class="password-toggle" data-target="cfgCustomApiKey" title="显示/隐藏">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
         </div>
         <div class="form-group">
           <label>Base URL（可选）</label>
@@ -1815,7 +1837,19 @@
         appendChatMsg('system', `已创建新文件: ${name}`);
         loadFileTree();
       } else {
-        appendChatMsg('system', `创建失败: ${data.error}`);
+        // Map HTTP API errors to friendly messages
+        const errMap = {
+          'Invalid API key': 'API Key 无效，请检查后重试',
+          'Invalid model': '模型名称无效',
+          'Invalid provider': '服务商不支持',
+          'Too many sessions': '会话数已达上限，请稍后重试',
+          'Too many file requests': '文件操作过于频繁，请稍后重试',
+          'CSRF token missing': '安全验证失败，请刷新页面',
+          'Access denied': '访问被拒绝',
+          'Failed to': '操作失败，请稍后重试'
+        };
+        const friendly = Object.keys(errMap).find(k => data.error.includes(k));
+        appendChatMsg('system', `创建失败: ${friendly ? '⚠ ' + errMap[friendly] : data.error}`);
       }
     } catch (e) {
       appendChatMsg('system', `创建失败: ${e.message}`);
@@ -1855,13 +1889,22 @@
               loadFileTree();
               // Open in editor
               openEditorTab(file.name, content);
+              // Open in editor
+              openEditorTab(file.name, content);
               // Open left panel on mobile to show file tree
               if (window.innerWidth <= 768) {
                 $('leftPanel').classList.add('open');
                 $('panelOverlay')?.classList.add('show');
               }
             } else {
-              appendChatMsg('system', `打开文件失败: ${data.error}`);
+              const errMap = {
+                'Invalid session': '会话无效，请重新配置',
+                'Failed to read': '文件读取失败',
+                'Access denied': '访问被拒绝',
+                'Failed to': '操作失败'
+              };
+              const friendly = Object.keys(errMap).find(k => data.error.includes(k));
+              appendChatMsg('system', `打开文件失败: ${friendly ? '⚠ ' + errMap[friendly] : data.error}`);
             }
           } catch (err) {
             appendChatMsg('system', `打开文件失败: ${err.message}`);
@@ -2023,7 +2066,15 @@
         fileContents[filePath] = content;
         return true;
       } else {
-        appendChatMsg('system', `保存失败: ${data.error}`);
+        const errMap = {
+          'Invalid session': '会话无效，请重新配置',
+          'Failed to write': '文件写入失败',
+          'Access denied': '访问被拒绝',
+          'CSRF token': '安全验证失败，请刷新页面',
+          'Too many': '操作过于频繁，请稍后重试'
+        };
+        const friendly = Object.keys(errMap).find(k => data.error.includes(k));
+        appendChatMsg('system', `保存失败: ${friendly ? '⚠ ' + errMap[friendly] : data.error}`);
         return false;
       }
     } catch (e) {
@@ -2873,7 +2924,15 @@
         persistEditorTabs();
         appendChatMsg('system', `已保存: ${tab.path}`);
       } else {
-        appendChatMsg('system', `保存失败: ${data.error}`);
+        const errMap = {
+          'Invalid session': '会话无效，请重新配置',
+          'Failed to write': '文件写入失败',
+          'Access denied': '访问被拒绝',
+          'CSRF token': '安全验证失败，请刷新页面',
+          'Too many': '操作过于频繁，请稍后重试'
+        };
+        const friendly = Object.keys(errMap).find(k => data.error.includes(k));
+        appendChatMsg('system', `保存失败: ${friendly ? '⚠ ' + errMap[friendly] : data.error}`);
       }
     } catch (e) {
       appendChatMsg('system', `保存失败: ${e.message}`);
@@ -3492,6 +3551,20 @@
     window.open('https://platform.openai.com/api-keys', '_blank', 'noopener,noreferrer');
   });
 
+  // ===== Password Toggle =====
+  const eyeOpen = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+  const eyeClosed = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/></svg>`;
+
+  document.querySelectorAll('.password-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const input = document.getElementById(btn.dataset.target);
+      if (!input) return;
+      const isPassword = input.type === 'password';
+      input.type = isPassword ? 'text' : 'password';
+      btn.innerHTML = isPassword ? eyeClosed : eyeOpen;
+    });
+  });
+
   // ===== WebSocket =====
   let retryCount = 0;
   function connectWebSocket() {
@@ -3531,12 +3604,47 @@
           recordToolUse(msg.tool_name);
         }
       }
-      else if (msg.type === 'stderr') appendChatMsg('system', msg.data);
+      else if (msg.type === 'stderr') {
+        // Detect proxy error codes and show friendly messages
+        const errMatch = msg.data.match(/→\s*(\w+)/);
+        if (errMatch) {
+          const codeMap = {
+            invalid_api_key: 'API Key 无效或已过期，请重新配置',
+            insufficient_balance: '账户余额不足，请充值',
+            rate_limited: '请求频率过高，请稍后重试',
+            provider_error: '服务商内部错误，正在重试',
+            provider_unavailable: '服务商不可用，正在切换备用模型',
+            provider_overloaded: '服务商过载，正在重试',
+            bad_request: '请求参数无效',
+            model_not_authorized: '无权访问该模型，请更换模型',
+            endpoint_not_found: 'API 端点不存在'
+          };
+          const friendly = codeMap[errMatch[1]];
+          if (friendly) {
+            appendChatMsg('system', '⚠ ' + friendly);
+            return;
+          }
+        }
+        appendChatMsg('system', msg.data);
+      }
       else if (msg.type === 'exit') {
         if (msg.code !== 0) appendChatMsg('system', '进程退出，代码 ' + msg.code);
         isWaiting = false; $('sendBtn').disabled = false;
       } else if (msg.type === 'error') {
-        appendChatMsg('system', msg.message);
+        // Map server error codes to friendly messages
+        const errCodeMap = {
+          'Invalid API key': 'API Key 无效，请检查后重试',
+          'Invalid model': '模型名称无效',
+          'Invalid provider': '服务商不支持',
+          'Too many sessions': '会话数已达上限，请稍后重试',
+          'Too many requests': '请求过于频繁，请稍后重试',
+          'Session token mismatch': '会话已过期，请重新配置',
+          'Already processing': '正在处理中，请等待完成',
+          'Failed to start CLI': 'CLI 启动失败，请检查配置',
+          'WebSocket origin not allowed': '来源不被允许'
+        };
+        const friendly = Object.keys(errCodeMap).find(k => msg.message.includes(k));
+        appendChatMsg('system', friendly ? '⚠ ' + errCodeMap[friendly] : msg.message);
         isWaiting = false; $('sendBtn').disabled = false;
       }
     };

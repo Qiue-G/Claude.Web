@@ -4,7 +4,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { spawn } from 'child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
@@ -26,7 +26,31 @@ const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
-const VERSION = '7.1.0';
+const CONFIG_PATH = process.env.AGENT_CONFIG_PATH || join(FREE_CODE_DIR, 'agent-config.json');
+const VERSION = '7.3.0';
+
+// ===== Load agent config (ModelHub-inspired) =====
+let agentConfig = { defaults: { provider: 'openrouter', model: '' }, providers: {} };
+try {
+  const raw = await readFile(CONFIG_PATH, 'utf-8');
+  agentConfig = JSON.parse(raw);
+  console.log('[CONFIG] loaded ' + Object.keys(agentConfig.providers || {}).length + ' providers from agent-config.json');
+} catch (e) {
+  console.log('[CONFIG] agent-config.json not found, using built-in defaults (' + e.message + ')');
+}
+
+const DEFAULTS = agentConfig.defaults || { provider: 'openrouter', model: '' };
+const PROVIDERS = agentConfig.providers || {};
+
+function resolveOpenRouterModel(model) {
+  const aliases = (PROVIDERS.openrouter || {}).modelAliases || {};
+  return aliases[model] || model;
+}
+
+function getFallbackModel(provider) {
+  return (PROVIDERS[provider] || {}).fallbackModel || null;
+}
+
 
 // ===== Rate Limiter (token bucket, per-IP) =====
 const rateLimits = new Map();
@@ -60,10 +84,30 @@ setInterval(() => {
   }
 }, 300000);
 
+// ===== Per-model stream health stats =====
+const modelStats = new Map(); // modelId => { total, success, fail, lastOk, lastFail, lastError }
+function recordModelSuccess(modelId) {
+  let s = modelStats.get(modelId);
+  if (!s) modelStats.set(modelId, (s = { total: 0, success: 0, fail: 0, lastOk: null, lastFail: null, lastError: null }));
+  s.total++; s.success++; s.lastOk = Date.now();
+}
+function recordModelFail(modelId, errorDetail) {
+  let s = modelStats.get(modelId);
+  if (!s) modelStats.set(modelId, (s = { total: 0, success: 0, fail: 0, lastOk: null, lastFail: null, lastError: null }));
+  s.total++; s.fail++; s.lastFail = Date.now(); s.lastError = errorDetail;
+}
+
 const sessions = new Map();
 const sessionProcesses = new Map();
 const sessionProxies = new Map(); // proxy processes
 const wsProcCount = new Map();    // active process count per session
+const sessionClients = new Map(); // sessionId → WebSocket (for model health push)
+
+function maskSensitive(text, apiKey) {
+  if (!apiKey || apiKey.length < 12) return text;
+  const masked = apiKey.substring(0, 8) + '***' + apiKey.substring(apiKey.length - 4);
+  return text.split(apiKey).join(masked);
+}
 
 function stripAnsi(str) {
   str = str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
@@ -77,10 +121,11 @@ function stripAnsi(str) {
 function createSession(apiKey, model, provider) {
   const sessionId = uuidv4();
   const sessionToken = uuidv4();
+  const csrfToken = uuidv4(); // CSRF protection token
   const sessionDir = join(WORKSPACE_DIR, sessionId);
   if (!existsSync(WORKSPACE_DIR)) mkdir(WORKSPACE_DIR, { recursive: true }).catch(console.error);
   mkdir(sessionDir, { recursive: true }).catch(console.error);
-  const session = { id: sessionId, token: sessionToken, apiKey, model, provider, dir: sessionDir, createdAt: Date.now(), lastActivity: Date.now() };
+  const session = { id: sessionId, token: sessionToken, csrfToken, apiKey, model, provider, dir: sessionDir, createdAt: Date.now(), lastActivity: Date.now(), currentModel: model, modelHealth: 'connecting' };
   sessions.set(sessionId, session);
   return session;
 }
@@ -94,29 +139,41 @@ function getSession(sessionId, token) {
   return session;
 }
 
-const OPENROUTER_MODELS = {
-  'haiku': 'anthropic/claude-haiku-4.5',
-  'sonnet': 'anthropic/claude-sonnet-4',
-  'opus': 'anthropic/claude-opus-4',
-  'haiku35': 'anthropic/claude-3.5-haiku',
-  'sonnet35': 'anthropic/claude-3.5-sonnet',
-  'sonnet37': 'anthropic/claude-3.7-sonnet',
-};
+// OPENROUTER_MODELS replaced by agent-config.json modelAliases
 
-function resolveOpenRouterModel(model) {
-  return OPENROUTER_MODELS[model] || model;
+// resolveOpenRouterModel now uses agentConfig (defined above)
+
+// Push model health updates to connected WebSocket clients
+function notifyModelUpdate(session) {
+  const clients = sessionClients.get(session.id);
+  if (!clients) return;
+  clients.forEach(ws => {
+    if (ws.readyState === 1) {
+      ws.send(JSON.stringify({
+        type: 'model_update',
+        model: session.currentModel,
+        health: session.modelHealth
+      }));
+    }
+  });
 }
+
+// Health degradation: fallback models loaded from agent-config.json
 
 async function startProxy(session) {
   const proxyPath = join(FREE_CODE_DIR, 'or_proxy.mjs');
   const model = session.provider === 'openrouter'
-    ? resolveOpenRouterModel(session.model || 'nvidia/nemotron-3-ultra-550b-a55b:free')
-    : (session.model || 'deepseek-v4-pro');
-  console.log('[PROXY] starting or_proxy.mjs --model ' + model);
+    ? resolveOpenRouterModel(session.model || DEFAULTS.model)
+    : (session.model || DEFAULTS.model || 'deepseek-chat');
+  const fallback = getFallbackModel(session.provider);
+  console.log('[PROXY] starting or_proxy.mjs --model ' + model + (fallback ? ' --fallback-model ' + fallback : ''));
 
   const proxyArgs = [proxyPath, '--model', model];
   if (session.provider === 'deepseek') {
     proxyArgs.push('--base-url', 'https://api.deepseek.com/v1');
+  }
+  if (fallback && fallback !== model) {
+    proxyArgs.push('--fallback-model', fallback);
   }
 
   const proxy = spawn('node', proxyArgs, {
@@ -130,14 +187,38 @@ async function startProxy(session) {
     const t = setTimeout(() => reject(new Error('Proxy startup timeout')), 10000);
     proxy.stdout.on('data', (chunk) => {
       proxyOutput += chunk.toString();
-      const portMatch = proxyOutput.match(/(\d{4,5})/);
+      // Match "listening on port XXXX" or "port: XXXX" format, with fallback to any 4-5 digit number
+      const portMatch = proxyOutput.match(/(?:listening on port|port[:\s]+)(\d{4,5})/i)
+                     || proxyOutput.match(/(\d{4,5})/);
       if (portMatch) {
         clearTimeout(t);
         resolve(parseInt(portMatch[1], 10));
       }
     });
     proxy.stderr.on('data', (chunk) => {
-      console.error('[PROXY stderr] ' + chunk.toString().trim());
+      const text = chunk.toString().trim();
+      console.error('[PROXY stderr] ' + text);
+
+      // Parse model health events from proxy v5
+      // "→ modelX" / "→ modelX [retry 1/2]" → retrying
+      const switchingMatch = text.match(/\[proxy\] →\s+(\S+)/);
+      if (switchingMatch) {
+        session.modelHealth = 'retrying';
+      }
+      // "✓ modelX" → live
+      const liveMatch = text.match(/\[proxy\] ✓\s+(\S+)/);
+      if (liveMatch) {
+        session.currentModel = liveMatch[1];
+        session.modelHealth = 'ok';
+        recordModelSuccess(session.currentModel);
+        notifyModelUpdate(session);
+      }
+      // "✗ all failed ... → code" → error detail
+      if (text.includes('[proxy] ✗ all failed')) {
+        session.modelHealth = 'error';
+        recordModelFail(session.currentModel || session.model, text);
+        notifyModelUpdate(session);
+      }
     });
     proxy.on('error', (e) => { clearTimeout(t); reject(e); });
     proxy.on('close', (c) => { clearTimeout(t); reject(new Error('Proxy exited ' + c)); });
@@ -207,16 +288,7 @@ app.use(helmet({
 
 // Strict CORS
 app.use(cors({
-  origin: ALLOWED_ORIGINS
-    ? ALLOWED_ORIGINS
-    : function (origin, callback) {
-        // Strict origin check against whitelist
-        if (!origin || ALLOWED_ORIGINS.includes(origin)) {
-          callback(null, true);
-        } else {
-          callback(new Error('Not allowed by CORS'));
-        }
-      },
+  origin: ALLOWED_ORIGINS,
   credentials: true,
   maxAge: 86400,
 }));
@@ -242,7 +314,8 @@ app.post('/api/session', async (req, res) => {
     if (!checkRateLimit('create:' + clientIp, RATE_MAX_CREATE, RATE_WINDOW)) {
       return res.status(429).json({
         error: 'Too many session requests. Please wait before creating another.',
-        retryAfter: 60
+        retryAfter: 60,
+        remaining: getRateRemaining('create:' + clientIp, RATE_MAX_CREATE, RATE_WINDOW)
       });
     }
 
@@ -252,8 +325,8 @@ app.post('/api/session', async (req, res) => {
     const VALID_PROVIDERS = ['openrouter', 'anthropic', 'openai', 'deepseek'];
     if (provider && !VALID_PROVIDERS.includes(provider)) return res.status(400).json({ error: 'Invalid provider' });
     if (sessions.size >= MAX_SESSIONS) return res.status(503).json({ error: 'Too many sessions' });
-    const session = createSession(apiKey, model || 'nvidia/nemotron-3-ultra-550b-a55b:free', provider || 'openrouter');
-    res.json({ sessionId: session.id, token: session.token });
+    const session = createSession(apiKey, model || DEFAULTS.model, provider || DEFAULTS.provider);
+    res.json({ sessionId: session.id, token: session.token, csrfToken: session.csrfToken });
   } catch (error) { res.status(500).json({ error: 'Failed to create session' }); }
 });
 
@@ -268,6 +341,8 @@ app.delete('/api/session/:id', async (req, res) => {
   const token = req.headers['x-session-token'];
   const session = getSession(req.params.id, token);
   if (session) {
+    const csrfToken = req.headers['x-csrf-token'];
+    if (!csrfToken || csrfToken !== session.csrfToken) return res.status(403).json({ error: 'CSRF token missing or invalid' });
     const oldProc = sessionProcesses.get(req.params.id);
     if (oldProc) { oldProc.kill(); sessionProcesses.delete(req.params.id); }
     const oldProxy = sessionProxies.get(req.params.id);
@@ -278,9 +353,38 @@ app.delete('/api/session/:id', async (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', version: VERSION, sessions: sessions.size, maxSessions: MAX_SESSIONS, uptime: process.uptime() });
+  const mem = process.memoryUsage();
+  res.json({
+    status: 'ok',
+    version: VERSION,
+    sessions: sessions.size,
+    maxSessions: MAX_SESSIONS,
+    uptime: process.uptime(),
+    memory: {
+      heapUsedMB: Math.round(mem.heapUsed / 1024 / 1024),
+      heapTotalMB: Math.round(mem.heapTotal / 1024 / 1024),
+      rssMB: Math.round(mem.rss / 1024 / 1024)
+    }
+  });
 });
 
+
+// ===== File API: CSRF protection =====
+// All write operations (POST/PUT/DELETE) on /api/files/ require x-csrf-token
+app.use('/api/files/', (req, res, next) => {
+  if (req.method === 'GET') return next(); // reads don't need CSRF
+
+  const parts = req.path.split('/');
+  const sid = parts[1] || 'unknown';
+  const session = sessions.get(sid);
+  if (!session) return res.status(401).json({ error: 'Invalid session' });
+
+  const csrfToken = req.headers['x-csrf-token'];
+  if (!csrfToken || csrfToken !== session.csrfToken) {
+    return res.status(403).json({ error: 'CSRF token missing or invalid' });
+  }
+  next();
+});
 
 // ===== File API rate limiter =====
 const RATE_MAX_FILE = 60; // max file API calls per minute per session
@@ -288,7 +392,7 @@ app.use('/api/files/', (req, res, next) => {
   const parts = req.path.split('/');
   const sid = parts[1] || 'unknown';
   if (!checkRateLimit('file:' + sid, RATE_MAX_FILE, RATE_WINDOW)) {
-    return res.status(429).json({ error: 'Too many file requests. Please slow down.' });
+    return res.status(429).json({ error: 'Too many file requests. Please slow down.', remaining: 0 });
   }
   next();
 });
@@ -335,8 +439,8 @@ app.get('/api/files/:sessionId/*', async (req, res) => {
     if (!session) return res.status(401).json({ error: 'Invalid session or token' });
     const filePath = req.params[0];
     const fullPath = join(session.dir, filePath);
-    const resolvedPath = require('path').resolve(fullPath);
-    const resolvedSessionDir = require('path').resolve(session.dir);
+    const resolvedPath = resolve(fullPath);
+    const resolvedSessionDir = resolve(session.dir);
     
     // 防止路径遍历攻击
     if (!resolvedPath.startsWith(resolvedSessionDir)) {
@@ -359,8 +463,8 @@ app.post('/api/files/:sessionId/*', async (req, res) => {
     if (!session) return res.status(401).json({ error: 'Invalid session or token' });
     const filePath = req.params[0];
     const fullPath = join(session.dir, filePath);
-    const resolvedPath = require('path').resolve(fullPath);
-    const resolvedSessionDir = require('path').resolve(session.dir);
+    const resolvedPath = resolve(fullPath);
+    const resolvedSessionDir = resolve(session.dir);
     
     // 防止路径遍历攻击
     if (!resolvedPath.startsWith(resolvedSessionDir)) {
@@ -385,8 +489,8 @@ app.delete('/api/files/:sessionId/*', async (req, res) => {
     if (!session) return res.status(401).json({ error: 'Invalid session or token' });
     const filePath = req.params[0];
     const fullPath = join(session.dir, filePath);
-    const resolvedPath = require('path').resolve(fullPath);
-    const resolvedSessionDir = require('path').resolve(session.dir);
+    const resolvedPath = resolve(fullPath);
+    const resolvedSessionDir = resolve(session.dir);
     
     // 防止路径遍历攻击
     if (!resolvedPath.startsWith(resolvedSessionDir)) {
@@ -400,6 +504,19 @@ app.delete('/api/files/:sessionId/*', async (req, res) => {
     console.error('[ERROR] delete file:', error.message);
     res.status(500).json({ error: 'Failed to delete file' });
   }
+});
+
+app.get('/api/config', (req, res) => {
+  const providers = {};
+  for (const [p, cfg] of Object.entries(PROVIDERS)) {
+    providers[p] = {
+      baseUrl: cfg.baseUrl || null,
+      fallbackModel: cfg.fallbackModel || null,
+      modelCount: (cfg.models || []).length,
+      aliasCount: Object.keys(cfg.modelAliases || {}).length
+    };
+  }
+  res.json({ version: VERSION, defaults: DEFAULTS, providers, maxSessions: MAX_SESSIONS });
 });
 
 const server = app.listen(
@@ -434,8 +551,17 @@ wss.on('connection', (ws, req) => {
           ws.close();
           return;
         }
+
+        // Register client for model health push
+        if (!sessionClients.has(sessionId)) sessionClients.set(sessionId, new Set());
+        sessionClients.get(sessionId).add(ws);
+
         console.log('Session ' + sessionId + ' initialized');
-        ws.send(JSON.stringify({ type: 'ready' }));
+        ws.send(JSON.stringify({
+          type: 'ready',
+          model: session.currentModel,
+          health: session.modelHealth
+        }));
 
       } else if (message.type === 'input') {
         const session = getSession(sessionId);
@@ -446,7 +572,7 @@ wss.on('connection', (ws, req) => {
 
         // Rate limit: max RATE_MAX_INPUT inputs per minute per session
         if (!checkRateLimit('input:' + sessionId, RATE_MAX_INPUT, RATE_WINDOW)) {
-          ws.send(JSON.stringify({ type: 'error', message: 'Too many requests. Please slow down.' }));
+          ws.send(JSON.stringify({ type: 'error', message: 'Too many requests. Please slow down.', remaining: 0 }));
           return;
         }
 
@@ -525,6 +651,10 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
+    if (sessionId) {
+      const clients = sessionClients.get(sessionId);
+      if (clients) { clients.delete(ws); if (clients.size === 0) sessionClients.delete(sessionId); }
+    }
     const proc = sessionProcesses.get(sessionId);
     if (proc) { proc.kill(); sessionProcesses.delete(sessionId); }
     const proxy = sessionProxies.get(sessionId);
@@ -558,7 +688,7 @@ setInterval(() => {
 
 // ===== Session timeout cleanup =====
 const SESSION_TIMEOUT = parseInt(process.env.SESSION_TIMEOUT || '3600000');
-setInterval(() => {
+setInterval(async () => {
   const now = Date.now();
   for (const [id, session] of sessions) {
     if (now - session.lastActivity > SESSION_TIMEOUT) {
@@ -566,6 +696,16 @@ setInterval(() => {
       if (proc) { try { proc.kill(); } catch (e) {} sessionProcesses.delete(id); }
       const proxy = sessionProxies.get(id);
       if (proxy) { try { proxy.kill(); } catch (e) {} sessionProxies.delete(id); }
+
+      // Clean up workspace directory
+      try {
+        const { rm } = await import('fs/promises');
+        await rm(session.dir, { recursive: true, force: true });
+        console.log('[SESSION] Cleaned workspace:', session.dir);
+      } catch (e) {
+        console.error('[SESSION] Failed to clean workspace:', e.message);
+      }
+
       sessions.delete(id);
       console.log('[SESSION] Expired:', id);
     }
