@@ -1583,7 +1583,11 @@
               <span class="cs-label">选择模型</span>
               <span class="cs-arrow">&#9662;</span>
             </div>
-            <div class="custom-select-dropdown" id="csModelDropdown"></div>
+            <div class="custom-select-dropdown" id="csModelDropdown">
+              <div class="model-search-wrapper">
+                <input type="text" id="modelSearchInput" placeholder="搜索模型名称或 ID..." autocomplete="off" style="width:100%;padding:6px 8px;font-size:12px;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);outline:none;">
+              </div>
+            </div>
           </div>
           <input type="text" id="cfgModelCustom" placeholder="输入模型 ID" style="margin-top:6px;display:none;">
         </div>
@@ -3065,18 +3069,46 @@
     });
   };
 
-  // ===== Smart Model Recommendation =====
+  // ===== Smart Model Recommendation (Keyword-based) =====
   function analyzeComplexity(text) {
     const len = text.length;
-    const hasCode = /```|function|class|const|let|var|import|export|def|return|if|else|for|while/.test(text);
-    const hasFiles = text.includes('@');
-    const hasQuestions = /\?|为什么|如何|怎么|explain|how|why/.test(text);
-    const isComplex = len > 500 || (hasCode && len > 200) || (hasFiles && len > 300);
-    const isSimple = len < 100 && !hasCode && !hasQuestions;
+    const lower = text.toLowerCase();
 
-    if (isComplex) return { level: 'complex', reason: '内容较长或包含代码/文件引用' };
-    if (isSimple) return { level: 'simple', reason: '简短问题' };
-    return { level: 'medium', reason: '一般复杂度' };
+    // Code/debug keywords
+    const codeKeywords = /```|function|class|const |let |var |import |export |def |return |if\s*\(|else\s*\{|for\s*\(|while\s*\(|debug|bug|error|fix|implement|实现|代码|编程|写个|重构|refactor|typescript|javascript|python|java|rust|golang|sql|css|html|react|vue|angular|node\.?js|api|database|数据库|前端|后端|算法|数据结构/.test(text);
+    const hasCodeBlock = /```[\s\S]*```/.test(text);
+
+    // Reasoning/analysis keywords
+    const reasoningKeywords = /为什么|如何|怎么|explain|how|why|分析|推理|reason|think|compare|对比|evaluate|评估|pros and cons|优缺点|deep dive|深入|详细解释|原理|机制|architecture|架构|design pattern|设计模式|complex|复杂|optimiz|优化|performance|性能|security|安全|漏洞|vulnerability/.test(text);
+
+    // Simple task keywords
+    const simpleKeywords = /翻译|translate|总结|summarize|简单|simple|quick|快速|hello|hi\b|你好|谢谢|thanks|bye|再见|what is|什么是|定义|definition|list|列举|列举几个|give me|给我一个/.test(lower);
+
+    // Creative/writing keywords
+    const creativeKeywords = /写一篇文章|write an article|story|故事|poem|诗|creative|创意|brainstorm|头脑风暴|idea|想法|suggest|建议|recommend|推荐|marketing|营销|copy|文案|广告|广告语|slogan/.test(text);
+
+    // Image generation keywords
+    const imageKeywords = /生成图片|画一个|draw|paint|image|图片|photo|照片|illustration|插画|design a|设计一个|logo|图标|icon|海报|poster|banner|壁纸|wallpaper|midjourney|dall|stable diffusion|sdxl|flux/.test(lower);
+
+    // Video keywords
+    const videoKeywords = /生成视频|video|视频|animate|动画|motion|动态|sora|runway|pika| Kling|可灵/.test(lower);
+
+    // File references
+    const hasFiles = text.includes('@');
+
+    // Determine task type with priority
+    if (imageKeywords) return { level: 'image', reason: '图片生成任务' };
+    if (videoKeywords) return { level: 'video', reason: '视频生成任务' };
+    if (hasCodeBlock || (codeKeywords && len > 100)) return { level: 'coding', reason: '编码/调试任务' };
+    if (reasoningKeywords && len > 80) return { level: 'reasoning', reason: '推理/分析任务' };
+    if (creativeKeywords) return { level: 'creative', reason: '创意/写作任务' };
+    if (simpleKeywords && len < 200 && !codeKeywords) return { level: 'simple', reason: '简单任务' };
+    if (hasFiles) return { level: 'coding', reason: '包含文件引用' };
+
+    // Fallback to length-based
+    if (len > 500) return { level: 'reasoning', reason: '内容较长，可能需要深度分析' };
+    if (len < 80 && !codeKeywords) return { level: 'simple', reason: '简短问题' };
+    return { level: 'medium', reason: '一般任务' };
   }
 
   function recommendModel(complexity) {
@@ -3085,31 +3117,73 @@
 
     const provider = activeModel.provider || 'openrouter';
     const currentModel = activeModel.model;
+    const currentLower = currentModel.toLowerCase();
 
-    // Model recommendations by complexity
+    // Don't recommend if already on a top-tier model for complex tasks
+    const isTopTier = /opus|o1|o3|gpt-4\.1|gemini-2\.5-pro|claude-sonnet-4/.test(currentLower);
+
+    // Model recommendations by task type
     const recommendations = {
       simple: {
-        openrouter: ['anthropic/claude-haiku-4.5', 'openai/gpt-4o-mini', 'google/gemini-flash-1.5'],
+        openrouter: ['google/gemini-2.0-flash-lite-001', 'anthropic/claude-haiku-4.5', 'openai/gpt-4o-mini'],
         deepseek: ['deepseek-chat'],
-        anthropic: ['claude-haiku-4-5-20251001'],
+        anthropic: ['claude-3-5-haiku-20241022'],
         openai: ['gpt-4o-mini']
       },
       medium: {
-        openrouter: ['anthropic/claude-sonnet-4', 'openai/gpt-4o', 'google/gemini-pro-1.5'],
+        openrouter: ['anthropic/claude-sonnet-4', 'openai/gpt-4o', 'google/gemini-2.5-pro'],
         deepseek: ['deepseek-chat'],
         anthropic: ['claude-sonnet-4-20250514'],
         openai: ['gpt-4o']
       },
-      complex: {
-        openrouter: ['anthropic/claude-sonnet-4', 'anthropic/claude-opus-4', 'openai/gpt-4o'],
-        deepseek: ['deepseek-chat'],
+      coding: {
+        openrouter: ['anthropic/claude-sonnet-4', 'anthropic/claude-opus-4', 'openai/gpt-4.1'],
+        deepseek: ['deepseek-chat', 'deepseek-reasoner'],
         anthropic: ['claude-sonnet-4-20250514', 'claude-opus-4-20250514'],
+        openai: ['gpt-4.1', 'gpt-4o']
+      },
+      reasoning: {
+        openrouter: ['anthropic/claude-opus-4', 'anthropic/claude-sonnet-4', 'openai/gpt-4.1'],
+        deepseek: ['deepseek-reasoner', 'deepseek-chat'],
+        anthropic: ['claude-opus-4-20250514', 'claude-sonnet-4-20250514'],
+        openai: ['gpt-4.1', 'o3-mini']
+      },
+      creative: {
+        openrouter: ['anthropic/claude-sonnet-4', 'google/gemini-2.5-pro', 'openai/gpt-4o'],
+        deepseek: ['deepseek-chat'],
+        anthropic: ['claude-sonnet-4-20250514'],
         openai: ['gpt-4o']
+      },
+      image: {
+        openrouter: [],  // No image models in current config
+        deepseek: [],
+        anthropic: [],
+        openai: []
+      },
+      video: {
+        openrouter: [],
+        deepseek: [],
+        anthropic: [],
+        openai: []
       }
     };
 
     const providerRecs = recommendations[complexity.level]?.[provider] || [];
-    const betterModel = providerRecs.find(m => m !== currentModel);
+
+    // Find a better model (not the current one)
+    let betterModel = null;
+    for (const m of providerRecs) {
+      if (m.toLowerCase() !== currentLower) {
+        betterModel = m;
+        break;
+      }
+    }
+
+    // For image/video tasks with no configured models, skip recommendation
+    if (!betterModel && (complexity.level === 'image' || complexity.level === 'video')) return null;
+
+    // Don't recommend downgrade for complex tasks if already on top tier
+    if (isTopTier && (complexity.level === 'reasoning' || complexity.level === 'coding')) return null;
 
     return {
       current: currentModel,
@@ -3412,13 +3486,38 @@
     return '$' + pricePer1M.toFixed(2);
   }
 
-  function renderModelOptions() {
+  function formatBillingOptions(m) {
+    if (m.tier === 'free') return '免费';
+    // Support billing_options array (like ModelHub)
+    if (m.billing_options && Array.isArray(m.billing_options) && m.billing_options.length > 0) {
+      return m.billing_options.map(opt => {
+        const label = opt.label || opt.type || '';
+        const prompt = opt.prompt_price_per_1m || opt.prompt;
+        const completion = opt.completion_price_per_1m || opt.completion;
+        const priceStr = `${formatPrice(prompt)}/${formatPrice(completion)}`;
+        return label ? `${label}: ${priceStr}` : priceStr;
+      }).join(' | ');
+    }
+    // Fallback to simple pricing
+    if (m.pricing) {
+      return `${formatPrice(m.pricing.prompt)}/${formatPrice(m.pricing.completion)}`;
+    }
+    return '价格未知';
+  }
+
+  function renderModelOptions(filter = '') {
     const options = selectedProvider && modelOptions[selectedProvider]
       ? modelOptions[selectedProvider]
       : [];
+    const lowerFilter = filter.toLowerCase();
+
+    // Filter static options
+    const filteredStatic = lowerFilter
+      ? options.filter(m => m.label.toLowerCase().includes(lowerFilter) || m.value.toLowerCase().includes(lowerFilter))
+      : options;
 
     // Show static options first, then dynamic ones will be loaded
-    let html = options.map(m =>
+    let html = filteredStatic.map(m =>
       `<div class="custom-select-option ${m.value === selectedModel ? 'selected' : ''}" data-value="${m.value}" data-label="${m.label}">${m.label}</div>`
     ).join('');
 
@@ -3445,13 +3544,22 @@
         const loading = $('dynamicModelsLoading');
         if (loading) loading.remove();
 
-        const dynamicHtml = models.slice(0, 20).map(m => {
-          const priceLabel = m.tier === 'free' ? '免费' : `${formatPrice(m.pricing?.prompt)}/${formatPrice(m.pricing?.completion)}`;
+        // Filter dynamic models
+        const filteredDynamic = lowerFilter
+          ? models.filter(m =>
+              (m.name || '').toLowerCase().includes(lowerFilter) ||
+              m.id.toLowerCase().includes(lowerFilter) ||
+              (m.provider || '').toLowerCase().includes(lowerFilter)
+            )
+          : models;
+
+        const dynamicHtml = filteredDynamic.slice(0, 20).map(m => {
+          const priceLabel = formatBillingOptions(m);
           const ctxLabel = m.context ? (m.context >= 1000000 ? (m.context/1000000).toFixed(1)+'M' : (m.context/1000).toFixed(0)+'K') : '';
           return `<div class="custom-select-option ${m.id === selectedModel ? 'selected' : ''}" data-value="${m.id}" data-label="${m.name || m.id}">
             <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
               <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${m.name || m.id}</span>
-              <span style="font-size:10px;color:var(--text-dim);margin-left:8px;white-space:nowrap;">${priceLabel}${ctxLabel ? ' · '+ctxLabel : ''}</span>
+              <span style="font-size:10px;color:var(--text-dim);margin-left:8px;white-space:nowrap;" title="${priceLabel}">${priceLabel}${ctxLabel ? ' · '+ctxLabel : ''}</span>
             </div>
           </div>`;
         }).join('');
@@ -3474,6 +3582,8 @@
   });
 
   modelDropdown.addEventListener('click', (e) => {
+    // Don't close when clicking search input
+    if (e.target.id === 'modelSearchInput' || e.target.closest('.model-search-wrapper')) return;
     const opt = e.target.closest('.custom-select-option, .use-other-model');
     if (!opt) return;
     if (opt.classList.contains('use-other-model')) {
@@ -3489,6 +3599,20 @@
     closeAllDropdowns();
     $('cfgModelCustom').style.display = selectedModel === '__custom__' ? 'block' : 'none';
   });
+
+  // Model search filter
+  const modelSearchInput = $('modelSearchInput');
+  let modelSearchTimer = null;
+  if (modelSearchInput) {
+    modelSearchInput.addEventListener('input', (e) => {
+      e.stopPropagation();
+      clearTimeout(modelSearchTimer);
+      modelSearchTimer = setTimeout(() => {
+        renderModelOptions(e.target.value.trim());
+      }, 200);
+    });
+    modelSearchInput.addEventListener('click', (e) => e.stopPropagation());
+  }
 
   // Close dropdowns on outside click
   document.addEventListener('click', closeAllDropdowns);

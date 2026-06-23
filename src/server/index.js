@@ -158,6 +158,94 @@ function recordModelFail(modelId, errorDetail) {
   s.total++; s.fail++; s.lastFail = Date.now(); s.lastError = errorDetail;
 }
 
+// ===== Proactive Model Health Check =====
+const HEALTH_CHECK_INTERVAL = 600000; // 10 minutes
+const HEALTH_CHECK_TIMEOUT = 15000;   // 15s timeout per check
+
+async function checkModelHealth(modelId, provider, baseUrl, apiKey) {
+  const startTime = Date.now();
+  try {
+    const url = baseUrl.includes('/messages')
+      ? baseUrl
+      : baseUrl.replace(/\/$/, '') + '/chat/completions';
+
+    const body = provider === 'anthropic'
+      ? { model: modelId, max_tokens: 5, messages: [{ role: 'user', content: 'hi' }] }
+      : { model: modelId, max_tokens: 5, messages: [{ role: 'user', content: 'hi' }] };
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    };
+    if (provider === 'anthropic') {
+      headers['x-api-key'] = apiKey;
+      headers['anthropic-version'] = '2023-06-01';
+      delete headers['Authorization'];
+    }
+
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT)
+    });
+
+    const latency = Date.now() - startTime;
+
+    if (resp.ok) {
+      recordModelSuccess(modelId);
+      // Store latency
+      let s = modelStats.get(modelId);
+      if (s) s.lastLatency = latency;
+      return { ok: true, latency };
+    } else {
+      const text = await resp.text().catch(() => '');
+      recordModelFail(modelId, `${resp.status}: ${text.slice(0, 100)}`);
+      return { ok: false, latency, error: `${resp.status}` };
+    }
+  } catch (e) {
+    const latency = Date.now() - startTime;
+    recordModelFail(modelId, e.message);
+    return { ok: false, latency, error: e.message };
+  }
+}
+
+// Periodic health check for recently used models
+async function runHealthChecks() {
+  const recentModels = [...modelStats.entries()]
+    .filter(([_, s]) => s.lastOk && (Date.now() - s.lastOk) < 3600000) // used in last hour
+    .slice(0, 5); // max 5 models per check
+
+  if (recentModels.length === 0) return;
+
+  console.log(`[HEALTH] Checking ${recentModels.length} recent models...`);
+
+  for (const [modelId] of recentModels) {
+    // Find provider config for this model
+    let provider = null, baseUrl = null, apiKey = null;
+    for (const [, session] of sessions) {
+      if (session.currentModel === modelId || session.model === modelId) {
+        provider = session.provider;
+        const config = agentConfig.providers[provider];
+        baseUrl = session.baseUrl || config?.baseUrl;
+        apiKey = decryptApiKey(session.apiKey);
+        break;
+      }
+    }
+    if (!provider || !baseUrl || !apiKey) continue;
+
+    const result = await checkModelHealth(modelId, provider, baseUrl, apiKey);
+    const status = result.ok ? '✓' : '✗';
+    console.log(`[HEALTH] ${status} ${modelId} - ${result.latency}ms${result.error ? ' (' + result.error + ')' : ''}`);
+  }
+}
+
+// Run health check every 10 minutes, first run after 2 minutes
+setTimeout(() => {
+  runHealthChecks();
+  setInterval(runHealthChecks, HEALTH_CHECK_INTERVAL);
+}, 120000);
+
 const sessions = new Map();
 const sessionProcesses = new Map();
 const sessionProxies = new Map(); // proxy processes
