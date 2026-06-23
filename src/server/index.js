@@ -218,6 +218,19 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: '50kb' }));
+
+// ===== Security Headers =====
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
 app.use(express.static(join(__dirname, '../../public'), {
   setHeaders: (res) => {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -404,7 +417,14 @@ PORT, HOST, () => {
 
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024 });
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  // Verify WebSocket origin
+  const wsOrigin = req.headers.origin;
+  if (wsOrigin && !ALLOWED_ORIGINS.includes(wsOrigin)) {
+    ws.send(JSON.stringify({ type: 'error', message: 'WebSocket origin not allowed' }));
+    ws.close();
+    return;
+  }
   let sessionId = null;
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
