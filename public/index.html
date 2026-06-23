@@ -2708,11 +2708,13 @@
       const closeContent = confirming
         ? '<span style="white-space:nowrap;padding:0 2px;">再点关闭</span>'
         : '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-      return `<div class="editor-tab ${isActive ? 'active' : ''}" data-path="${escapeHtml(t.path)}" onclick="switchEditorTab('${escapeHtml(t.path)}')">
+      // Use data-* attributes + event delegation (no inline onclick) to avoid
+      // CSP/quoting issues on mobile browsers
+      return `<div class="editor-tab ${isActive ? 'active' : ''}" data-tab-path="${escapeHtml(t.path)}" data-tab-role="tab">
         ${t.modified ? '<span class="tab-dot"></span>' : ''}
         <span style="opacity:0.6;font-size:10px">${icon}</span>
-        <span>${escapeHtml(name)}</span>
-        <span class="tab-close ${confirming ? 'confirming' : ''}" onclick="event.stopPropagation();closeEditorTab('${escapeHtml(t.path)}')" title="${confirming ? '再次点击确认关闭' : '关闭'}">${closeContent}</span>
+        <span class="tab-name">${escapeHtml(name)}</span>
+        <span class="tab-close ${confirming ? 'confirming' : ''}" data-tab-path="${escapeHtml(t.path)}" data-tab-role="close" title="${confirming ? '再次点击确认关闭' : '关闭'}">${closeContent}</span>
       </div>`;
     }).join('');
   }
@@ -2851,6 +2853,30 @@
       tab.modified = formatted !== tab.original;
       ta.dispatchEvent(new Event('input'));
     });
+
+    // Event delegation for editor tabs (avoids inline onclick issues on mobile)
+    const tabsContainer = $('editorTabs');
+    if (tabsContainer) {
+      tabsContainer.addEventListener('click', (e) => {
+        // Walk up to find the closest .tab-close or .editor-tab
+        let target = e.target;
+        while (target && target !== tabsContainer) {
+          if (target.classList && target.classList.contains('tab-close')) {
+            e.stopPropagation();
+            e.preventDefault();
+            const path = target.dataset.tabPath;
+            if (path) closeEditorTab(path);
+            return;
+          }
+          if (target.classList && target.classList.contains('editor-tab')) {
+            const path = target.dataset.tabPath;
+            if (path) switchEditorTab(path);
+            return;
+          }
+          target = target.parentElement;
+        }
+      });
+    }
 
     // Restore UI from persisted state
     if (Object.keys(fileContents).length > 0 || editorState.tabs.length > 0) {
