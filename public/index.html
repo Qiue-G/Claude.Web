@@ -4193,14 +4193,16 @@
       $('statusText').textContent = '重连失败';
     }
   })();
+
+  // ===== File/Folder Context Menu (must be before </script>) =====
+  // Context menu HTML is injected here so elements exist when JS runs
+  const ctxMenu = document.createElement('div');
+  ctxMenu.className = 'context-menu';
+  ctxMenu.id = 'fileContextMenu';
+  ctxMenu.style.display = 'none';
+  ctxMenu.innerHTML = '<div class="context-menu-item danger" data-action="delete"><span class="cm-icon">&#128465;</span><span class="cm-label">删除</span></div>';
+  document.body.appendChild(ctxMenu);
 </script>
-  <!-- Context Menu for File Tree -->
-  <div class="context-menu" id="fileContextMenu" style="display:none;">
-    <div class="context-menu-item danger" data-action="delete">
-      <span class="cm-icon">&#128465;</span>
-      <span class="cm-label">删除</span>
-    </div>
-  </div>
 
 </body>
 </html>
