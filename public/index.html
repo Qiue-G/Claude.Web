@@ -1205,6 +1205,11 @@
       .chat-area { flex: 1; }
       .chat-messages { padding: 8px 0; }
 
+      /* Editor panel on mobile */
+      .editor-panel { height: 45% !important; }
+      .editor-panel.collapsed { height: 0 !important; }
+      .editor-textarea { font-size: 14px; }
+
       /* Welcome */
       .chat-welcome { padding: 24px 16px; }
       .chat-welcome .logo { margin-bottom: 12px; }
@@ -1790,6 +1795,8 @@
               $('currentFileLabel').textContent = file.name;
               appendChatMsg('system', `已打开文件: ${file.name} (${(file.size/1024).toFixed(1)} KB)`);
               loadFileTree();
+              // Open in editor
+              openEditorTab(file.name, content);
               // Open left panel on mobile to show file tree
               if (window.innerWidth <= 768) {
                 $('leftPanel').classList.add('open');
@@ -1807,6 +1814,8 @@
           currentFile = file.name;
           $('currentFileLabel').textContent = file.name;
           appendChatMsg('system', `已打开文件: ${file.name} (${(file.size/1024).toFixed(1)} KB)`);
+          // Open in editor even without session
+          openEditorTab(file.name, content);
         }
       };
       reader.readAsText(file);
@@ -1870,11 +1879,39 @@
     }
 
     const tree = buildTreeFromFiles(files);
-    appendChatMsg('system', `已加载文件夹: ${files.length} 个文件`);
+    appendChatMsg('system', `已加载文件夹: ${files.length} 个文件，正在上传...`);
 
-    $('fileTree').innerHTML = '';
-    renderFileTree(tree, $('fileTree'), 0);
-    collectAllFiles(tree);
+    // Upload all files to server if session exists
+    if (sessionId) {
+      let uploaded = 0;
+      let failed = 0;
+      for (const file of files) {
+        try {
+          const content = await file.text();
+          const filePath = file.webkitRelativePath;
+          await fetch('/api/files/' + sessionId + '/' + filePath, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-session-token': sessionToken || ''
+            },
+            body: JSON.stringify({ content: content || '' })
+          });
+          fileContents[filePath] = content;
+          uploaded++;
+        } catch (e) {
+          failed++;
+        }
+      }
+      appendChatMsg('system', `文件夹上传完成: ${uploaded} 成功, ${failed} 失败`);
+      // Refresh file tree from server
+      loadFileTree();
+    } else {
+      // No session, render locally
+      $('fileTree').innerHTML = '';
+      renderFileTree(tree, $('fileTree'), 0);
+      collectAllFiles(tree);
+    }
 
     // Open left panel on mobile to show file tree
     if (window.innerWidth <= 768) {
