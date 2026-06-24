@@ -2941,6 +2941,11 @@
 
     msg.innerHTML = html;
     $('chatMessages').appendChild(msg);
+    // Trim old messages to prevent DOM bloat (keep last 100)
+    const MAX_VISIBLE = 100;
+    while ($('chatMessages').children.length > MAX_VISIBLE) {
+      $('chatMessages').firstChild.remove();
+    }
     $('chatMessages').scrollTop = $('chatMessages').scrollHeight;
   }
 
@@ -3888,10 +3893,13 @@
         const dynamicHtml = filteredDynamic.slice(0, 20).map(m => {
           const priceLabel = formatBillingOptions(m);
           const ctxLabel = m.context ? (m.context >= 1000000 ? (m.context/1000000).toFixed(1)+'M' : (m.context/1000).toFixed(0)+'K') : '';
-          return `<div class="custom-select-option ${m.id === selectedModel ? 'selected' : ''}" data-value="${m.id}" data-label="${m.name || m.id}">
+          const safeName = escapeHtml(m.name || m.id);
+          const safeId = escapeHtml(m.id);
+          const safePriceLabel = escapeHtml(priceLabel);
+          return `<div class="custom-select-option ${safeId === selectedModel ? 'selected' : ''}" data-value="${safeId}" data-label="${safeName}">
             <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
-              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${m.name || m.id}</span>
-              <span style="font-size:10px;color:var(--text-dim);margin-left:8px;white-space:nowrap;" title="${priceLabel}">${priceLabel}${ctxLabel ? ' · '+ctxLabel : ''}</span>
+              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safeName}</span>
+              <span style="font-size:10px;color:var(--text-dim);margin-left:8px;white-space:nowrap;" title="${safePriceLabel}">${safePriceLabel}${ctxLabel ? ' · '+ctxLabel : ''}</span>
             </div>
           </div>`;
         }).join('');
