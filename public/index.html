@@ -4352,6 +4352,7 @@
       console.error('[WS] error:', err);
     };
     ws.onclose = () => {
+      isConnected = false;
       $('statusDot').style.background = 'var(--red)';
       $('statusDot').classList.add('disconnected');
       $('statusText').textContent = '已断开';
