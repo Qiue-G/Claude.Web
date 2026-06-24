@@ -1739,7 +1739,7 @@
   // API Key 只在当前会话有效，关闭标签页后清除
   savedModels.forEach(model => {
     if (model.apiKey) {
-      sessionStorage.setItem(`apiKey_${model.id}`, model.apiKey);
+      localStorage.setItem(`apiKey_${model.id}`, model.apiKey);
       delete model.apiKey;
     }
   });
@@ -3460,7 +3460,7 @@
         // Create new model entry with same API key
         const activeModel = savedModels.find(m => m.id === activeModelId);
         if (activeModel) {
-          const apiKey = sessionStorage.getItem(`apiKey_${activeModel.id}`);
+          const apiKey = localStorage.getItem(`apiKey_${activeModel.id}`);
           if (apiKey) {
             const newModel = {
               id: 'model_' + Date.now(),
@@ -3468,7 +3468,7 @@
               provider: activeModel.provider,
               baseUrl: activeModel.baseUrl || ''
             };
-            sessionStorage.setItem(`apiKey_${newModel.id}`, apiKey);
+            localStorage.setItem(`apiKey_${newModel.id}`, apiKey);
             savedModels.push(newModel);
             saveModels();
             switchToModel(savedModels.length - 1);
@@ -3956,7 +3956,7 @@
     activeModelId = m.id;
     saveModels();
 
-    const apiKey = sessionStorage.getItem(`apiKey_${m.id}`);
+    const apiKey = localStorage.getItem(`apiKey_${m.id}`);
     if (!apiKey) {
       alert('API Key 已过期，请重新配置');
       openConfigModal();
@@ -4076,7 +4076,7 @@
         baseUrl: baseUrl || ''
       };
       // API Key 存储到 sessionStorage，不写入 localStorage
-      sessionStorage.setItem(`apiKey_${modelEntry.id}`, apiKey);
+      localStorage.setItem(`apiKey_${modelEntry.id}`, apiKey);
       savedModels.push(modelEntry);
       activeModelId = modelEntry.id;
       saveModels();
@@ -4283,7 +4283,7 @@
     const active = savedModels.find(m => m.id === activeModelId);
     if (!active) return;
 
-    const apiKey = sessionStorage.getItem(`apiKey_${activeModelId}`);
+    const apiKey = localStorage.getItem(`apiKey_${activeModelId}`);
     if (!apiKey) {
       // API key expired, just update display
       const shortName = active.model.split('/').pop() || active.model;
