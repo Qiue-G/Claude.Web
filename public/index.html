@@ -1678,6 +1678,9 @@
   var STORAGE_KEY_FILES = 'fcw_fileContents';
   var STORAGE_KEY_TABS = 'fcw_editorTabs';
   var STORAGE_KEY_ACTIVE_TAB = 'fcw_editorActiveTab';
+  var STORAGE_KEY_AUTO_SAVE = 'fcw_autoSave';
+  var STORAGE_KEY_LEFT_PANEL = 'fcw_leftPanelCollapsed';
+  var STORAGE_KEY_RIGHT_PANEL = 'fcw_rightPanelCollapsed';
 
   function persistFileContents() {
     try { localStorage.setItem(STORAGE_KEY_FILES, JSON.stringify(fileContents)); } catch (e) {}
@@ -1723,7 +1726,7 @@
   let csrfToken = null;
   let isWaiting = false;
   let currentFile = null;
-  let autoSave = false;
+  let autoSave = localStorage.getItem(STORAGE_KEY_AUTO_SAVE) === 'true';
   let savedModels = [];
   try {
     savedModels = JSON.parse(localStorage.getItem('savedModels') || '[]');
@@ -2203,6 +2206,7 @@
 
   $('menuAutoSave').addEventListener('click', () => {
     autoSave = !autoSave;
+    localStorage.setItem(STORAGE_KEY_AUTO_SAVE, autoSave ? 'true' : 'false');
     $('autoSaveCheck').textContent = autoSave ? '\u2713' : '';
     if (autoSave) {
       startAutoSave();
@@ -2248,14 +2252,13 @@
           headers: { 'x-session-token': sessionToken || '' }
         });
         const data = await res.json();
-        if (data.tree) {
+        if (data.tree && data.tree.length > 0) {
           renderFileTree(data.tree, $('fileTree'), 0);
           detectProjectInfo(data.tree);
           collectAllFiles(data.tree);
-          // Reconcile: if fileContents has a bare-name entry (e.g. "HISTORY.md"
-          // from fileInput) that matches a tree file (e.g. "deepseek-v4-pro/HISTORY.md"),
-          // map it to the tree path so selectFile can find it
           reconcileFileContentsWithTree(data.tree);
+          // Also include local-only files that don't exist on server
+          addLocalOnlyFilesToTree(data.tree);
           return;
         }
       } catch (e) {
@@ -2304,6 +2307,35 @@
     }
     visit(tree);
     persistFileContents();
+  }
+
+  // Append local-only files (in fileContents but not in server tree) to the rendered file tree
+  function addLocalOnlyFilesToTree(tree) {
+    const treePaths = new Set();
+    function collect(items) {
+      for (const item of items) {
+        if (item.type === 'file') treePaths.add(item.path);
+        if (item.children) collect(item.children);
+      }
+    }
+    collect(tree);
+    const localPaths = Object.keys(fileContents).filter(p => !treePaths.has(p));
+    if (localPaths.length === 0) return;
+    const treeEl = $('fileTree');
+    const sep = document.createElement('div');
+    sep.className = 'tree-separator';
+    sep.style.cssText = 'margin:4px 0;border-top:1px solid var(--border);opacity:0.5';
+    treeEl.appendChild(sep);
+    for (const path of localPaths) {
+      const name = path.split('/').pop();
+      const div = document.createElement('div');
+      div.className = 'tree-item file local-only';
+      div.dataset.path = path;
+      div.innerHTML = FILE_ICON + '<span class="tree-label">' + escapeHtml(name) + ' <span style="opacity:0.5;font-size:0.85em">(本地)</span></span>';
+      div.style.cssText = 'padding-left:16px;cursor:pointer';
+      div.onclick = () => selectFile(path);
+      treeEl.appendChild(div);
+    }
   }
 
   function collectAllFiles(tree) {
@@ -2606,6 +2638,7 @@
       if (overlay) overlay.classList.toggle('show');
     } else {
       panel.classList.toggle('collapsed');
+      localStorage.setItem(STORAGE_KEY_LEFT_PANEL, panel.classList.contains('collapsed') ? 'true' : 'false');
     }
   });
   // Close panel when clicking overlay
@@ -2626,6 +2659,7 @@
       if (overlay) overlay.classList.toggle('show');
     } else {
       panel.classList.toggle('collapsed');
+      localStorage.setItem(STORAGE_KEY_RIGHT_PANEL, panel.classList.contains('collapsed') ? 'true' : 'false');
     }
   });
 
@@ -3168,6 +3202,16 @@
     }
 
     // Restore UI from persisted state
+    // Restore autoSave checkbox + timer
+    $('autoSaveCheck').textContent = autoSave ? '\u2713' : '';
+    if (autoSave) startAutoSave();
+    // Restore panel collapse state
+    if (localStorage.getItem(STORAGE_KEY_LEFT_PANEL) === 'true') {
+      $('leftPanel').classList.add('collapsed');
+    }
+    if (localStorage.getItem(STORAGE_KEY_RIGHT_PANEL) === 'true') {
+      $('rightPanel').classList.add('collapsed');
+    }
     if (Object.keys(fileContents).length > 0 || editorState.tabs.length > 0) {
       loadFileTree();
     }
@@ -3600,6 +3644,10 @@
     if (!opt) return;
     selectedProvider = opt.dataset.value;
     providerTrigger.querySelector('.cs-label').textContent = opt.dataset.label;
+    // Clear model selection when switching providers
+    selectedModel = '';
+    modelTrigger.querySelector('.cs-label').textContent = '选择模型';
+    $('cfgModelCustom').style.display = 'none';
     renderProviderOptions();
     closeAllDropdowns();
     renderModelOptions();
