@@ -4019,14 +4019,20 @@
     const idx = parseInt(btn.dataset.idx);
     if (btn.dataset.action === 'delete') {
       if (confirm(`确定删除模型 "${savedModels[idx].model}" 吗？`)) {
-        if (savedModels[idx].id === activeModelId) activeModelId = '';
+        if (savedModels[idx].id === activeModelId) {
+          activeModelId = '';
+          isConnected = false;
+          if (ws) { ws.onclose = null; ws.close(); ws = null; }
+          $('statusDot').style.background = 'var(--red)';
+          $('statusDot').classList.add('disconnected');
+          $('statusText').textContent = '未连接';
+          $('modelName').textContent = '未配置模型';
+        }
         savedModels.splice(idx, 1);
         saveModels();
         renderModelList();
       }
     } else if (btn.dataset.action === 'switch') {
-      btn.disabled = true;
-      btn.style.opacity = '0.5';
       switchToModel(idx);
     }
   });
@@ -4041,8 +4047,13 @@
     if (!apiKey) {
       alert('API Key 已过期，请重新配置');
       openConfigModal();
+      renderModelList();
       return;
     }
+
+    // 在关键检查通过后才设置 loading 状态
+    const btn = document.querySelector(`.switch-btn[data-idx="${idx}"]`);
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
 
     const body = { apiKey, model: m.model };
     if (m.provider) body.provider = m.provider;
