@@ -1769,14 +1769,8 @@
   }
   let activeModelId = localStorage.getItem('activeModelId') || '';
 
-  // 安全：不在前端存储 API Key，改用 sessionStorage
-  // API Key 只在当前会话有效，关闭标签页后清除
-  savedModels.forEach(model => {
-    if (model.apiKey) {
-      localStorage.setItem(`apiKey_${model.id}`, model.apiKey);
-      delete model.apiKey;
-    }
-  });
+  // apiKey 内嵌在 savedModels 中，避免浏览器清理时丢失关联
+  // 同时保留独立 key 作为冗余（向后兼容）
   localStorage.setItem('savedModels', JSON.stringify(savedModels));
 
   // Right panel dynamic data
@@ -3540,13 +3534,14 @@
         // Create new model entry with same API key
         const activeModel = savedModels.find(m => m.id === activeModelId);
         if (activeModel) {
-          const apiKey = localStorage.getItem(`apiKey_${activeModel.id}`);
+          const apiKey = activeModel.apiKey || localStorage.getItem(`apiKey_${activeModel.id}`);
           if (apiKey) {
             const newModel = {
               id: 'model_' + Date.now(),
               model: rec.recommended,
               provider: activeModel.provider,
-              baseUrl: activeModel.baseUrl || ''
+              baseUrl: activeModel.baseUrl || '',
+              apiKey
             };
             localStorage.setItem(`apiKey_${newModel.id}`, apiKey);
             savedModels.push(newModel);
@@ -4041,7 +4036,7 @@
     activeModelId = m.id;
     saveModels();
 
-    const apiKey = localStorage.getItem(`apiKey_${m.id}`);
+    const apiKey = m.apiKey || localStorage.getItem(`apiKey_${m.id}`);
     if (!apiKey) {
       alert('API Key 已过期，请重新配置');
       openConfigModal();
@@ -4166,14 +4161,14 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      // 保存到模型列表
+      // 保存到模型列表（apiKey 内嵌，确保浏览器清理时不丢失关联）
       const modelEntry = {
         id: 'model_' + Date.now(),
         model,
         provider,
-        baseUrl: baseUrl || ''
+        baseUrl: baseUrl || '',
+        apiKey
       };
-      // API Key 存储到 sessionStorage，不写入 localStorage
       localStorage.setItem(`apiKey_${modelEntry.id}`, apiKey);
       savedModels.push(modelEntry);
       activeModelId = modelEntry.id;
@@ -4384,7 +4379,7 @@
     const active = savedModels.find(m => m.id === activeModelId);
     if (!active) return;
 
-    const apiKey = localStorage.getItem(`apiKey_${activeModelId}`);
+    const apiKey = active.apiKey || localStorage.getItem(`apiKey_${activeModelId}`);
     if (!apiKey) {
       // API key expired, just update display
       const shortName = active.model.split('/').pop() || active.model;
