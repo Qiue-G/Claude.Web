@@ -4022,6 +4022,7 @@
         if (savedModels[idx].id === activeModelId) {
           activeModelId = '';
           isConnected = false;
+          if (retryTimeoutId) { clearTimeout(retryTimeoutId); retryTimeoutId = null; }
           if (ws) { ws.onclose = null; ws.close(); ws = null; }
           $('statusDot').style.background = 'var(--red)';
           $('statusDot').classList.add('disconnected');
@@ -4073,6 +4074,7 @@
     }).then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); }).then(data => {
       if (data.sessionId) {
         // Close old WebSocket before creating new one
+        if (retryTimeoutId) { clearTimeout(retryTimeoutId); retryTimeoutId = null; }
         if (ws) { ws.onclose = null; ws.close(); ws = null; }
         sessionId = data.sessionId;
         sessionToken = data.token;
@@ -4084,6 +4086,8 @@
         $('statusDot').style.background = 'var(--green)';
         $('statusDot').classList.remove('disconnected');
         $('statusText').textContent = '已连接';
+        $('statusText').style.cursor = '';
+        $('statusText').style.borderBottom = '';
         // Update right panel
         updateCurrentModel();
         tokenStats = { input: 0, inputMax: 200000, output: 0, outputMax: 16000 };
@@ -4161,17 +4165,21 @@
       if (provider) body.provider = provider;
       if (baseUrl) body.baseUrl = baseUrl;
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
       const res = await fetch('/api/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || `HTTP ${res.status}`);
       }
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
 
       // 保存到模型列表（apiKey 内嵌，确保浏览器清理时不丢失关联）
       const modelEntry = {
@@ -4187,6 +4195,7 @@
       saveModels();
 
       // Close old WebSocket before creating new one
+      if (retryTimeoutId) { clearTimeout(retryTimeoutId); retryTimeoutId = null; }
       if (ws) { ws.onclose = null; ws.close(); ws = null; }
 
       sessionId = data.sessionId;
@@ -4201,6 +4210,8 @@
       $('statusDot').style.background = 'var(--green)';
       $('statusDot').classList.remove('disconnected');
       $('statusText').textContent = '已连接';
+      $('statusText').style.cursor = '';
+      $('statusText').style.borderBottom = '';
 
       // Update right panel
       updateCurrentModel();
@@ -4212,7 +4223,7 @@
       appendChatMsg('system', `已连接到 ${model}`);
       connectWebSocket();
     } catch (e) {
-      alert(e.message);
+      alert(e.name === 'AbortError' ? '连接超时，请检查网络后重试' : e.message);
     } finally {
       $('submitConfig').disabled = false;
       $('submitConfig').textContent = '添加模型';
@@ -4257,6 +4268,7 @@
 
   // ===== WebSocket =====
   let retryCount = 0;
+  let retryTimeoutId = null;
   function connectWebSocket() {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     ws = new WebSocket(`${protocol}//${location.host}/ws`);
@@ -4270,6 +4282,9 @@
       }
       $('statusDot').style.background = 'var(--green)';
       $('statusDot').classList.remove('disconnected');
+      $('statusText').textContent = '已连接';
+      $('statusText').style.cursor = '';
+      $('statusText').style.borderBottom = '';
       // Send init message to associate WebSocket with session
       ws.send(JSON.stringify({
         type: 'init',
@@ -4364,6 +4379,11 @@
     };
     ws.onclose = () => {
       isConnected = false;
+      if (isWaiting) {
+        isWaiting = false;
+        $('sendBtn').disabled = false;
+        removeTyping();
+      }
       $('statusDot').style.background = 'var(--red)';
       $('statusDot').classList.add('disconnected');
       $('statusText').textContent = '已断开';
@@ -4379,7 +4399,8 @@
       const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
       retryCount++;
       upsertReconnectMsg(`连接已断开，${Math.round(delay/1000)}s 后自动重连... (第 ${retryCount}/${MAX_RETRIES} 次)`);
-      setTimeout(() => {
+      retryTimeoutId = setTimeout(() => {
+        retryTimeoutId = null;
         connectWebSocket();
       }, delay);
     };
@@ -4412,11 +4433,16 @@
       if (active.provider) body.provider = active.provider;
       if (active.baseUrl) body.baseUrl = active.baseUrl;
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
       const res = await fetch('/api/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || `HTTP ${res.status}`);
@@ -4431,14 +4457,24 @@
       $('statusDot').style.background = 'var(--green)';
       $('statusDot').classList.remove('disconnected');
       $('statusText').textContent = '已连接';
+      $('statusText').style.cursor = '';
+      $('statusText').style.borderBottom = '';
 
       connectWebSocket();
       loadFileTree();
     } catch (e) {
       $('statusText').textContent = '重连失败 · 点此切换';
+      $('statusText').style.cursor = 'pointer';
+      $('statusText').style.borderBottom = '1px dashed var(--red)';
       $('statusDot').classList.add('disconnected');
     }
   })();
+
+  // Click on status bar when disconnected → open config modal
+  $('statusText').addEventListener('click', () => {
+    if (!$('statusDot').classList.contains('disconnected')) return;
+    openConfigModal();
+  });
 </script>
 
 </body>
