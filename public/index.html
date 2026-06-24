@@ -4419,8 +4419,8 @@
       connectWebSocket();
       loadFileTree();
     } catch (e) {
-      console.warn('Session restore failed:', e.message);
-      $('statusText').textContent = '重连失败';
+      $('statusText').textContent = '重连失败 · 点此切换';
+      $('statusDot').classList.add('disconnected');
     }
   })();
 </script>
