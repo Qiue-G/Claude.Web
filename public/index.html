@@ -528,6 +528,40 @@
       line-height: 1.6;
     }
 
+    /* Code block header + copy */
+    .code-block { margin: 10px 0; }
+    .code-block-hdr {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-bottom: none;
+      border-radius: 6px 6px 0 0;
+      padding: 6px 12px;
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+    }
+    .code-block-copy {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 2px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      font-family: var(--font-sans);
+      transition: all 0.15s;
+    }
+    .code-block-copy:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .code-block-copy.copied { color: var(--green); border-color: var(--green); }
+    .code-block pre {
+      margin: 0;
+      border-radius: 0 0 6px 6px;
+      border-top: none;
+    }
+
     /* Tool Use Cards */
     .tool-use-list { margin: 8px 0; }
     .tool-use-item {
@@ -2932,9 +2966,44 @@
 
   function formatChatText(text) {
     let html = escapeHtml(text);
-    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+    // Code blocks with header + copy button
+    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+      const langLabel = lang || 'text';
+      return `<div class="code-block"><div class="code-block-hdr"><span>${escapeHtml(langLabel)}</span><button class="code-block-copy" title="复制代码">复制</button></div><pre><code>${code}</code></pre></div>`;
+    });
     html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
     return html;
+  }
+
+  // Delegate copy button clicks on code blocks
+  $('chatMessages').addEventListener('click', async (e) => {
+    const btn = e.target.closest('.code-block-copy');
+    if (!btn) return;
+    const code = btn.closest('.code-block').querySelector('code').textContent;
+    try {
+      await navigator.clipboard.writeText(code);
+      btn.textContent = '已复制';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = '复制'; btn.classList.remove('copied'); }, 2000);
+    } catch {
+      btn.textContent = '失败';
+      setTimeout(() => { btn.textContent = '复制'; }, 1500);
+    }
+  });
+
+  let reconnectMsgEl = null;
+  function upsertReconnectMsg(text, final = false) {
+    if (!reconnectMsgEl) {
+      reconnectMsgEl = document.createElement('div');
+      reconnectMsgEl.className = 'chat-msg system';
+      reconnectMsgEl.innerHTML = '<div class="chat-msg-header"><span class="chat-msg-role">系统</span></div><div class="chat-msg-text"></div>';
+      $('chatMessages').appendChild(reconnectMsgEl);
+      $('chatMessages').scrollTop = $('chatMessages').scrollHeight;
+    }
+    const textEl = reconnectMsgEl.querySelector('.chat-msg-text');
+    textEl.textContent = text;
+    if (final) reconnectMsgEl.style.opacity = '0.7';
+    $('chatMessages').scrollTop = $('chatMessages').scrollHeight;
   }
 
   // ===== Code Editor =====
@@ -3101,6 +3170,11 @@
     const lineCount = tab.content.split('\n').length;
     $('editorFileInfo').textContent = `${path} · ${lang} · ${lineCount} 行${tab.modified ? ' · 已修改' : ''}`;
 
+    // Sync currentFile/currentFileContent for auto-save and saveFile
+    currentFile = path;
+    currentFileContent = tab.content;
+    $('currentFileLabel').textContent = path;
+
     // Build gutter + textarea
     const gutterLines = Array.from({ length: lineCount }, (_, i) => i + 1).join('\n');
     $('editorBody').innerHTML = `
@@ -3124,6 +3198,7 @@
     ta.addEventListener('input', () => {
       tab.content = ta.value;
       tab.modified = ta.value !== tab.original;
+      currentFileContent = ta.value; // sync for auto-save
       const newLineCount = ta.value.split('\n').length;
       $('editorFileInfo').textContent = `${path} · ${lang} · ${newLineCount} 行${tab.modified ? ' · 已修改' : ''}`;
       // Update gutter
@@ -3594,7 +3669,7 @@
         fetch('/api/files/' + sessionId + '/' + encodeFilePath(filePath), {
           headers: { 'x-session-token': sessionToken || '' }
         })
-          .then(res => res.json())
+          .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); })
           .then(data => {
             if (data.content) {
               attachedContent += `\n--- ${filePath} ---\n${data.content}\n`;
@@ -3974,7 +4049,7 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
-    }).then(res => res.json()).then(data => {
+    }).then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); }).then(data => {
       if (data.sessionId) {
         // Close old WebSocket before creating new one
         if (ws) { ws.onclose = null; ws.close(); ws = null; }
@@ -4029,7 +4104,11 @@
       model = $('cfgCustomModelId').value.trim();
       apiKey = $('cfgCustomApiKey').value.trim();
       baseUrl = $('cfgCustomBaseUrl').value.trim();
-      if (!model || !apiKey) { alert('请填写所有必填项'); return; }
+      // Validation
+      if (!model) { alert('请输入模型名称'); return; }
+      if (!apiKey) { alert('请输入 API Key'); return; }
+      if (apiKey.length < 8) { alert('API Key 太短，请检查后重试'); return; }
+      if (baseUrl && !/^https?:\/\/.+/.test(baseUrl)) { alert('Base URL 格式无效，需以 http:// 或 https:// 开头'); return; }
       provider = '';
     } else {
       // 模型服务商 Tab
@@ -4038,7 +4117,10 @@
         ? $('cfgModelCustom').value.trim()
         : selectedModel;
       apiKey = $('cfgApiKey').value.trim();
-      if (!provider || !model || !apiKey) { alert('请填写所有必填项'); return; }
+      if (!provider) { alert('请选择服务商'); return; }
+      if (!model) { alert('请输入或选择模型名称'); return; }
+      if (!apiKey) { alert('请输入 API Key'); return; }
+      if (apiKey.length < 8) { alert('API Key 太短，请检查后重试'); return; }
     }
 
     // 检查是否已存在相同模型
@@ -4158,6 +4240,11 @@
     ws.onopen = () => {
       // Reset backoff on successful connection
       retryCount = 0;
+      // Remove reconnect status message if present
+      if (reconnectMsgEl) {
+        reconnectMsgEl.remove();
+        reconnectMsgEl = null;
+      }
       $('statusDot').style.background = 'var(--green)';
       $('statusDot').classList.remove('disconnected');
       // Send init message to associate WebSocket with session
@@ -4260,16 +4347,14 @@
       // Max retry limit
       const MAX_RETRIES = 10;
       if (retryCount >= MAX_RETRIES) {
-        appendChatMsg('system', '连接已断开，已达最大重试次数。请刷新页面重试。');
+        upsertReconnectMsg('连接已断开，已达最大重试次数。请刷新页面重试。', true);
         return;
       }
-
-      appendChatMsg('system', '连接已断开，正在重连...');
 
       // Exponential backoff: 1s, 2s, 4s, 8s … cap at 30s
       const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
       retryCount++;
-      appendChatMsg('system', `${Math.round(delay/1000)}s 后自动重连... (第 ${retryCount}/${MAX_RETRIES} 次)`);
+      upsertReconnectMsg(`连接已断开，${Math.round(delay/1000)}s 后自动重连... (第 ${retryCount}/${MAX_RETRIES} 次)`);
       setTimeout(() => {
         connectWebSocket();
       }, delay);
@@ -4313,7 +4398,6 @@
         throw new Error(err.error || `HTTP ${res.status}`);
       }
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
 
       sessionId = data.sessionId;
       sessionToken = data.token;
