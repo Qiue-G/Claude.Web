@@ -1781,6 +1781,28 @@
 
   // File content tracking
   let fileContents = {}; // path -> content
+  // 统一错误映射，避免 5 处重复 errMap
+  const ERROR_MAP = {
+    'Invalid API key': 'API Key 无效，请检查后重试',
+    'Invalid model': '模型名称无效',
+    'Invalid provider': '服务商不支持',
+    'Invalid session': '会话无效，请重新配置',
+    'Too many sessions': '会话数已达上限，请稍后重试',
+    'Too many file requests': '文件操作过于频繁，请稍后重试',
+    'Too many': '操作过于频繁，请稍后重试',
+    'CSRF token missing': '安全验证失败，请刷新页面',
+    'CSRF token': '安全验证失败，请刷新页面',
+    'Access denied': '访问被拒绝',
+    'Failed to read': '文件读取失败',
+    'Failed to write': '文件写入失败',
+    'Failed to create': '创建失败',
+    'Failed to': '操作失败，请稍后重试'
+  };
+  function getFriendlyError(errorMsg, prefix) {
+    const key = Object.keys(ERROR_MAP).find(k => errorMsg.includes(k));
+    return (prefix || '') + (key ? '⚠ ' + ERROR_MAP[key] : errorMsg);
+  }
+
   let currentFileContent = null; // content of currently opened/edited file
   let autoSaveTimer = null;
 
@@ -1940,18 +1962,7 @@
           appendChatMsg('system', `已创建新文件: ${name}`);
           loadFileTree();
         } else {
-          const errMap = {
-            'Invalid API key': 'API Key 无效，请检查后重试',
-            'Invalid model': '模型名称无效',
-            'Invalid provider': '服务商不支持',
-            'Too many sessions': '会话数已达上限，请稍后重试',
-            'Too many file requests': '文件操作过于频繁，请稍后重试',
-            'CSRF token missing': '安全验证失败，请刷新页面',
-            'Access denied': '访问被拒绝',
-            'Failed to': '操作失败，请稍后重试'
-          };
-          const friendly = Object.keys(errMap).find(k => data.error.includes(k));
-          appendChatMsg('system', `创建失败: ${friendly ? '⚠ ' + errMap[friendly] : data.error}`);
+          appendChatMsg('system', getFriendlyError(data.error, '创建失败: '));
         }
       } catch (e) {
         appendChatMsg('system', `创建失败: ${e.message}`);
@@ -2012,15 +2023,7 @@
                 $('panelOverlay')?.classList.add('show');
               }
             } else {
-              const errMap = {
-                'Invalid session': '会话无效，请重新配置',
-                'Failed to read': '文件读取失败',
-                'Access denied': '访问被拒绝',
-                'CSRF token': '安全验证失败，请刷新页面',
-                'Failed to': '操作失败'
-              };
-              const friendly = Object.keys(errMap).find(k => data.error.includes(k));
-              appendChatMsg('system', `打开文件失败: ${friendly ? '⚠ ' + errMap[friendly] : data.error}`);
+              appendChatMsg('system', getFriendlyError(data.error, '打开文件失败: '));
             }
           } catch (err) {
             appendChatMsg('system', `打开文件失败: ${err.message}`);
@@ -2188,15 +2191,7 @@
         fileContents[filePath] = content;
         return true;
       } else {
-        const errMap = {
-          'Invalid session': '会话无效，请重新配置',
-          'Failed to write': '文件写入失败',
-          'Access denied': '访问被拒绝',
-          'CSRF token': '安全验证失败，请刷新页面',
-          'Too many': '操作过于频繁，请稍后重试'
-        };
-        const friendly = Object.keys(errMap).find(k => data.error.includes(k));
-        appendChatMsg('system', `保存失败: ${friendly ? '⚠ ' + errMap[friendly] : data.error}`);
+        appendChatMsg('system', getFriendlyError(data.error, '保存失败: '));
         return false;
       }
     } catch (e) {
@@ -2481,6 +2476,19 @@
         showFileContextMenu(e, item);
       });
 
+      // Long-press for mobile (triggers same context menu)
+      let longPressTimer = null;
+      div.addEventListener('touchstart', (e) => {
+        longPressTimer = setTimeout(() => {
+          // Get touch position for menu placement
+          const touch = e.touches[0] || e.changedTouches[0];
+          const fakeEvent = { clientX: touch.clientX, clientY: touch.clientY, preventDefault: () => {}, stopPropagation: () => {} };
+          showFileContextMenu(fakeEvent, item);
+        }, 500);
+      }, { passive: true });
+      div.addEventListener('touchend', () => { clearTimeout(longPressTimer); });
+      div.addEventListener('touchmove', () => { clearTimeout(longPressTimer); });
+
       if (item.type === 'directory') {
         const children = document.createElement('div');
         children.className = 'tree-children';
@@ -2659,8 +2667,16 @@
     for (const key of Object.keys(savedFC)) delete fileContents[key];
     persistFileContents();
 
-    // Close editor tab if this file is open
-    closeEditorTab(path);
+    // Close editor tabs: if directory, close all child tabs too
+    if (type === 'directory') {
+      const prefix = path + '/';
+      for (let i = editorState.tabs.length - 1; i >= 0; i--) {
+        const tp = editorState.tabs[i].path;
+        if (tp === path || tp.startsWith(prefix)) closeEditorTab(tp);
+      }
+    } else {
+      closeEditorTab(path);
+    }
 
     let serverFailed = false;
 
@@ -2756,21 +2772,37 @@
     let startX = 0;
     let startWidth = 0;
 
-    handle.addEventListener('mousedown', (e) => {
+    function startResize(clientX) {
       isResizing = true;
-      startX = e.clientX;
+      startX = clientX;
       startWidth = panel.offsetWidth;
       document.body.style.cursor = 'col-resize';
       document.body.style.userSelect = 'none';
-      e.preventDefault();
-    });
+    }
 
-    document.addEventListener('mousemove', (e) => {
+    function moveResize(clientX) {
       if (!isResizing) return;
-      const delta = isLeft ? (e.clientX - startX) : (startX - e.clientX);
+      const delta = isLeft ? (clientX - startX) : (startX - clientX);
       const newWidth = Math.max(150, Math.min(500, startWidth + delta));
       panel.style.width = newWidth + 'px';
+    }
+
+    handle.addEventListener('mousedown', (e) => {
+      startResize(e.clientX);
+      e.preventDefault();
     });
+    document.addEventListener('mousemove', (e) => { moveResize(e.clientX); });
+
+    // Touch support for mobile/tablet
+    handle.addEventListener('touchstart', (e) => {
+      startResize(e.touches[0].clientX);
+      e.preventDefault();
+    }, { passive: false });
+    document.addEventListener('touchmove', (e) => {
+      if (!isResizing) return;
+      moveResize(e.touches[0].clientX);
+      e.preventDefault();
+    }, { passive: false });
 
     document.addEventListener('mouseup', () => {
       if (isResizing) {
@@ -3100,6 +3132,19 @@
 
     // Actually close the tab
     editorState.tabs.splice(idx, 1);
+    // Sync currentFile: if closing tab matches currentFile, update or clear
+    if (currentFile === path) {
+      if (editorState.tabs.length > 0) {
+        const next = editorState.tabs[idx] || editorState.tabs[idx - 1] || editorState.tabs[0];
+        currentFile = next.path;
+        currentFileContent = next.content;
+        $('currentFileLabel').textContent = currentFile;
+      } else {
+        currentFile = null;
+        currentFileContent = null;
+        $('currentFileLabel').textContent = '';
+      }
+    }
     if (editorState.activeTab === path) {
       const next = editorState.tabs[idx] || editorState.tabs[idx - 1];
       if (next) {
@@ -3268,15 +3313,7 @@
         persistEditorTabs();
         appendChatMsg('system', `已保存: ${tab.path}`);
       } else {
-        const errMap = {
-          'Invalid session': '会话无效，请重新配置',
-          'Failed to write': '文件写入失败',
-          'Access denied': '访问被拒绝',
-          'CSRF token': '安全验证失败，请刷新页面',
-          'Too many': '操作过于频繁，请稍后重试'
-        };
-        const friendly = Object.keys(errMap).find(k => data.error.includes(k));
-        appendChatMsg('system', `保存失败: ${friendly ? '⚠ ' + errMap[friendly] : data.error}`);
+        appendChatMsg('system', getFriendlyError(data.error, '保存失败: '));
       }
     } catch (e) {
       appendChatMsg('system', `保存失败: ${e.message}`);
