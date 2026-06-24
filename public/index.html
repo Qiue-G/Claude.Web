@@ -1781,28 +1781,6 @@
 
   // File content tracking
   let fileContents = {}; // path -> content
-  // 统一错误映射，避免 5 处重复 errMap
-  const ERROR_MAP = {
-    'Invalid API key': 'API Key 无效，请检查后重试',
-    'Invalid model': '模型名称无效',
-    'Invalid provider': '服务商不支持',
-    'Invalid session': '会话无效，请重新配置',
-    'Too many sessions': '会话数已达上限，请稍后重试',
-    'Too many file requests': '文件操作过于频繁，请稍后重试',
-    'Too many': '操作过于频繁，请稍后重试',
-    'CSRF token missing': '安全验证失败，请刷新页面',
-    'CSRF token': '安全验证失败，请刷新页面',
-    'Access denied': '访问被拒绝',
-    'Failed to read': '文件读取失败',
-    'Failed to write': '文件写入失败',
-    'Failed to create': '创建失败',
-    'Failed to': '操作失败，请稍后重试'
-  };
-  function getFriendlyError(errorMsg, prefix) {
-    const key = Object.keys(ERROR_MAP).find(k => errorMsg.includes(k));
-    return (prefix || '') + (key ? '⚠ ' + ERROR_MAP[key] : errorMsg);
-  }
-
   let currentFileContent = null; // content of currently opened/edited file
   let autoSaveTimer = null;
 
@@ -1962,7 +1940,18 @@
           appendChatMsg('system', `已创建新文件: ${name}`);
           loadFileTree();
         } else {
-          appendChatMsg('system', getFriendlyError(data.error, '创建失败: '));
+          const errMap = {
+            'Invalid API key': 'API Key 无效，请检查后重试',
+            'Invalid model': '模型名称无效',
+            'Invalid provider': '服务商不支持',
+            'Too many sessions': '会话数已达上限，请稍后重试',
+            'Too many file requests': '文件操作过于频繁，请稍后重试',
+            'CSRF token missing': '安全验证失败，请刷新页面',
+            'Access denied': '访问被拒绝',
+            'Failed to': '操作失败，请稍后重试'
+          };
+          const friendly = Object.keys(errMap).find(k => data.error.includes(k));
+          appendChatMsg('system', `创建失败: ${friendly ? '⚠ ' + errMap[friendly] : data.error}`);
         }
       } catch (e) {
         appendChatMsg('system', `创建失败: ${e.message}`);
@@ -2023,7 +2012,15 @@
                 $('panelOverlay')?.classList.add('show');
               }
             } else {
-              appendChatMsg('system', getFriendlyError(data.error, '打开文件失败: '));
+              const errMap = {
+                'Invalid session': '会话无效，请重新配置',
+                'Failed to read': '文件读取失败',
+                'Access denied': '访问被拒绝',
+                'CSRF token': '安全验证失败，请刷新页面',
+                'Failed to': '操作失败'
+              };
+              const friendly = Object.keys(errMap).find(k => data.error.includes(k));
+              appendChatMsg('system', `打开文件失败: ${friendly ? '⚠ ' + errMap[friendly] : data.error}`);
             }
           } catch (err) {
             appendChatMsg('system', `打开文件失败: ${err.message}`);
@@ -2191,7 +2188,15 @@
         fileContents[filePath] = content;
         return true;
       } else {
-        appendChatMsg('system', getFriendlyError(data.error, '保存失败: '));
+        const errMap = {
+          'Invalid session': '会话无效，请重新配置',
+          'Failed to write': '文件写入失败',
+          'Access denied': '访问被拒绝',
+          'CSRF token': '安全验证失败，请刷新页面',
+          'Too many': '操作过于频繁，请稍后重试'
+        };
+        const friendly = Object.keys(errMap).find(k => data.error.includes(k));
+        appendChatMsg('system', `保存失败: ${friendly ? '⚠ ' + errMap[friendly] : data.error}`);
         return false;
       }
     } catch (e) {
@@ -2476,19 +2481,6 @@
         showFileContextMenu(e, item);
       });
 
-      // Long-press for mobile (triggers same context menu)
-      let longPressTimer = null;
-      div.addEventListener('touchstart', (e) => {
-        longPressTimer = setTimeout(() => {
-          // Get touch position for menu placement
-          const touch = e.touches[0] || e.changedTouches[0];
-          const fakeEvent = { clientX: touch.clientX, clientY: touch.clientY, preventDefault: () => {}, stopPropagation: () => {} };
-          showFileContextMenu(fakeEvent, item);
-        }, 500);
-      }, { passive: true });
-      div.addEventListener('touchend', () => { clearTimeout(longPressTimer); });
-      div.addEventListener('touchmove', () => { clearTimeout(longPressTimer); });
-
       if (item.type === 'directory') {
         const children = document.createElement('div');
         children.className = 'tree-children';
@@ -2667,16 +2659,8 @@
     for (const key of Object.keys(savedFC)) delete fileContents[key];
     persistFileContents();
 
-    // Close editor tabs: if directory, close all child tabs too
-    if (type === 'directory') {
-      const prefix = path + '/';
-      for (let i = editorState.tabs.length - 1; i >= 0; i--) {
-        const tp = editorState.tabs[i].path;
-        if (tp === path || tp.startsWith(prefix)) closeEditorTab(tp);
-      }
-    } else {
-      closeEditorTab(path);
-    }
+    // Close editor tab if this file is open
+    closeEditorTab(path);
 
     let serverFailed = false;
 
@@ -2772,37 +2756,21 @@
     let startX = 0;
     let startWidth = 0;
 
-    function startResize(clientX) {
+    handle.addEventListener('mousedown', (e) => {
       isResizing = true;
-      startX = clientX;
+      startX = e.clientX;
       startWidth = panel.offsetWidth;
       document.body.style.cursor = 'col-resize';
       document.body.style.userSelect = 'none';
-    }
-
-    function moveResize(clientX) {
-      if (!isResizing) return;
-      const delta = isLeft ? (clientX - startX) : (startX - clientX);
-      const newWidth = Math.max(150, Math.min(500, startWidth + delta));
-      panel.style.width = newWidth + 'px';
-    }
-
-    handle.addEventListener('mousedown', (e) => {
-      startResize(e.clientX);
       e.preventDefault();
     });
-    document.addEventListener('mousemove', (e) => { moveResize(e.clientX); });
 
-    // Touch support for mobile/tablet
-    handle.addEventListener('touchstart', (e) => {
-      startResize(e.touches[0].clientX);
-      e.preventDefault();
-    }, { passive: false });
-    document.addEventListener('touchmove', (e) => {
+    document.addEventListener('mousemove', (e) => {
       if (!isResizing) return;
-      moveResize(e.touches[0].clientX);
-      e.preventDefault();
-    }, { passive: false });
+      const delta = isLeft ? (e.clientX - startX) : (startX - e.clientX);
+      const newWidth = Math.max(150, Math.min(500, startWidth + delta));
+      panel.style.width = newWidth + 'px';
+    });
 
     document.addEventListener('mouseup', () => {
       if (isResizing) {
@@ -3132,19 +3100,6 @@
 
     // Actually close the tab
     editorState.tabs.splice(idx, 1);
-    // Sync currentFile: if closing tab matches currentFile, update or clear
-    if (currentFile === path) {
-      if (editorState.tabs.length > 0) {
-        const next = editorState.tabs[idx] || editorState.tabs[idx - 1] || editorState.tabs[0];
-        currentFile = next.path;
-        currentFileContent = next.content;
-        $('currentFileLabel').textContent = currentFile;
-      } else {
-        currentFile = null;
-        currentFileContent = null;
-        $('currentFileLabel').textContent = '';
-      }
-    }
     if (editorState.activeTab === path) {
       const next = editorState.tabs[idx] || editorState.tabs[idx - 1];
       if (next) {
@@ -3313,7 +3268,15 @@
         persistEditorTabs();
         appendChatMsg('system', `已保存: ${tab.path}`);
       } else {
-        appendChatMsg('system', getFriendlyError(data.error, '保存失败: '));
+        const errMap = {
+          'Invalid session': '会话无效，请重新配置',
+          'Failed to write': '文件写入失败',
+          'Access denied': '访问被拒绝',
+          'CSRF token': '安全验证失败，请刷新页面',
+          'Too many': '操作过于频繁，请稍后重试'
+        };
+        const friendly = Object.keys(errMap).find(k => data.error.includes(k));
+        appendChatMsg('system', `保存失败: ${friendly ? '⚠ ' + errMap[friendly] : data.error}`);
       }
     } catch (e) {
       appendChatMsg('system', `保存失败: ${e.message}`);
@@ -3749,27 +3712,6 @@
   });
 
   // ===== Config Modal =====
-  const modelOptions = {
-    openrouter: [
-      { value: 'anthropic/claude-sonnet-4', label: 'Claude Sonnet 4' },
-      { value: 'anthropic/claude-opus-4', label: 'Claude Opus 4' },
-      { value: 'openai/gpt-4o', label: 'GPT-4o' },
-      { value: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-    ],
-    anthropic: [
-      { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
-      { value: 'claude-opus-4-20250514', label: 'Claude Opus 4' },
-    ],
-    openai: [
-      { value: 'gpt-4o', label: 'GPT-4o' },
-      { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-    ],
-    deepseek: [
-      { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
-      { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
-    ]
-  };
-
   let selectedProvider = '';
   let selectedModel = '';
 
@@ -3875,23 +3817,15 @@
   }
 
   function renderModelOptions(filter = '') {
-    const options = selectedProvider && modelOptions[selectedProvider]
-      ? modelOptions[selectedProvider]
-      : [];
     const lowerFilter = filter.toLowerCase();
+    let html = '';
 
-    // Filter static options
-    const filteredStatic = lowerFilter
-      ? options.filter(m => m.label.toLowerCase().includes(lowerFilter) || m.value.toLowerCase().includes(lowerFilter))
-      : options;
-
-    // Show static options first, then dynamic ones will be loaded
-    let html = filteredStatic.map(m =>
-      `<div class="custom-select-option ${m.value === selectedModel ? 'selected' : ''}" data-value="${m.value}" data-label="${m.label}">${m.label}</div>`
-    ).join('');
-
-    // Show loading indicator for dynamic models
-    html += `<div class="custom-select-option" style="color:var(--text-dim);pointer-events:none;" id="dynamicModelsLoading">加载中...</div>`;
+    // Show loading or empty state
+    if (selectedProvider) {
+      html += `<div class="custom-select-option" style="color:var(--text-dim);pointer-events:none;" id="dynamicModelsLoading">加载中...</div>`;
+    } else {
+      html += `<div class="custom-select-option" style="color:var(--text-dim);pointer-events:none;">请先选择服务商</div>`;
+    }
 
     html += `<div class="use-other-model" data-value="__custom__">
       <div>
@@ -3901,50 +3835,48 @@
     </div>`;
     modelDropdown.innerHTML = html;
 
-    // Fetch dynamic models with pricing
-    if (selectedProvider) {
-      fetchDynamicModels(selectedProvider).then(models => {
-        if (!models.length) {
-          const loading = $('dynamicModelsLoading');
-          if (loading) loading.remove();
-          return;
-        }
-        // Replace loading with dynamic models
-        const loading = $('dynamicModelsLoading');
-        if (loading) loading.remove();
+    if (!selectedProvider) return;
 
-        // Filter dynamic models
-        const filteredDynamic = lowerFilter
-          ? models.filter(m =>
-              (m.name || '').toLowerCase().includes(lowerFilter) ||
-              m.id.toLowerCase().includes(lowerFilter) ||
-              (m.provider || '').toLowerCase().includes(lowerFilter)
-            )
-          : models;
+    fetchDynamicModels(selectedProvider).then(models => {
+      const loading = $('dynamicModelsLoading');
+      if (loading) loading.remove();
 
-        const dynamicHtml = filteredDynamic.slice(0, 20).map(m => {
-          const priceLabel = formatBillingOptions(m);
-          const ctxLabel = m.context ? (m.context >= 1000000 ? (m.context/1000000).toFixed(1)+'M' : (m.context/1000).toFixed(0)+'K') : '';
-          const safeName = escapeHtml(m.name || m.id);
-          const safeId = escapeHtml(m.id);
-          const safePriceLabel = escapeHtml(priceLabel);
-          return `<div class="custom-select-option ${safeId === selectedModel ? 'selected' : ''}" data-value="${safeId}" data-label="${safeName}">
-            <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
-              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safeName}</span>
-              <span style="font-size:10px;color:var(--text-dim);margin-left:8px;white-space:nowrap;" title="${safePriceLabel}">${safePriceLabel}${ctxLabel ? ' · '+ctxLabel : ''}</span>
-            </div>
-          </div>`;
-        }).join('');
-
-        // Insert before "use other model"
+      if (!models.length) {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'custom-select-option';
+        placeholder.style.cssText = 'color:var(--text-dim);pointer-events:none;';
+        placeholder.textContent = '服务端未返回可用模型';
         const useOther = modelDropdown.querySelector('.use-other-model');
-        if (useOther) {
-          useOther.insertAdjacentHTML('beforebegin', dynamicHtml);
-        } else {
-          modelDropdown.innerHTML += dynamicHtml;
-        }
-      });
-    }
+        if (useOther) useOther.before(placeholder);
+        return;
+      }
+
+      const filtered = lowerFilter
+        ? models.filter(m =>
+            (m.name || '').toLowerCase().includes(lowerFilter) ||
+            m.id.toLowerCase().includes(lowerFilter) ||
+            (m.provider || '').toLowerCase().includes(lowerFilter)
+          )
+        : models;
+
+      const html2 = filtered.slice(0, 30).map(m => {
+        const priceLabel = formatBillingOptions(m);
+        const ctxLabel = m.context ? (m.context >= 1000000 ? (m.context/1000000).toFixed(1)+'M' : (m.context/1000).toFixed(0)+'K') : '';
+        const safeName = escapeHtml(m.name || m.id);
+        const safeId = escapeHtml(m.id);
+        const safePriceLabel = escapeHtml(priceLabel);
+        return `<div class="custom-select-option ${safeId === selectedModel ? 'selected' : ''}" data-value="${safeId}" data-label="${safeName}">
+          <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safeName}</span>
+            <span style="font-size:10px;color:var(--text-dim);margin-left:8px;white-space:nowrap;" title="${safePriceLabel}">${safePriceLabel}${ctxLabel ? ' · '+ctxLabel : ''}</span>
+          </div>
+        </div>`;
+      }).join('');
+
+      const useOther = modelDropdown.querySelector('.use-other-model');
+      if (useOther) useOther.insertAdjacentHTML('beforebegin', html2);
+      else modelDropdown.innerHTML += html2;
+    });
   }
   renderModelOptions();
 
