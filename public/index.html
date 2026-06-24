@@ -4008,9 +4008,9 @@
           <div class="model-item-name">${escapeHtml(shortModel)}</div>
           <div class="model-item-detail">${escapeHtml(providerLabel)} · ${escapeHtml(m.model)}</div>
         </div>
-        ${isActive ? '<span class="active-badge">使用中</span>' : ''}
+        ${isActive && isConnected ? '<span class="active-badge">使用中</span>' : ''}
         <div class="model-item-actions">
-          ${!isActive ? `<button class="model-item-btn switch-btn" data-action="switch" data-idx="${i}" title="切换到此模型">&#8644;</button>` : ''}
+          ${(!isActive || (isActive && !isConnected)) ? `<button class="model-item-btn switch-btn" data-action="switch" data-idx="${i}" title="${isActive ? '重新连接' : '切换到此模型'}">${isActive ? '&#8635;' : '&#8644;'}</button>` : ''}
           <button class="model-item-btn delete" data-action="delete" data-idx="${i}" title="删除模型">&#10005;</button>
         </div>
       </div>`;
