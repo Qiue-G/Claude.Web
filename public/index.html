@@ -4029,6 +4029,8 @@
         renderModelList();
       }
     } else if (btn.dataset.action === 'switch') {
+      btn.disabled = true;
+      btn.style.opacity = '0.5';
       switchToModel(idx);
     }
   });
@@ -4053,10 +4055,14 @@
     $('submitConfig').disabled = true;
     $('submitConfig').textContent = '切换中...';
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
     fetch('/api/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: controller.signal
     }).then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); }).then(data => {
       if (data.sessionId) {
         // Close old WebSocket before creating new one
@@ -4082,10 +4088,12 @@
         connectWebSocket();
       }
     }).catch(e => {
-      alert('切换失败: ' + e.message);
+      alert('切换失败: ' + (e.name === 'AbortError' ? '连接超时' : e.message));
     }).finally(() => {
+      clearTimeout(timeoutId);
       $('submitConfig').disabled = false;
       $('submitConfig').textContent = '添加模型';
+      renderModelList();
     });
   }
 
