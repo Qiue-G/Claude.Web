@@ -2589,11 +2589,12 @@
 
     // Remove from local fileContents cache first
     delete fileContents[path];
-    // Also clean any entry with the same base file name
+    // Also clean any bare-name entry with the same base file name
     // (locally-opened files use bare name as key, tree uses full path)
+    // Must NOT match full-path keys from other directories (e.g. sub/file.txt)
     const baseName = path.split('/').pop();
     for (const key of Object.keys(fileContents)) {
-      if (key !== path && key.split('/').pop() === baseName) delete fileContents[key];
+      if (key !== path && !key.includes('/') && key === baseName) delete fileContents[key];
     }
     if (type === 'directory') {
       const prefix = path + '/';
@@ -2619,12 +2620,17 @@
         });
         const data = await res.json();
 
+        let serverFailed = false;
         if (!data.success) {
+          serverFailed = true;
           // Restore local cache if server delete failed
+          fileContents[path] = null; // placeholder, will be re-fetched from server
           appendChatMsg('system', `服务器删除失败: ${data.error || '未知错误'}`);
         }
+        if (serverFailed) return; // don't update tree if server delete failed
       } catch (e) {
         appendChatMsg('system', `服务器删除失败: ${e.message}`);
+        return; // don't update tree
       }
     } else {
       appendChatMsg('system', `已从本地移除${typeName}：${name}（未连接到服务器）`);
