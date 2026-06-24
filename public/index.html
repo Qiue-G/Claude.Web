@@ -2631,7 +2631,14 @@
     }
 
     // Refresh file tree
-    loadFileTree();
+    await loadFileTree();
+    // Safety net: directly remove any lingering DOM element for the deleted path.
+    // reconcileFileContentsWithTree + addLocalOnlyFilesToTree may re-add
+    // the entry under certain edge cases; this guarantees visual removal.
+    if (type === 'file') {
+      const lingering = document.querySelector(`.tree-item[data-file="${CSS.escape(path)}"]`);
+      if (lingering) lingering.remove();
+    }
     appendChatMsg('system', `已删除${typeName}：${name}`);
   }
 
