@@ -3963,6 +3963,7 @@
     $('cfgTabProvider').classList.toggle('hidden', tab !== 'provider');
     $('cfgTabCustom').classList.toggle('hidden', tab !== 'custom');
     $('cfgTabManage').classList.toggle('hidden', tab !== 'manage');
+    $('submitConfig').closest('.modal-footer').classList.toggle('hidden', tab === 'manage');
     if (tab === 'manage') renderModelList();
   }
 
