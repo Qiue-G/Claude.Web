@@ -589,8 +589,13 @@ app.delete('/api/files/:sessionId/*', async (req, res) => {
       return res.status(403).json({ error: 'Access denied: path traversal detected' });
     }
     
-    const { unlink } = await import('fs/promises');
-    await unlink(fullPath);
+    const { unlink, rmdir, stat } = await import('fs/promises');
+    const pathStat = await stat(fullPath);
+    if (pathStat.isDirectory()) {
+      await rmdir(fullPath);
+    } else {
+      await unlink(fullPath);
+    }
     res.json({ success: true, path: filePath });
   } catch (error) {
     console.error('[ERROR] delete file:', error.message);
@@ -787,6 +792,8 @@ setInterval(() => {
       const proxy = sessionProxies.get(id);
       if (proxy) { try { proxy.kill(); } catch (e) {} sessionProxies.delete(id); }
       sessions.delete(id);
+      sessionClients.delete(id);
+      wsProcCount.delete(id);
       console.log('[SESSION] Expired:', id);
     }
   }
