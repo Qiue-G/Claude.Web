@@ -4,7 +4,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { join, resolve as pathResolve } from 'path';
 import { spawn } from 'child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
@@ -117,13 +117,13 @@ function stripAnsi(str) {
   return str;
 }
 
-function createSession(apiKey, model, provider) {
+async function createSession(apiKey, model, provider) {
   const sessionId = uuidv4();
   const sessionToken = uuidv4();
   const csrfToken = uuidv4(); // CSRF protection token
   const sessionDir = join(WORKSPACE_DIR, sessionId);
-  if (!existsSync(WORKSPACE_DIR)) mkdir(WORKSPACE_DIR, { recursive: true }).catch(console.error);
-  mkdir(sessionDir, { recursive: true }).catch(console.error);
+  await mkdir(WORKSPACE_DIR, { recursive: true });
+  await mkdir(sessionDir, { recursive: true });
   const session = { id: sessionId, token: sessionToken, csrfToken, apiKey, model, provider, dir: sessionDir, createdAt: Date.now(), lastActivity: Date.now(), currentModel: model, modelHealth: 'connecting' };
   sessions.set(sessionId, session);
   return session;
@@ -324,7 +324,7 @@ app.post('/api/session', async (req, res) => {
     const VALID_PROVIDERS = ['openrouter', 'anthropic', 'openai', 'deepseek'];
     if (provider && !VALID_PROVIDERS.includes(provider)) return res.status(400).json({ error: 'Invalid provider' });
     if (sessions.size >= MAX_SESSIONS) return res.status(503).json({ error: 'Too many sessions' });
-    const session = createSession(apiKey, model || DEFAULTS.model, provider || DEFAULTS.provider);
+    const session = await createSession(apiKey, model || DEFAULTS.model, provider || DEFAULTS.provider);
     res.json({ sessionId: session.id, token: session.token, csrfToken: session.csrfToken });
   } catch (error) { res.status(500).json({ error: 'Failed to create session' }); }
 });
@@ -531,8 +531,8 @@ app.get('/api/files/:sessionId/*', async (req, res) => {
     if (!session) return res.status(401).json({ error: 'Invalid session or token' });
     const filePath = req.params[0];
     const fullPath = join(session.dir, filePath);
-    const resolvedPath = require('path').resolve(fullPath);
-    const resolvedSessionDir = require('path').resolve(session.dir);
+    const resolvedPath = pathResolve(fullPath);
+    const resolvedSessionDir = pathResolve(session.dir);
     
     // 防止路径遍历攻击
     if (!resolvedPath.startsWith(resolvedSessionDir)) {
@@ -555,8 +555,8 @@ app.post('/api/files/:sessionId/*', async (req, res) => {
     if (!session) return res.status(401).json({ error: 'Invalid session or token' });
     const filePath = req.params[0];
     const fullPath = join(session.dir, filePath);
-    const resolvedPath = require('path').resolve(fullPath);
-    const resolvedSessionDir = require('path').resolve(session.dir);
+    const resolvedPath = pathResolve(fullPath);
+    const resolvedSessionDir = pathResolve(session.dir);
     
     // 防止路径遍历攻击
     if (!resolvedPath.startsWith(resolvedSessionDir)) {
@@ -581,8 +581,8 @@ app.delete('/api/files/:sessionId/*', async (req, res) => {
     if (!session) return res.status(401).json({ error: 'Invalid session or token' });
     const filePath = req.params[0];
     const fullPath = join(session.dir, filePath);
-    const resolvedPath = require('path').resolve(fullPath);
-    const resolvedSessionDir = require('path').resolve(session.dir);
+    const resolvedPath = pathResolve(fullPath);
+    const resolvedSessionDir = pathResolve(session.dir);
     
     // 防止路径遍历攻击
     if (!resolvedPath.startsWith(resolvedSessionDir)) {
