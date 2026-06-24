@@ -2,21 +2,24 @@ import express from 'express';
 import { WebSocketServer } from 'ws';
 import cors from 'cors';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join, resolve, sep } from 'path';
+import { join } from 'path';
 import { spawn } from 'child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import { dirname as pathDirname } from 'path';
-import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = pathDirname(__filename);
 
-// Load environment variables using dotenv
-dotenv.config();
+try {
+  const envContent = await readFile('.env', 'utf-8');
+  envContent.split('\n').forEach(line => {
+    const [key, ...valueParts] = line.split('=');
+    if (key && valueParts.length > 0) process.env[key.trim()] = valueParts.join('=').trim();
+  });
+} catch (e) {}
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -24,33 +27,24 @@ const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../worksp
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
 const CONFIG_PATH = process.env.AGENT_CONFIG_PATH || join(FREE_CODE_DIR, 'agent-config.json');
-const VERSION = '7.3.1-fix-file-encoding';
+const VERSION = '7.3.0';
 
-// ===== Constants =====
-const MODEL_CACHE_TTL = 3600000;        // 1 hour
-const HEALTH_CHECK_INTERVAL = 600000;   // 10 minutes
-const HEALTH_CHECK_TIMEOUT = 15000;     // 15s per check
-const SESSION_TIMEOUT = parseInt(process.env.SESSION_TIMEOUT || '3600000'); // 1 hour
-const MAX_INPUT_LENGTH = 100 * 1024;    // 100KB
-const MAX_FILE_SIZE = 5 * 1024 * 1024;  // 5MB
-const MAX_WS_MSG = 1024 * 1024;         // 1MB
-const RATE_WINDOW = 60000;              // 1 minute
-const RATE_MAX_CREATE = 5;              // max session creates per window per IP
-const RATE_MAX_INPUT = 20;              // max WebSocket inputs per window per session
-const RATE_MAX_FILE = 60;               // max file API calls per minute per session
-
-// ===== Load agent config (ModelHub-inspired) =====
+// ===== Load agent config =====
 let agentConfig = { defaults: { provider: 'openrouter', model: '' }, providers: {} };
 try {
   const raw = await readFile(CONFIG_PATH, 'utf-8');
   agentConfig = JSON.parse(raw);
-  console.log('[CONFIG] loaded ' + Object.keys(agentConfig.providers || {}).length + ' providers from agent-config.json');
+  console.log('[CONFIG] loaded ' + Object.keys(agentConfig.providers || {}).length + ' providers');
 } catch (e) {
-  console.log('[CONFIG] agent-config.json not found, using built-in defaults (' + e.message + ')');
+  console.log('[CONFIG] using built-in defaults (' + e.message + ')');
 }
 
 const DEFAULTS = agentConfig.defaults || { provider: 'openrouter', model: '' };
 const PROVIDERS = agentConfig.providers || {};
+
+function getProviderConfig(provider) {
+  return PROVIDERS[provider] || PROVIDERS[DEFAULTS.provider] || { models: [], fallbackModel: null, modelAliases: {} };
+}
 
 function resolveOpenRouterModel(model) {
   const aliases = (PROVIDERS.openrouter || {}).modelAliases || {};
@@ -61,72 +55,11 @@ function getFallbackModel(provider) {
   return (PROVIDERS[provider] || {}).fallbackModel || null;
 }
 
-
-// ===== Dynamic Model List & Pricing =====
-const dynamicModels = new Map(); // provider -> { models: [], lastUpdate: timestamp }
-
-async function fetchOpenRouterModels() {
-  try {
-    const resp = await fetch('https://openrouter.ai/api/v1/models', {
-      headers: { 'Accept': 'application/json' }
-    });
-    if (!resp.ok) throw new Error('Failed to fetch');
-    const data = await resp.json();
-    const models = (data.data || []).map(m => ({
-      id: m.id,
-      name: m.name || m.id.split('/').pop(),
-      context: m.context_length || 0,
-      pricing: {
-        prompt: parseFloat(m.pricing?.prompt || 0) * 1000000, // per 1M tokens
-        completion: parseFloat(m.pricing?.completion || 0) * 1000000,
-        currency: 'USD'
-      },
-      tier: (m.pricing?.prompt === '0' || m.pricing?.prompt === 0) ? 'free' : 'paid'
-    }));
-    dynamicModels.set('openrouter', { models, lastUpdate: Date.now() });
-    console.log(`[MODELS] Fetched ${models.length} models from OpenRouter`);
-  } catch (e) {
-    console.error('[MODELS] Failed to fetch OpenRouter models:', e.message);
-  }
-}
-
-// Fetch models on startup
-fetchOpenRouterModels();
-// Refresh every hour
-setInterval(fetchOpenRouterModels, MODEL_CACHE_TTL);
-
-function getModelPricing(provider, modelId) {
-  const cached = dynamicModels.get(provider);
-  if (!cached) return null;
-  const model = cached.models.find(m => m.id === modelId);
-  return model?.pricing || null;
-}
-
-// ===== Usage Tracking =====
-const usageStats = new Map(); // sessionId -> { inputTokens, outputTokens, cost, requests, lastRequest }
-
-function recordUsage(sessionId, inputTokens, outputTokens, modelId, provider) {
-  let stats = usageStats.get(sessionId);
-  if (!stats) {
-    stats = { inputTokens: 0, outputTokens: 0, cost: 0, requests: 0, lastRequest: null, model: modelId, provider };
-    usageStats.set(sessionId, stats);
-  }
-  stats.inputTokens += inputTokens || 0;
-  stats.outputTokens += outputTokens || 0;
-  stats.requests++;
-  stats.lastRequest = Date.now();
-  stats.model = modelId;
-  stats.provider = provider;
-
-  // Calculate cost
-  const pricing = getModelPricing(provider, modelId);
-  if (pricing) {
-    stats.cost += (inputTokens * pricing.prompt / 1000000) + (outputTokens * pricing.completion / 1000000);
-  }
-}
-
 // ===== Rate Limiter (token bucket, per-IP) =====
 const rateLimits = new Map();
+const RATE_WINDOW = 60000;      // 1 minute window
+const RATE_MAX_CREATE = 5;      // max session creates per window per IP
+const RATE_MAX_INPUT = 20;      // max WebSocket inputs per window per session
 
 function checkRateLimit(key, max, windowMs) {
   const now = Date.now();
@@ -154,142 +87,25 @@ setInterval(() => {
   }
 }, 300000);
 
-// ===== Per-model stream health stats =====
-const modelStats = new Map(); // modelId => { total, success, fail, lastOk, lastFail, lastError }
-function recordModelSuccess(modelId) {
-  let s = modelStats.get(modelId);
-  if (!s) modelStats.set(modelId, (s = { total: 0, success: 0, fail: 0, lastOk: null, lastFail: null, lastError: null }));
-  s.total++; s.success++; s.lastOk = Date.now();
-}
-function recordModelFail(modelId, errorDetail) {
-  let s = modelStats.get(modelId);
-  if (!s) modelStats.set(modelId, (s = { total: 0, success: 0, fail: 0, lastOk: null, lastFail: null, lastError: null }));
-  s.total++; s.fail++; s.lastFail = Date.now(); s.lastError = errorDetail;
-}
-
-// ===== Proactive Model Health Check =====
-
-async function checkModelHealth(modelId, provider, baseUrl, apiKey) {
-  const startTime = Date.now();
-  try {
-    const url = baseUrl.includes('/messages')
-      ? baseUrl
-      : baseUrl.replace(/\/$/, '') + '/chat/completions';
-
-    const body = provider === 'anthropic'
-      ? { model: modelId, max_tokens: 5, messages: [{ role: 'user', content: 'hi' }] }
-      : { model: modelId, max_tokens: 5, messages: [{ role: 'user', content: 'hi' }] };
-
-    const headers = {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    };
-    if (provider === 'anthropic') {
-      headers['x-api-key'] = apiKey;
-      headers['anthropic-version'] = '2023-06-01';
-      delete headers['Authorization'];
-    }
-
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT)
-    });
-
-    const latency = Date.now() - startTime;
-
-    if (resp.ok) {
-      recordModelSuccess(modelId);
-      // Store latency
-      let s = modelStats.get(modelId);
-      if (s) s.lastLatency = latency;
-      return { ok: true, latency };
-    } else {
-      const text = await resp.text().catch(() => '');
-      recordModelFail(modelId, `${resp.status}: ${text.slice(0, 100)}`);
-      return { ok: false, latency, error: `${resp.status}` };
-    }
-  } catch (e) {
-    const latency = Date.now() - startTime;
-    recordModelFail(modelId, e.message);
-    return { ok: false, latency, error: e.message };
-  }
-}
-
-// Periodic health check for recently used models
-async function runHealthChecks() {
-  const recentModels = [...modelStats.entries()]
-    .filter(([_, s]) => s.lastOk && (Date.now() - s.lastOk) < 3600000) // used in last hour
-    .slice(0, 5); // max 5 models per check
-
-  if (recentModels.length === 0) return;
-
-  console.log(`[HEALTH] Checking ${recentModels.length} recent models...`);
-
-  for (const [modelId] of recentModels) {
-    // Find provider config for this model
-    let provider = null, baseUrl = null, apiKey = null;
-    for (const [, session] of sessions) {
-      if (session.currentModel === modelId || session.model === modelId) {
-        provider = session.provider;
-        const config = agentConfig.providers[provider];
-        baseUrl = session.baseUrl || config?.baseUrl;
-        apiKey = decryptApiKey(session.apiKey);
-        break;
-      }
-    }
-    if (!provider || !baseUrl || !apiKey) continue;
-
-    const result = await checkModelHealth(modelId, provider, baseUrl, apiKey);
-    const status = result.ok ? '✓' : '✗';
-    console.log(`[HEALTH] ${status} ${modelId} - ${result.latency}ms${result.error ? ' (' + result.error + ')' : ''}`);
-  }
-}
-
-// Run health check every 10 minutes, first run after 2 minutes
-setTimeout(() => {
-  runHealthChecks();
-  setInterval(runHealthChecks, HEALTH_CHECK_INTERVAL);
-}, 120000);
-
 const sessions = new Map();
 const sessionProcesses = new Map();
 const sessionProxies = new Map(); // proxy processes
 const wsProcCount = new Map();    // active process count per session
 const sessionClients = new Map(); // sessionId → WebSocket (for model health push)
 
-// ===== API Key Encryption (AES-256-GCM) =====
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || randomBytes(32).toString('hex');
-const IV_LENGTH = 16;
-const AUTH_TAG_LENGTH = 16;
+// ===== Per-model stream health stats =====
+const modelStats = new Map(); // modelId → { total, success, fail, lastOk, lastFail, lastError }
 
-function encryptApiKey(plainKey) {
-  const iv = randomBytes(IV_LENGTH);
-  const cipher = createCipheriv('aes-256-gcm', Buffer.from(ENCRYPTION_KEY, 'hex'), iv);
-  let encrypted = cipher.update(plainKey, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  const authTag = cipher.getAuthTag().toString('hex');
-  return iv.toString('hex') + ':' + authTag + ':' + encrypted;
+function recordModelSuccess(modelId) {
+  let s = modelStats.get(modelId);
+  if (!s) modelStats.set(modelId, (s = { total: 0, success: 0, fail: 0, lastOk: null, lastFail: null, lastError: null }));
+  s.total++; s.success++; s.lastOk = Date.now();
 }
 
-function decryptApiKey(encryptedKey) {
-  const parts = encryptedKey.split(':');
-  if (parts.length !== 3) return null; // Invalid format
-  const [ivHex, authTagHex, encrypted] = parts;
-  const iv = Buffer.from(ivHex, 'hex');
-  const authTag = Buffer.from(authTagHex, 'hex');
-  const decipher = createDecipheriv('aes-256-gcm', Buffer.from(ENCRYPTION_KEY, 'hex'), iv);
-  decipher.setAuthTag(authTag);
-  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-  return decrypted;
-}
-
-function maskSensitive(text, apiKey) {
-  if (!apiKey || apiKey.length < 12) return text;
-  const masked = apiKey.substring(0, 8) + '***' + apiKey.substring(apiKey.length - 4);
-  return text.split(apiKey).join(masked);
+function recordModelFail(modelId, errorDetail) {
+  let s = modelStats.get(modelId);
+  if (!s) modelStats.set(modelId, (s = { total: 0, success: 0, fail: 0, lastOk: null, lastFail: null, lastError: null }));
+  s.total++; s.fail++; s.lastFail = Date.now(); s.lastError = errorDetail;
 }
 
 function stripAnsi(str) {
@@ -301,39 +117,6 @@ function stripAnsi(str) {
   return str;
 }
 
-// Safe process kill with SIGKILL timeout
-function safeKillProc(proc, timeoutMs = 5000) {
-  if (!proc || proc.killed || proc.exitCode !== null) return;
-  try {
-    proc.kill('SIGTERM');
-    const killTimer = setTimeout(() => {
-      try {
-        if (proc.exitCode === null) {
-          console.error('[PROC] Process did not exit after SIGTERM, sending SIGKILL');
-          proc.kill('SIGKILL');
-        }
-      } catch (e) {
-        // Process already exited
-      }
-    }, timeoutMs);
-    proc.once('exit', () => clearTimeout(killTimer));
-  } catch (e) {
-    // Process already exited
-  }
-}
-
-// Sanitize user input to prevent injection attacks
-function sanitizeInput(input) {
-  if (!input || typeof input !== 'string') return '';
-  // Limit length to 100KB
-  let sanitized = input.length > MAX_INPUT_LENGTH ? input.substring(0, MAX_INPUT_LENGTH) : input;
-  // Remove null bytes
-  sanitized = sanitized.replace(/\0/g, '');
-  // Remove control characters except newlines and tabs
-  sanitized = sanitized.replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
-  return sanitized;
-}
-
 function createSession(apiKey, model, provider) {
   const sessionId = uuidv4();
   const sessionToken = uuidv4();
@@ -341,9 +124,7 @@ function createSession(apiKey, model, provider) {
   const sessionDir = join(WORKSPACE_DIR, sessionId);
   if (!existsSync(WORKSPACE_DIR)) mkdir(WORKSPACE_DIR, { recursive: true }).catch(console.error);
   mkdir(sessionDir, { recursive: true }).catch(console.error);
-  // Encrypt API key at rest
-  const encryptedKey = encryptApiKey(apiKey);
-  const session = { id: sessionId, token: sessionToken, csrfToken, apiKey: encryptedKey, model, provider, dir: sessionDir, createdAt: Date.now(), lastActivity: Date.now(), currentModel: model, modelHealth: 'connecting' };
+  const session = { id: sessionId, token: sessionToken, csrfToken, apiKey, model, provider, dir: sessionDir, createdAt: Date.now(), lastActivity: Date.now(), currentModel: model, modelHealth: 'connecting' };
   sessions.set(sessionId, session);
   return session;
 }
@@ -356,10 +137,6 @@ function getSession(sessionId, token) {
   }
   return session;
 }
-
-// OPENROUTER_MODELS replaced by agent-config.json modelAliases
-
-// resolveOpenRouterModel now uses agentConfig (defined above)
 
 // Push model health updates to connected WebSocket clients
 function notifyModelUpdate(session) {
@@ -376,7 +153,12 @@ function notifyModelUpdate(session) {
   });
 }
 
-// Health degradation: fallback models loaded from agent-config.json
+// --- API Key masking for terminal output ---
+function maskSensitive(text, apiKey) {
+  if (!apiKey || apiKey.length < 12) return text;
+  const masked = apiKey.substring(0, 8) + '***' + apiKey.substring(apiKey.length - 4);
+  return text.split(apiKey).join(masked);
+}
 
 async function startProxy(session) {
   const proxyPath = join(FREE_CODE_DIR, 'or_proxy.mjs');
@@ -394,14 +176,9 @@ async function startProxy(session) {
     proxyArgs.push('--fallback-model', fallback);
   }
 
-  // Decrypt API key for proxy use
-  const decryptedKey = decryptApiKey(session.apiKey);
-  if (!decryptedKey) {
-    throw new Error('API key decryption failed');
-  }
   const proxy = spawn('node', proxyArgs, {
     cwd: session.dir,
-    env: { ...process.env, ANTHROPIC_API_KEY: decryptedKey, NODE_ENV: 'production' },
+    env: { ...process.env, ANTHROPIC_API_KEY: session.apiKey, NODE_ENV: 'production' },
     stdio: ['pipe', 'pipe', 'pipe']
   });
 
@@ -410,9 +187,7 @@ async function startProxy(session) {
     const t = setTimeout(() => reject(new Error('Proxy startup timeout')), 10000);
     proxy.stdout.on('data', (chunk) => {
       proxyOutput += chunk.toString();
-      // Match "listening on port XXXX" or "port: XXXX" format, with fallback to any 4-5 digit number
-      const portMatch = proxyOutput.match(/(?:listening on port|port[:\s]+)(\d{4,5})/i)
-                     || proxyOutput.match(/(\d{4,5})/);
+      const portMatch = proxyOutput.match(/(\d{4,5})/);
       if (portMatch) {
         clearTimeout(t);
         resolve(parseInt(portMatch[1], 10));
@@ -420,9 +195,7 @@ async function startProxy(session) {
     });
     proxy.stderr.on('data', (chunk) => {
       const text = chunk.toString().trim();
-      // Mask sensitive data (API keys) in logs
-      const maskedText = maskSensitive(text, session.apiKey);
-      console.error('[PROXY stderr] ' + maskedText);
+      console.error('[PROXY stderr] ' + text);
 
       // Parse model health events from proxy v5
       // "→ modelX" / "→ modelX [retry 1/2]" → retrying
@@ -435,36 +208,16 @@ async function startProxy(session) {
       if (liveMatch) {
         session.currentModel = liveMatch[1];
         session.modelHealth = 'ok';
-        recordModelSuccess(session.currentModel);
+        recordModelSuccess(liveMatch[1]);
         notifyModelUpdate(session);
       }
-      // "✗ all failed ... → code" → error detail
+      // "✗ all failed ... → code" → error
       if (text.includes('[proxy] ✗ all failed')) {
         session.modelHealth = 'error';
-        recordModelFail(session.currentModel || session.model, text);
+        const codeMatch = text.match(/→\s*(\S+)$/);
+        const errCode = codeMatch ? codeMatch[1] : 'unknown';
+        recordModelFail(session.currentModel || session.model, errCode);
         notifyModelUpdate(session);
-      }
-      // Parse usage info: "[proxy] usage: input=XXX output=YYY model=ZZZ"
-      const usageMatch = text.match(/\[proxy\] usage: input=(\d+) output=(\d+) model=(\S+)/);
-      if (usageMatch) {
-        const inputTokens = parseInt(usageMatch[1], 10);
-        const outputTokens = parseInt(usageMatch[2], 10);
-        const modelUsed = usageMatch[3];
-        recordUsage(session.id, inputTokens, outputTokens, modelUsed, session.provider);
-        // Notify client of usage update
-        const clients = sessionClients.get(session.id);
-        if (clients) {
-          clients.forEach(ws => {
-            if (ws.readyState === 1) {
-              ws.send(JSON.stringify({
-                type: 'usage_update',
-                inputTokens,
-                outputTokens,
-                model: modelUsed
-              }));
-            }
-          });
-        }
       }
     });
     proxy.on('error', (e) => { clearTimeout(t); reject(e); });
@@ -518,9 +271,6 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
 
 const app = express();
 
-// Trust proxy for correct client IP behind Railway reverse proxy
-app.set('trust proxy', 1);
-
 // Security headers (helmet)
 app.use(helmet({
   contentSecurityPolicy: {
@@ -543,7 +293,7 @@ app.use(cors({
   maxAge: 86400,
 }));
 
-app.use(express.json({ limit: '50kb' }));
+app.use(express.json({ limit: '500kb' }));
 
 app.use(express.static(join(__dirname, '../../public'), {
   setHeaders: (res) => {
@@ -564,8 +314,7 @@ app.post('/api/session', async (req, res) => {
     if (!checkRateLimit('create:' + clientIp, RATE_MAX_CREATE, RATE_WINDOW)) {
       return res.status(429).json({
         error: 'Too many session requests. Please wait before creating another.',
-        retryAfter: 60,
-        remaining: getRateRemaining('create:' + clientIp, RATE_MAX_CREATE, RATE_WINDOW)
+        retryAfter: 60
       });
     }
 
@@ -594,15 +343,44 @@ app.delete('/api/session/:id', async (req, res) => {
     const csrfToken = req.headers['x-csrf-token'];
     if (!csrfToken || csrfToken !== session.csrfToken) return res.status(403).json({ error: 'CSRF token missing or invalid' });
     const oldProc = sessionProcesses.get(req.params.id);
-    if (oldProc) { safeKillProc(oldProc); sessionProcesses.delete(req.params.id); }
+    if (oldProc) { oldProc.kill(); sessionProcesses.delete(req.params.id); }
     const oldProxy = sessionProxies.get(req.params.id);
-    if (oldProxy) { safeKillProc(oldProxy); sessionProxies.delete(req.params.id); }
-    // Clear sensitive data before deletion
-    session.apiKey = null;
+    if (oldProxy) { oldProxy.kill(); sessionProxies.delete(req.params.id); }
     sessions.delete(req.params.id);
-    usageStats.delete(req.params.id);
   }
   res.json({ success: true });
+});
+
+// ===== Model Discovery API (ModelHub-inspired) =====
+// Models are loaded from agent-config.json at startup
+
+app.get('/api/models', (req, res) => {
+  const provider = req.query.provider || DEFAULTS.provider;
+  const cfg = getProviderConfig(provider);
+  const models = cfg.models || [];
+  const sorted = [...models].sort((a, b) => {
+    if (a.tier !== b.tier) return a.tier === 'free' ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+  res.json({
+    provider,
+    models: sorted,
+    fallback: cfg.fallbackModel || null
+  });
+});
+
+app.get('/api/models/:provider', (req, res) => {
+  const cfg = getProviderConfig(req.params.provider);
+  if (!cfg.models || cfg.models.length === 0) return res.status(404).json({ error: 'Unknown provider' });
+  const sorted = [...cfg.models].sort((a, b) => {
+    if (a.tier !== b.tier) return a.tier === 'free' ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+  res.json({
+    provider: req.params.provider,
+    models: sorted,
+    fallback: cfg.fallbackModel || null
+  });
 });
 
 app.get('/api/health', (req, res) => {
@@ -619,6 +397,67 @@ app.get('/api/health', (req, res) => {
       rssMB: Math.round(mem.rss / 1024 / 1024)
     }
   });
+});
+
+app.get('/api/health/detailed', (req, res) => {
+  const models = [];
+  for (const [id, s] of modelStats) {
+    const total = s.total || 0;
+    const rate = total > 0 ? ((s.success / total) * 100).toFixed(1) : '0.0';
+    models.push({
+      id,
+      total, success: s.success, fail: s.fail,
+      successRate: parseFloat(rate),
+      lastOk: s.lastOk, lastFail: s.lastFail, lastError: s.lastError
+    });
+  }
+  models.sort((a, b) => b.total - a.total);
+
+  const sessionList = [];
+  for (const [sid, s] of sessions) {
+    const proxyAlive = sessionProxies.has(sid);
+    sessionList.push({
+      sessionId: sid,
+      model: s.currentModel || s.model,
+      health: s.modelHealth,
+      provider: s.provider,
+      proxyAlive,
+      createdAt: s.createdAt
+    });
+  }
+
+  // Rate limit snapshot
+  const now = Date.now();
+  const rlSnapshot = [];
+  for (const [key, entry] of rateLimits) {
+    rlSnapshot.push({ key, count: entry.count, remaining: Math.max(0, RATE_MAX_CREATE - entry.count) });
+  }
+
+  res.json({
+    models,
+    sessions: sessionList,
+    uptime: process.uptime(),
+    rateLimits: rlSnapshot.length ? rlSnapshot : null,
+    config: {
+      providers: Object.keys(PROVIDERS),
+      defaults: DEFAULTS,
+      maxSessions: MAX_SESSIONS
+    }
+  });
+});
+
+// ===== Config API =====
+app.get('/api/config', (req, res) => {
+  const providers = {};
+  for (const [p, cfg] of Object.entries(PROVIDERS)) {
+    providers[p] = {
+      baseUrl: cfg.baseUrl || null,
+      fallbackModel: cfg.fallbackModel || null,
+      modelCount: (cfg.models || []).length,
+      aliasCount: Object.keys(cfg.modelAliases || {}).length
+    };
+  }
+  res.json({ version: VERSION, defaults: DEFAULTS, providers });
 });
 
 
@@ -640,11 +479,12 @@ app.use('/api/files/', (req, res, next) => {
 });
 
 // ===== File API rate limiter =====
+const RATE_MAX_FILE = 60; // max file API calls per minute per session
 app.use('/api/files/', (req, res, next) => {
   const parts = req.path.split('/');
   const sid = parts[1] || 'unknown';
   if (!checkRateLimit('file:' + sid, RATE_MAX_FILE, RATE_WINDOW)) {
-    return res.status(429).json({ error: 'Too many file requests. Please slow down.', remaining: 0 });
+    return res.status(429).json({ error: 'Too many file requests. Please slow down.' });
   }
   next();
 });
@@ -691,11 +531,11 @@ app.get('/api/files/:sessionId/*', async (req, res) => {
     if (!session) return res.status(401).json({ error: 'Invalid session or token' });
     const filePath = req.params[0];
     const fullPath = join(session.dir, filePath);
-    const resolvedPath = resolve(fullPath);
-    const resolvedSessionDir = resolve(session.dir);
+    const resolvedPath = require('path').resolve(fullPath);
+    const resolvedSessionDir = require('path').resolve(session.dir);
     
-    // 防止路径遍历攻击（确保匹配完整目录路径 + 分隔符）
-    if (resolvedPath !== resolvedSessionDir && !resolvedPath.startsWith(resolvedSessionDir + sep)) {
+    // 防止路径遍历攻击
+    if (!resolvedPath.startsWith(resolvedSessionDir)) {
       return res.status(403).json({ error: 'Access denied: path traversal detected' });
     }
     
@@ -715,22 +555,17 @@ app.post('/api/files/:sessionId/*', async (req, res) => {
     if (!session) return res.status(401).json({ error: 'Invalid session or token' });
     const filePath = req.params[0];
     const fullPath = join(session.dir, filePath);
-    const resolvedPath = resolve(fullPath);
-    const resolvedSessionDir = resolve(session.dir);
+    const resolvedPath = require('path').resolve(fullPath);
+    const resolvedSessionDir = require('path').resolve(session.dir);
     
-    // 防止路径遍历攻击（确保匹配完整目录路径 + 分隔符）
-    if (resolvedPath !== resolvedSessionDir && !resolvedPath.startsWith(resolvedSessionDir + sep)) {
+    // 防止路径遍历攻击
+    if (!resolvedPath.startsWith(resolvedSessionDir)) {
       return res.status(403).json({ error: 'Access denied: path traversal detected' });
     }
     
     const dir = pathDirname(fullPath);
     if (!existsSync(dir)) await mkdir(dir, { recursive: true });
-    const content = req.body.content || '';
-    // Limit file size to 5MB
-    if (content.length > MAX_FILE_SIZE) {
-      return res.status(413).json({ error: 'File too large (max 5MB)' });
-    }
-    await writeFile(fullPath, content, 'utf-8');
+    await writeFile(fullPath, req.body.content || '', 'utf-8');
     res.json({ success: true, path: filePath });
   } catch (error) {
     console.error('[ERROR] write file:', error.message);
@@ -738,117 +573,38 @@ app.post('/api/files/:sessionId/*', async (req, res) => {
   }
 });
 
-// ===== File/Folder Delete API =====
+// ===== File Delete API =====
 app.delete('/api/files/:sessionId/*', async (req, res) => {
   try {
     const token = req.headers['x-session-token'];
     const session = getSession(req.params.sessionId, token);
     if (!session) return res.status(401).json({ error: 'Invalid session or token' });
-
-    // CSRF token check
-    const csrfToken = req.headers['x-csrf-token'];
-    if (!csrfToken || csrfToken !== session.csrfToken) {
-      return res.status(403).json({ error: 'CSRF token mismatch' });
-    }
-
     const filePath = req.params[0];
     const fullPath = join(session.dir, filePath);
-    const resolvedPath = resolve(fullPath);
-    const resolvedSessionDir = resolve(session.dir);
+    const resolvedPath = require('path').resolve(fullPath);
+    const resolvedSessionDir = require('path').resolve(session.dir);
     
-    // 防止路径遍历攻击（确保匹配完整目录路径 + 分隔符）
-    if (resolvedPath !== resolvedSessionDir && !resolvedPath.startsWith(resolvedSessionDir + sep)) {
+    // 防止路径遍历攻击
+    if (!resolvedPath.startsWith(resolvedSessionDir)) {
       return res.status(403).json({ error: 'Access denied: path traversal detected' });
     }
     
-    // 检查路径是否存在
-    if (!existsSync(resolvedPath)) {
-      return res.status(404).json({ error: 'File or folder not found' });
-    }
-    
-    const stat = await import('fs/promises').then(fs => fs.stat(resolvedPath));
-    const isDir = stat.isDirectory();
-    
-    if (isDir) {
-      // 删除文件夹（递归）
-      await import('fs/promises').then(fs => fs.rm(resolvedPath, { recursive: true, force: true }));
-    } else {
-      // 删除文件
-      await import('fs/promises').then(fs => fs.unlink(resolvedPath));
-    }
-    
-    res.json({ success: true, path: filePath, type: isDir ? 'directory' : 'file' });
+    const { unlink } = await import('fs/promises');
+    await unlink(fullPath);
+    res.json({ success: true, path: filePath });
   } catch (error) {
-    console.error('[ERROR] delete file/folder:', error.message);
-    if (error.code === 'EPERM' || error.code === 'EACCES') {
-      return res.status(403).json({ error: 'Permission denied: file may be in use' });
-    }
-    if (error.code === 'ENOTEMPTY') {
-      return res.status(403).json({ error: 'Folder is not empty' });
-    }
-    res.status(500).json({ error: 'Failed to delete: ' + error.message });
+    console.error('[ERROR] delete file:', error.message);
+    res.status(500).json({ error: 'Failed to delete file' });
   }
 });
 
-app.get('/api/config', (req, res) => {
-  const providers = {};
-  for (const [p, cfg] of Object.entries(PROVIDERS)) {
-    providers[p] = {
-      baseUrl: cfg.baseUrl || null,
-      fallbackModel: cfg.fallbackModel || null,
-      modelCount: (cfg.models || []).length,
-      aliasCount: Object.keys(cfg.modelAliases || {}).length
-    };
+// ===== Error handler (must be 4-param to be recognized by Express) =====
+app.use((err, req, res, next) => {
+  console.error('[ERROR] express:', err.message);
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'File too large (max 500KB)' });
   }
-  res.json({ version: VERSION, defaults: DEFAULTS, providers, maxSessions: MAX_SESSIONS });
-});
-
-// ===== Dynamic Models API =====
-app.get('/api/models', (req, res) => {
-  const provider = req.query.provider || 'openrouter';
-  const cached = dynamicModels.get(provider);
-
-  if (!cached) {
-    return res.json({ models: [], lastUpdate: null, provider });
-  }
-
-  // Return top models (free first, then by context size)
-  const sorted = [...cached.models].sort((a, b) => {
-    if (a.tier !== b.tier) return a.tier === 'free' ? -1 : 1;
-    return (b.context || 0) - (a.context || 0);
-  });
-
-  res.json({
-    models: sorted.slice(0, 50), // Top 50
-    lastUpdate: cached.lastUpdate,
-    provider,
-    total: cached.models.length
-  });
-});
-
-// ===== Usage Stats API =====
-app.get('/api/usage/:sessionId', (req, res) => {
-  const token = req.headers['x-session-token'];
-  const session = getSession(req.params.sessionId, token);
-  if (!session) return res.status(401).json({ error: 'Invalid session or token' });
-
-  const stats = usageStats.get(req.params.sessionId) || {
-    inputTokens: 0,
-    outputTokens: 0,
-    cost: 0,
-    requests: 0,
-    lastRequest: null,
-    model: session.currentModel,
-    provider: session.provider
-  };
-
-  res.json(stats);
-});
-
-// Catch-all for API routes: return JSON error instead of HTML
-app.use('/api', (req, res) => {
-  console.warn('[API] Unmatched route:', req.method, req.originalUrl);
-  res.status(404).json({ error: 'API endpoint not found: ' + req.method + ' ' + req.originalUrl });
+  res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
 });
 
 const server = app.listen(
@@ -872,12 +628,6 @@ wss.on('connection', (ws, req) => {
 
   ws.on('message', async (data) => {
     try {
-      // Enforce message size limit (1MB)
-      if (data.length > 1024 * 1024) {
-        ws.send(JSON.stringify({ type: 'error', message: 'Message too large' }));
-        return;
-      }
-
       const message = JSON.parse(data.toString());
 
       if (message.type === 'init') {
@@ -910,7 +660,7 @@ wss.on('connection', (ws, req) => {
 
         // Rate limit: max RATE_MAX_INPUT inputs per minute per session
         if (!checkRateLimit('input:' + sessionId, RATE_MAX_INPUT, RATE_WINDOW)) {
-          ws.send(JSON.stringify({ type: 'error', message: 'Too many requests. Please slow down.', remaining: 0 }));
+          ws.send(JSON.stringify({ type: 'error', message: 'Too many requests. Please slow down.' }));
           return;
         }
 
@@ -928,34 +678,31 @@ wss.on('connection', (ws, req) => {
         }
 
         const oldProc = sessionProcesses.get(sessionId);
-        if (oldProc) safeKillProc(oldProc);
+        if (oldProc) oldProc.kill();
 
-        // Sanitize user input
-        const sanitizedData = sanitizeInput(message.data);
-        console.log('[INPUT] message length: ' + (sanitizedData ? sanitizedData.length : 0));
+        console.log('[INPUT] message length: ' + (message.data ? message.data.length : 0));
 
         wsProcCount.set(sessionId, (wsProcCount.get(sessionId) || 0) + 1);
-        const proc = await spawnCli(session, sanitizedData);
+        const proc = await spawnCli(session, message.data);
         sessionProcesses.set(sessionId, proc);
 
         proc.stdout.on('data', (chunk) => {
-          const clean = stripAnsi(chunk.toString());
-          // Mask sensitive data in process output
-          const masked = maskSensitive(clean, session.apiKey);
-          if (masked.trim() && ws.readyState === ws.OPEN) {
-            const data = masked.length > MAX_WS_MSG ? masked.substring(0, MAX_WS_MSG) + '\n[output truncated]' : masked;
+          let clean = stripAnsi(chunk.toString());
+          clean = maskSensitive(clean, session.apiKey);
+          if (clean.trim() && ws.readyState === ws.OPEN) {
+            const MAX_WS_MSG = 1024 * 1024; // 1MB
+            const data = clean.length > MAX_WS_MSG ? clean.substring(0, MAX_WS_MSG) + '\n[output truncated]' : clean;
             ws.send(JSON.stringify({ type: 'output', data }));
           }
         });
 
         proc.stderr.on('data', (chunk) => {
-          const errStr = chunk.toString();
-          // Mask sensitive data in process output
-          const masked = maskSensitive(errStr, session.apiKey);
-          console.error('[STDERR] ' + masked.substring(0, 200));
+          let errStr = chunk.toString();
+          errStr = maskSensitive(errStr, session.apiKey);
+          console.error('[STDERR] ' + maskSensitive(errStr.substring(0, 200), session.apiKey));
           if (ws.readyState === ws.OPEN) {
             const MAX_WS_ERR = 1024 * 1024; // 1MB
-            const data = masked.length > MAX_WS_ERR ? masked.substring(0, MAX_WS_ERR) + '\n[output truncated]' : masked;
+            const data = errStr.length > MAX_WS_ERR ? errStr.substring(0, MAX_WS_ERR) + '\n[output truncated]' : errStr;
             ws.send(JSON.stringify({ type: 'stderr', data }));
           }
         });
@@ -966,7 +713,7 @@ wss.on('connection', (ws, req) => {
           wsProcCount.set(sessionId, Math.max(0, (wsProcCount.get(sessionId) || 0) - 1));
           // Kill proxy too
           const proxy = sessionProxies.get(sessionId);
-          if (proxy) { safeKillProc(proxy); sessionProxies.delete(sessionId); }
+          if (proxy) { proxy.kill(); sessionProxies.delete(sessionId); }
           if (ws.readyState === ws.OPEN) {
             ws.send(JSON.stringify({ type: 'exit', code }));
           }
@@ -999,9 +746,9 @@ wss.on('connection', (ws, req) => {
       if (clients) { clients.delete(ws); if (clients.size === 0) sessionClients.delete(sessionId); }
     }
     const proc = sessionProcesses.get(sessionId);
-    if (proc) { safeKillProc(proc); sessionProcesses.delete(sessionId); }
+    if (proc) { proc.kill(); sessionProcesses.delete(sessionId); }
     const proxy = sessionProxies.get(sessionId);
-    if (proxy) { safeKillProc(proxy); sessionProxies.delete(sessionId); }
+    if (proxy) { proxy.kill(); sessionProxies.delete(sessionId); }
   });
 });
 
@@ -1030,28 +777,15 @@ setInterval(() => {
 }, HEARTBEAT_INTERVAL);
 
 // ===== Session timeout cleanup =====
-setInterval(async () => {
+const SESSION_TIMEOUT = parseInt(process.env.SESSION_TIMEOUT || '3600000');
+setInterval(() => {
   const now = Date.now();
   for (const [id, session] of sessions) {
     if (now - session.lastActivity > SESSION_TIMEOUT) {
       const proc = sessionProcesses.get(id);
-      if (proc) { safeKillProc(proc); sessionProcesses.delete(id); }
+      if (proc) { try { proc.kill(); } catch (e) {} sessionProcesses.delete(id); }
       const proxy = sessionProxies.get(id);
-      if (proxy) { safeKillProc(proxy); sessionProxies.delete(id); }
-
-      // Clear sensitive data before deletion
-      session.apiKey = null;
-
-      // Clean up workspace directory
-      try {
-        const { rm } = await import('fs/promises');
-        await rm(session.dir, { recursive: true, force: true });
-        console.log('[SESSION] Cleaned workspace:', session.dir);
-      } catch (e) {
-        console.error('[SESSION] Failed to clean workspace:', e.message);
-      }
-
-      wsProcCount.delete(id);
+      if (proxy) { try { proxy.kill(); } catch (e) {} sessionProxies.delete(id); }
       sessions.delete(id);
       console.log('[SESSION] Expired:', id);
     }
