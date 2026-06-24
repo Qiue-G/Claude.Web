@@ -589,10 +589,10 @@ app.delete('/api/files/:sessionId/*', async (req, res) => {
       return res.status(403).json({ error: 'Access denied: path traversal detected' });
     }
     
-    const { unlink, rmdir, stat } = await import('fs/promises');
+    const { unlink, rm, stat } = await import('fs/promises');
     const pathStat = await stat(fullPath);
     if (pathStat.isDirectory()) {
-      await rmdir(fullPath);
+      await rm(fullPath, { recursive: true });
     } else {
       await unlink(fullPath);
     }
