@@ -2589,6 +2589,12 @@
 
     // Remove from local fileContents cache first
     delete fileContents[path];
+    // Also clean any entry with the same base file name
+    // (locally-opened files use bare name as key, tree uses full path)
+    const baseName = path.split('/').pop();
+    for (const key of Object.keys(fileContents)) {
+      if (key !== path && key.split('/').pop() === baseName) delete fileContents[key];
+    }
     if (type === 'directory') {
       const prefix = path + '/';
       for (const key of Object.keys(fileContents)) {
