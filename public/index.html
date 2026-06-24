@@ -1885,48 +1885,58 @@
 
   // ===== New File =====
   $('menuNewFile').addEventListener('click', async () => {
-    if (!sessionId) {
-      appendChatMsg('system', '请先配置模型');
-      return;
-    }
     const name = prompt('输入新文件名（支持路径，如 src/utils/helper.js）：');
     if (!name) return;
 
-    try {
-      const res = await fetch('/api/files/' + sessionId + '/' + encodeFilePath(name), {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-session-token': sessionToken || '',
-          'x-csrf-token': csrfToken || ''
-        },
-        body: JSON.stringify({ content: '' })
-      });
-      const data = await res.json();
-      if (data.success) {
-        fileContents[name] = '';
-        currentFile = name;
-        currentFileContent = '';
-        $('currentFileLabel').textContent = name;
-        appendChatMsg('system', `已创建新文件: ${name}`);
-        loadFileTree();
-      } else {
-        // Map HTTP API errors to friendly messages
-        const errMap = {
-          'Invalid API key': 'API Key 无效，请检查后重试',
-          'Invalid model': '模型名称无效',
-          'Invalid provider': '服务商不支持',
-          'Too many sessions': '会话数已达上限，请稍后重试',
-          'Too many file requests': '文件操作过于频繁，请稍后重试',
-          'CSRF token missing': '安全验证失败，请刷新页面',
-          'Access denied': '访问被拒绝',
-          'Failed to': '操作失败，请稍后重试'
-        };
-        const friendly = Object.keys(errMap).find(k => data.error.includes(k));
-        appendChatMsg('system', `创建失败: ${friendly ? '⚠ ' + errMap[friendly] : data.error}`);
+    if (sessionId) {
+      try {
+        const res = await fetch('/api/files/' + sessionId + '/' + encodeFilePath(name), {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-session-token': sessionToken || '',
+            'x-csrf-token': csrfToken || ''
+          },
+          body: JSON.stringify({ content: '' })
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        if (data.success) {
+          fileContents[name] = '';
+          currentFile = name;
+          currentFileContent = '';
+          $('currentFileLabel').textContent = name;
+          appendChatMsg('system', `已创建新文件: ${name}`);
+          loadFileTree();
+        } else {
+          const errMap = {
+            'Invalid API key': 'API Key 无效，请检查后重试',
+            'Invalid model': '模型名称无效',
+            'Invalid provider': '服务商不支持',
+            'Too many sessions': '会话数已达上限，请稍后重试',
+            'Too many file requests': '文件操作过于频繁，请稍后重试',
+            'CSRF token missing': '安全验证失败，请刷新页面',
+            'Access denied': '访问被拒绝',
+            'Failed to': '操作失败，请稍后重试'
+          };
+          const friendly = Object.keys(errMap).find(k => data.error.includes(k));
+          appendChatMsg('system', `创建失败: ${friendly ? '⚠ ' + errMap[friendly] : data.error}`);
+        }
+      } catch (e) {
+        appendChatMsg('system', `创建失败: ${e.message}`);
       }
-    } catch (e) {
-      appendChatMsg('system', `创建失败: ${e.message}`);
+    } else {
+      // No server session: create locally
+      fileContents[name] = '';
+      persistFileContents();
+      currentFile = name;
+      currentFileContent = '';
+      $('currentFileLabel').textContent = name;
+      appendChatMsg('system', `已创建新文件: ${name}（本地）`);
+      loadFileTree();
     }
   });
 
@@ -1954,6 +1964,10 @@
               },
               body: JSON.stringify({ content: content || '' })
             });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error || `HTTP ${res.status}`);
+            }
             const data = await res.json();
             if (data.success) {
               fileContents[file.name] = content;
@@ -1962,8 +1976,6 @@
               $('currentFileLabel').textContent = file.name;
               appendChatMsg('system', `已打开文件: ${file.name} (${(file.size/1024).toFixed(1)} KB)`);
               loadFileTree();
-              // Open in editor
-              openEditorTab(file.name, content);
               // Open in editor
               openEditorTab(file.name, content);
               // Open left panel on mobile to show file tree
@@ -2139,6 +2151,10 @@
         },
         body: JSON.stringify({ content: content || '' })
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
       const data = await res.json();
       if (data.success) {
         fileContents[filePath] = content;
@@ -2251,6 +2267,10 @@
         const res = await fetch('/api/files/' + sessionId, {
           headers: { 'x-session-token': sessionToken || '' }
         });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
         const data = await res.json();
         if (data.tree && data.tree.length > 0) {
           renderFileTree(data.tree, $('fileTree'), 0);
@@ -2493,6 +2513,10 @@
             const res = await fetch('/api/files/' + sessionId + '/' + encodeFilePath(item.path), {
               headers: { 'x-session-token': sessionToken || '' }
             });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error || `HTTP ${res.status}`);
+            }
             const data = await res.json();
             if (data.content !== undefined) {
               fileContents[item.path] = data.content;
@@ -2587,25 +2611,30 @@
     const name = path.split('/').pop() || path;
     if (!confirm(`确定要删除${typeName}「${name}」吗？此操作不可撤销。`)) return;
 
-    // Remove from local fileContents cache first
-    delete fileContents[path];
-    // Also clean any bare-name entry with the same base file name
-    // (locally-opened files use bare name as key, tree uses full path)
-    // Must NOT match full-path keys from other directories (e.g. sub/file.txt)
+    // Save snapshot of affected fileContents keys in case server delete fails
+    const savedFC = {};
+    savedFC[path] = fileContents[path];
     const baseName = path.split('/').pop();
     for (const key of Object.keys(fileContents)) {
-      if (key !== path && !key.includes('/') && key === baseName) delete fileContents[key];
+      if (key !== path && key.split('/').pop() === baseName) {
+        savedFC[key] = fileContents[key];
+      }
     }
     if (type === 'directory') {
       const prefix = path + '/';
       for (const key of Object.keys(fileContents)) {
-        if (key.startsWith(prefix)) delete fileContents[key];
+        if (key.startsWith(prefix)) savedFC[key] = fileContents[key];
       }
     }
+
+    // Remove from local fileContents cache first
+    for (const key of Object.keys(savedFC)) delete fileContents[key];
     persistFileContents();
 
     // Close editor tab if this file is open
     closeEditorTab(path);
+
+    let serverFailed = false;
 
     if (sessionId) {
       // Delete from server workspace
@@ -2618,29 +2647,36 @@
             'x-csrf-token': csrfToken || ''
           }
         });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
         const data = await res.json();
 
-        let serverFailed = false;
         if (!data.success) {
           serverFailed = true;
-          // Restore local cache if server delete failed
-          fileContents[path] = null; // placeholder, will be re-fetched from server
           appendChatMsg('system', `服务器删除失败: ${data.error || '未知错误'}`);
         }
-        if (serverFailed) return; // don't update tree if server delete failed
       } catch (e) {
+        serverFailed = true;
         appendChatMsg('system', `服务器删除失败: ${e.message}`);
-        return; // don't update tree
       }
-    } else {
+    }
+
+    if (serverFailed) {
+      // Restore local cache — server delete failed, revert to saved state
+      Object.assign(fileContents, savedFC);
+      persistFileContents();
+      return;
+    }
+
+    if (!sessionId) {
       appendChatMsg('system', `已从本地移除${typeName}：${name}（未连接到服务器）`);
     }
 
     // Refresh file tree
     await loadFileTree();
     // Safety net: directly remove any lingering DOM element for the deleted path.
-    // reconcileFileContentsWithTree + addLocalOnlyFilesToTree may re-add
-    // the entry under certain edge cases; this guarantees visual removal.
     if (type === 'file') {
       const lingering = document.querySelector(`.tree-item[data-file="${CSS.escape(path)}"]`);
       if (lingering) lingering.remove();
@@ -3140,6 +3176,10 @@
         },
         body: JSON.stringify({ content: tab.content })
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
       const data = await res.json();
       if (data.success) {
         tab.original = tab.content;
@@ -3683,6 +3723,10 @@
     if (dynamicModelCache[provider]) return dynamicModelCache[provider];
     try {
       const res = await fetch('/api/models?provider=' + provider);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
       const data = await res.json();
       if (data.models && data.models.length > 0) {
         dynamicModelCache[provider] = data.models;
@@ -3858,8 +3902,10 @@
   };
 
   function saveModels() {
-    localStorage.setItem('savedModels', JSON.stringify(savedModels));
-    localStorage.setItem('activeModelId', activeModelId);
+    try {
+      localStorage.setItem('savedModels', JSON.stringify(savedModels));
+      localStorage.setItem('activeModelId', activeModelId);
+    } catch (e) {}
   }
 
   function renderModelList() {
@@ -4015,6 +4061,10 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
@@ -4258,6 +4308,10 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
