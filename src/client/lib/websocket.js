@@ -180,13 +180,22 @@ export async function sendInput(data) {
     ? { type: 'input', data: { text: data } }
     : { type: 'input', data };
 
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(payload));
-    return;
+  // 先尝试现有 WebSocket
+  if (ws) {
+    if (ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify(payload));
+        return;
+      } catch (e) {
+        console.error('sendInput: ws.send failed', e);
+      }
+    } else {
+      console.warn('sendInput: ws state=' + ws.readyState + ' (0=CONNECTING,1=OPEN,2=CLOSING,3=CLOSED)');
+    }
   }
 
+  // 尝试 SSE
   if (eventSource && eventSource.readyState === EventSource.OPEN) {
-    // For SSE, we need to send via HTTP POST to /api/input
     const csrf = get(csrfToken);
     const headers = { 'Content-Type': 'application/json' };
     if (csrf) headers['X-CSRF-Token'] = csrf;
@@ -202,12 +211,16 @@ export async function sendInput(data) {
   const sid = get(sessionId);
   const token = get(sessionToken);
   if (sid && token) {
-    connectWebSocket(sid, token, autoReconnectEnabled, useSSEMode);
+    connectWebSocket(sid, token, true, useSSEMode);
     try {
       await waitForWsOpen(5000);
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(payload));
-        return;
+        try {
+          ws.send(JSON.stringify(payload));
+          return;
+        } catch (e) {
+          console.error('sendInput: reconnect ws.send failed', e);
+        }
       }
     } catch (_) {
       // 等待超时，继续到错误处理
