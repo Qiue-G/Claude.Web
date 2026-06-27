@@ -135,7 +135,7 @@
       sendTimeout = setTimeout(() => {
         isWaiting.set(false);
         isTyping.set(false);
-        addMessage('system', '响应超时，请重试');
+        addMessage('system', get(t)('chat.timeout'));
         sendTimeout = null;
       }, 60000);
     } else {
