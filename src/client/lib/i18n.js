@@ -52,6 +52,9 @@ const translations = {
     'chat.suggestion4': '查看帮助',
     'chat.noMessages': '暂无对话历史',
     'chat.startHint': '点击"新对话"开始',
+    'chat.helpful': '有帮助',
+    'chat.needsImprovement': '需要改进',
+    'chat.inputPlaceholder': '消息输入框',
 
     // 文件
     'files.title': '文件',

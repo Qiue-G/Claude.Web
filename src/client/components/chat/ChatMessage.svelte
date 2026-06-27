@@ -2,6 +2,7 @@
   import CodeBlock from './CodeBlock.svelte';
   import Icon from '$components/common/Icon.svelte';
   import { escapeHtml } from '$lib/utils.js';
+  import { t } from '$lib/i18n.js';
   import { marked } from 'marked';
 
   marked.setOptions({
@@ -98,26 +99,26 @@
   </div>
   {#if role !== 'system' && !streaming}
     <div class="chat-msg-actions">
-      <button class="action-btn" onclick={copyMessage} title="复制">
+      <button class="action-btn" onclick={copyMessage} title={$t('common.copy')}>
         <Icon name={copied ? 'check' : 'copy'} size="sm" />
-        {copied ? '已复制' : '复制'}
+        {$t(copied ? 'common.copied' : 'common.copy')}
       </button>
       {#if role === 'user'}
-        <button class="action-btn" onclick={editMessage} title="编辑">
+        <button class="action-btn" onclick={editMessage} title={$t('common.edit')}>
           <Icon name="edit" size="sm" />
-          编辑
+          {$t('common.edit')}
         </button>
       {/if}
       {#if role === 'assistant'}
-        <button class="action-btn" onclick={retryMessage} title="重试">
+        <button class="action-btn" onclick={retryMessage} title={$t('common.retry')}>
           <Icon name="refresh" size="sm" />
-          重试
+          {$t('common.retry')}
         </button>
         <button
           class="action-btn rating-btn"
           class:active={rating === 'up'}
           onclick={() => rateMessage('up')}
-          title="有帮助"
+          title={$t('chat.helpful')}
         >
           <Icon name="thumbsUp" size="sm" />
         </button>
@@ -125,7 +126,7 @@
           class="action-btn rating-btn"
           class:active={rating === 'down'}
           onclick={() => rateMessage('down')}
-          title="需要改进"
+          title={$t('chat.needsImprovement')}
         >
           <Icon name="thumbsDown" size="sm" />
         </button>

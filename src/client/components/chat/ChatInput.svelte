@@ -285,7 +285,7 @@
       rows="1"
       disabled={$isWaiting}
       id="chat-message-input"
-      aria-label="消息输入框"
+      aria-label={$t('chat.inputPlaceholder')}
     ></textarea>
 
     <button

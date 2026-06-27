@@ -36,7 +36,7 @@
 
 <div class="toolbar">
   <div class="toolbar-left">
-    <button class="toolbar-btn" on:click={handleToggleSidebar} title="切换侧边栏">
+    <button class="toolbar-btn" on:click={handleToggleSidebar} title={$t('command.toggleSidebar')}>
       <Icon name="menu" size="md" />
     </button>
 

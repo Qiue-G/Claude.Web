@@ -1,7 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte';
   import Icon from '$components/common/Icon.svelte';
-  import { currentLocale, setLocale } from '$lib/i18n.js';
+  import { currentLocale, setLocale, t } from '$lib/i18n.js';
 
   const dispatch = createEventDispatcher();
 
@@ -17,7 +17,7 @@
 </script>
 
 <div class="language-selector">
-  <button class="lang-btn" title="选择语言">
+  <button class="lang-btn" title={$t('language.select')}>
     <Icon name="globe" size="md" />
     <span class="lang-text">{languages.find(l => l.code === $currentLocale)?.name}</span>
   </button>

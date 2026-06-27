@@ -21,6 +21,7 @@
   import { writeFile } from '$apis/files.api.js';
   import { sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
   import { get } from 'svelte/store';
+  import { t } from '$lib/i18n.js';
 
   let showConfigModal = $state(false);
 
@@ -237,7 +238,7 @@
     {/if}
     <div class="content-pane-group">
       <div class="chat-pane" style="flex: {chatFlex};"><ChatPanel onsend={handleChatSend} /></div>
-      <button class="resize-handle" class:active={isResizing} onmousedown={handleResizeStart} aria-label="调整面板大小"></button>
+      <button class="resize-handle" class:active={isResizing} onmousedown={handleResizeStart} aria-label={$t('editor.resizeHandle')}></button>
       <div class="editor-pane" style="flex: {editorFlex};"><CodeEditor on:tabClose={handleTabClose} on:change={handleEditorChange} on:save={handleSaveFile} /></div>
     </div>
   </div>
