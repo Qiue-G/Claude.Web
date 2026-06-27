@@ -11,7 +11,7 @@
 
   import { isConnected } from '$stores/session.store.js';
   import { activeModelId, savedModels } from '$stores/models.store.js';
-  import { fileContents } from '$stores/files.store.js';
+  import { fileContents, fileTree, openFile, closeTab } from '$stores/files.store.js';
   import { messages, isWaiting, isTyping, addMessage } from '$stores/chat.store.js';
   import { initChatHistory, createSession, switchSession, currentSessionId } from '$stores/chatHistory.store.js';
   import { chatSidebarOpen, fileSidebarOpen, toggleChatSidebar, toggleFileSidebar, openCommandPalette, showToast } from '$stores/ui.store.js';
@@ -19,7 +19,7 @@
   import { connectWebSocket, sendInput } from '$lib/websocket.js';
   import { enabledTools } from '$stores/tools.store.js';
   import { createSession as apiCreateSession } from '$apis/session.api.js';
-  import { writeFile } from '$apis/files.api.js';
+  import { writeFile, readFile, getFileTree } from '$apis/files.api.js';
   import { sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
   import { get } from 'svelte/store';
   import { t } from '$lib/i18n.js';
@@ -79,15 +79,37 @@
     }
   }
 
-  function handleFileSelect(e) {
+  // ===== File loading =====
+
+  async function loadFileTree(sid, tok) {
+    try {
+      const result = await getFileTree(sid, tok);
+      if (result && result.tree) {
+        fileTree.set(result.tree);
+      }
+    } catch (err) {
+      console.error('Failed to load file tree:', err.message);
+    }
+  }
+
+  async function handleFileSelect(e) {
     const file = e.detail;
     if (!file || file.type !== 'file') return;
-    showToast('已选择文件: ' + file.path, 'success');
+    try {
+      const sid = get(sessionId);
+      const tok = get(sessionToken);
+      const result = await readFile(sid, file.path, tok);
+      if (result && result.content !== undefined) {
+        openFile(file.path, result.content);
+      }
+    } catch (err) {
+      showToast('打开文件失败: ' + (err.message || '未知错误'), 'error');
+    }
   }
 
   function handleTabClose(e) {
     const path = e.detail;
-    fileContents.update(files => { const { [path]: _, ...rest } = files; return rest; });
+    closeTab(path);
   }
 
   function handleEditorChange(e) {
@@ -123,6 +145,8 @@
       connectWebSocket(session.sessionId, session.token);
       showToast('已连接: ' + model.name, 'success');
       showConfigModal = false;
+      // 加载文件列表
+      loadFileTree(session.sessionId, session.token);
     } catch (err) {
       showToast('连接失败: ' + (err.message || '未知错误'), 'error');
     }
@@ -169,6 +193,7 @@
     const token = $sessionToken;
     if (sid && token) {
       connectWebSocket(sid, token);
+      loadFileTree(sid, token);
     }
     if ($activeModelId && $savedModels.length > 0) {
       const m = $savedModels.find(m => m.id === $activeModelId);
