@@ -127,6 +127,16 @@ function stripAnsi(str) {
   return str;
 }
 
+// 白名单方式构建子进程环境变量，避免泄露全部 process.env
+function buildSafeEnv(extraVars = {}) {
+  const SAFE_KEYS = ['PATH', 'HOME', 'TMP', 'TEMP', 'NODE_PATH', 'APPDATA', 'LOCALAPPDATA', 'USERPROFILE'];
+  const safeEnv = {};
+  for (const key of SAFE_KEYS) {
+    if (process.env[key]) safeEnv[key] = process.env[key];
+  }
+  return { ...safeEnv, ...extraVars };
+}
+
 async function createSession(apiKey, model, provider) {
   const sessionId = uuidv4();
   const sessionToken = uuidv4();
@@ -188,7 +198,7 @@ async function startProxy(session) {
 
   const proxy = spawn('node', proxyArgs, {
     cwd: session.dir,
-    env: { ...process.env, ANTHROPIC_API_KEY: session.apiKey, NODE_ENV: 'production' },
+    env: buildSafeEnv({ ANTHROPIC_API_KEY: session.apiKey, NODE_ENV: 'production' }),
     stdio: ['pipe', 'pipe', 'pipe']
   });
 
@@ -244,12 +254,11 @@ async function spawnCli(session, prompt) {
   const cliArgs = ['-p', '--bare'];
   if (session.model) cliArgs.push('--model', session.model);
 
-  const env = {
+  const env = buildSafeEnv({
     HOME: session.dir,
-    ...process.env,
     ANTHROPIC_API_KEY: session.apiKey,
     NODE_ENV: 'production'
-  };
+  });
 
   // For OpenRouter: start proxy and point CLI at it
   if (session.provider === 'openrouter' || session.provider === 'deepseek') {
