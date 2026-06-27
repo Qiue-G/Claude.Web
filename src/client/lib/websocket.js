@@ -43,7 +43,7 @@ export function connectWebSocket(sid, token, autoReconnect = true, useSSE = fals
 
 function connectWebSocketProtocol(sid, token, autoReconnect) {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const url = `${protocol}//${location.host}/ws?sessionId=${sid}&token=${token}`;
+  const url = `${protocol}//${location.host}/ws`;
 
   ws = new WebSocket(url);
 
@@ -93,7 +93,7 @@ function connectWebSocketProtocol(sid, token, autoReconnect) {
 }
 
 function connectSSE(sid, token, autoReconnect) {
-  const url = `/sse?sessionId=${sid}&token=${token}`;
+  const url = `/sse`;
   eventSource = new EventSource(url);
 
   eventSource.onopen = () => {

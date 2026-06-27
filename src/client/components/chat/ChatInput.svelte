@@ -6,17 +6,16 @@
   import { formatFileSize } from '$lib/utils.js';
 
   const dispatch = createEventDispatcher();
-  /** @type {boolean} */
-  export let paramsOpen = false;
-  export let editContent = '';
 
-  let inputText = '';
-  let textarea;
-  let fileInput;
-  let attachedFiles = [];
-  let isDragging = false;
-  let dragCounter = 0;
-  let pastedImages = [];
+  let { paramsOpen = false, editContent = '' } = $props();
+
+  let inputText = $state('');
+  let textarea = $state(null);
+  let fileInput = $state(null);
+  let attachedFiles = $state([]);
+  let isDragging = $state(false);
+  let dragCounter = $state(0);
+  let pastedImages = $state([]);
 
   // 自动调整 textarea 高度
   function autoResize() {
@@ -25,22 +24,24 @@
     textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
   }
 
-  // inputText 变化时自动调整高度（只跑一次 tick）
-  let _prevInputText = '';
-  $: if (inputText !== _prevInputText) {
-    _prevInputText = inputText;
-    tick().then(autoResize);
-  }
+  // inputText 变化时自动调整高度
+  $effect(() => {
+    if (inputText) {
+      tick().then(autoResize);
+    }
+  });
 
   // 编辑回填：当 editContent 变化时填充到输入框
-  $: if (editContent && editContent !== inputText) {
-    inputText = editContent;
-    tick().then(() => {
-      autoResize();
-      textarea?.focus();
-      textarea?.setSelectionRange(inputText.length, inputText.length);
-    });
-  }
+  $effect(() => {
+    if (editContent && editContent !== inputText) {
+      inputText = editContent;
+      tick().then(() => {
+        autoResize();
+        textarea?.focus();
+        textarea?.setSelectionRange(inputText.length, inputText.length);
+      });
+    }
+  });
 
   function handleSend() {
     const text = inputText.trim();
@@ -190,10 +191,10 @@
 <div
   class="chat-input-bar"
   class:dragging={isDragging}
-  on:dragenter={handleDragEnter}
-  on:dragleave={handleDragLeave}
-  on:dragover={handleDragOver}
-  on:drop={handleDrop}
+  ondragenter={handleDragEnter}
+  ondragleave={handleDragLeave}
+  ondragover={handleDragOver}
+  ondrop={handleDrop}
   role="region"
   aria-label="message input"
 >
@@ -214,7 +215,7 @@
           <button
             type="button"
             class="remove-btn"
-            on:click={() => removeImage(index)}
+            onclick={() => removeImage(index)}
             aria-label="remove image"
           >
             <Icon name="close" size="sm" />
@@ -230,7 +231,7 @@
           <button
             type="button"
             class="remove-btn"
-            on:click={() => removeFile(index)}
+            onclick={() => removeFile(index)}
             aria-label="remove file"
           >
             <Icon name="close" size="sm" />
@@ -244,7 +245,7 @@
     <button
       type="button"
       class="attach-btn"
-      on:click={() => fileInput.click()}
+      onclick={() => fileInput.click()}
       disabled={$isWaiting}
       title={$t('chat.attachFile')}
       aria-label={$t('chat.attachFile')}
@@ -256,7 +257,7 @@
       type="button"
       class="params-btn"
       class:active={paramsOpen}
-      on:click={() => dispatch('toggleParams')}
+      onclick={() => dispatch('toggleParams')}
       disabled={$isWaiting}
       title={$t('model.parameters')}
       aria-label={$t('model.parameters')}
@@ -269,7 +270,7 @@
       id="chat-file-input"
       name="chat-file-input"
       bind:this={fileInput}
-      on:change={handleFileSelect}
+      onchange={handleFileSelect}
       multiple
       style="display: none;"
     />
@@ -277,20 +278,21 @@
     <textarea
       bind:this={textarea}
       bind:value={inputText}
-      on:keydown={handleKeydown}
-      on:paste={handlePaste}
-      on:input={autoResize}
+      onkeydown={handleKeydown}
+      onpaste={handlePaste}
+      oninput={autoResize}
       placeholder={$t('chat.placeholder')}
       rows="1"
       disabled={$isWaiting}
-      aria-label="message input"
+      id="chat-message-input"
+      aria-label="消息输入框"
     ></textarea>
 
     <button
       type="button"
       class="send-btn"
       class:loading={$isWaiting}
-      on:click={handleSend}
+      onclick={handleSend}
       disabled={$isWaiting || (!inputText.trim() && attachedFiles.length === 0 && pastedImages.length === 0)}
       aria-label={$isWaiting ? '发送中...' : $t('chat.send')}
       title={$isWaiting ? '发送中...' : $t('chat.send')}
