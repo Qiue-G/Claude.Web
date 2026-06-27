@@ -14,6 +14,7 @@
     toggleChatSidebar
   } from '$stores/ui.store.js';
   import { t } from '$lib/i18n.js';
+  import { setToolEnabled } from '$stores/tools.store.js';
 
   import Navbar from './Navbar.svelte';
   import Messages from './Messages.svelte';
@@ -100,6 +101,10 @@
       <ChatControls
         open={$controlsPanelOpen}
         on:close={() => controlsPanelOpen.set(false)}
+        on:change={(e) => {
+          const { id, enabled } = e.detail;
+          setToolEnabled(id, enabled);
+        }}
       />
       <ChatInput
         on:send={handleSend}

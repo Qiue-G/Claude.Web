@@ -39,6 +39,14 @@ const FREE_CODE_DIR = process.env.FREE_CODE_DIR || (process.platform === 'win32'
 const CONFIG_PATH = process.env.AGENT_CONFIG_PATH || join(FREE_CODE_DIR, 'agent-config.json');
 const VERSION = '7.3.1';
 
+// ===== 工具指令映射 =====
+const TOOL_INSTRUCTIONS = {
+  web_search: 'You have the ability to search the web for up-to-date information. When the user asks about current events, news, or any information that may require recent data, use web search to find accurate results.',
+  code_interpreter: 'You have the ability to write and execute Python code to solve problems, perform calculations, analyze data, and generate visualizations. When appropriate, write Python code and indicate that it should be executed.',
+  image_generation: 'You have the ability to generate images based on text descriptions. When the user asks you to create an image, describe what you would generate in detail.',
+  file_analysis: 'You have the ability to analyze uploaded files including documents, images, and data files. When the user uploads a file, examine its contents and provide insights.'
+};
+
 // ===== Load agent config =====
 let agentConfig = { defaults: { provider: 'openrouter', model: '' }, providers: {} };
 try {
@@ -799,9 +807,19 @@ wss.on('connection', (ws, req) => {
         const oldProc = sessionProcesses.get(sessionId);
         if (oldProc) oldProc.kill();
 
-        // message.data 可能是字符串或对象 { text, files, images }
-        const prompt = typeof message.data === 'string' ? message.data : message.data.text;
-        console.log('[INPUT] prompt length: ' + (prompt ? prompt.length : 0));
+        // message.data 可能是字符串或对象 { text, files, images, tools }
+        let prompt = typeof message.data === 'string' ? message.data : message.data.text;
+        const tools = (typeof message.data === 'object' ? message.data.tools : null) || [];
+
+        // 注入启用的工具指令
+        if (tools.length > 0) {
+          const toolInstructions = tools.map(t => TOOL_INSTRUCTIONS[t]).filter(Boolean).join('\n');
+          if (toolInstructions) {
+            prompt = `[System Instructions]\nYou have the following tools available:\n${toolInstructions}\n\n[User Message]\n${prompt}`;
+          }
+        }
+
+        console.log('[INPUT] prompt length: ' + (prompt ? prompt.length : 0) + ', tools: [' + tools.join(',') + ']');
 
         wsProcCount.set(sessionId, (wsProcCount.get(sessionId) || 0) + 1);
         const proc = await spawnCli(session, prompt);

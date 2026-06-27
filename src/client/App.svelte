@@ -17,6 +17,7 @@
   import { chatSidebarOpen, fileSidebarOpen, toggleChatSidebar, toggleFileSidebar, openCommandPalette, showToast } from '$stores/ui.store.js';
   import { toggleTheme } from '$stores/theme.store.js';
   import { connectWebSocket, sendInput } from '$lib/websocket.js';
+  import { enabledTools } from '$stores/tools.store.js';
   import { createSession as apiCreateSession } from '$apis/session.api.js';
   import { writeFile } from '$apis/files.api.js';
   import { sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
@@ -158,7 +159,7 @@
     }
     addMessage('user', text);
     isWaiting.set(true);
-    sendInput({ text, files, images });
+    sendInput({ text, files, images, tools: get(enabledTools) });
   }
 
   onMount(async () => {
