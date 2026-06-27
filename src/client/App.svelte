@@ -174,19 +174,40 @@
     }
   });
 
-  function handleChatSend(data) {
+  async function handleChatSend(data) {
     const text = typeof data === 'string' ? data : data.text;
     const files = typeof data === 'object' ? (data.files || []) : [];
     const images = typeof data === 'object' ? (data.images || []) : [];
-    if (!text || !text.trim()) return;
+    // 如果没有文字但有附件，允许发送
+    if ((!text || !text.trim()) && files.length === 0 && images.length === 0) return;
     if (!$isConnected) { addMessage('system', '请先连接模型'); return; }
     // 如果没有当前会话，自动创建新对话
     if (!get(currentSessionId)) {
       createSession('新对话');
     }
-    addMessage('user', text);
+    // 读取附件文件内容嵌入到消息中，让 AI 能看到
+    let fileContent = '';
+    if (files.length > 0) {
+      const parts = [];
+      for (const file of files) {
+        try {
+          const content = await file.text();
+          parts.push(`--- ${file.name} ---\n${content}`);
+        } catch (e) {
+          parts.push(`--- ${file.name} ---\n[无法读取文件内容: ${e.message}]`);
+        }
+      }
+      fileContent = parts.join('\n\n');
+    }
+    // 图片作为消息的一部分
+    let imageContent = '';
+    if (images.length > 0) {
+      imageContent = '\n\n[包含图片]';
+    }
+    const fullText = [text.trim(), fileContent].filter(Boolean).join('\n\n') + imageContent;
+    addMessage('user', fullText);
     isWaiting.set(true);
-    sendInput({ text, files, images, tools: get(enabledTools) });
+    sendInput({ text: fullText, files: [], images, tools: get(enabledTools) });
   }
 
   onMount(async () => {
