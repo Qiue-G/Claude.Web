@@ -285,6 +285,7 @@ function handleServerMessage(msg) {
       appendToLastAssistant(stripAnsi(msg.data || ''));
       break;
     case 'done':
+    case 'exit':
       // Flush any buffered content
       if (sseBuffer.trim()) {
         appendToLastAssistant(sseBuffer);

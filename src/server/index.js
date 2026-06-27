@@ -834,6 +834,7 @@ wss.on('connection', (ws, req) => {
           const proxy = sessionProxies.get(sessionId);
           if (proxy) { proxy.kill(); sessionProxies.delete(sessionId); }
           broadcastToSession(sessionId, { type: 'exit', code });
+          broadcastToSession(sessionId, { type: 'done' });
         });
 
         proc.on('error', (err) => {
