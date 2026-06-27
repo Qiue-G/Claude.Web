@@ -252,6 +252,12 @@ function handleServerMessage(msg) {
       isConnected.set(true);
       connectionStatus.set('connected');
       reconnectAttempts = 0;
+      // 如果之前卡在等待状态，重连后自动复位
+      if (get(isWaiting)) {
+        isWaiting.set(false);
+        isTyping.set(false);
+        addMessage('system', '连接已恢复');
+      }
       break;
     case 'output':
       appendToLastAssistant(stripAnsi(msg.data || ''));
