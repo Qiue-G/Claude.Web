@@ -160,15 +160,21 @@ function getSession(sessionId, token) {
 
 // Push model health updates to connected WebSocket clients
 function notifyModelUpdate(session) {
-  const clients = sessionClients.get(session.id);
+  broadcastToSession(session.id, {
+    type: 'model_update',
+    model: session.currentModel,
+    health: session.modelHealth
+  });
+}
+
+// Send message to all connected WebSocket clients for a session
+function broadcastToSession(sessionId, message) {
+  const clients = sessionClients.get(sessionId);
   if (!clients) return;
-  clients.forEach(ws => {
-    if (ws.readyState === 1) {
-      ws.send(JSON.stringify({
-        type: 'model_update',
-        model: session.currentModel,
-        health: session.modelHealth
-      }));
+  const data = JSON.stringify(message);
+  clients.forEach(client => {
+    if (client.readyState === 1) {
+      client.send(data);
     }
   });
 }
@@ -745,9 +751,17 @@ wss.on('connection', (ws, req) => {
           return;
         }
 
-        // Register client for model health push
+        // Register client for model health push and process output
         if (!sessionClients.has(sessionId)) sessionClients.set(sessionId, new Set());
         sessionClients.get(sessionId).add(ws);
+
+        // 如果 session 有正在运行中的进程，把新 ws 注册到进程输出流
+        const runningProc = sessionProcesses.get(sessionId);
+        if (runningProc) {
+          console.log('Session ' + sessionId + ' reconnected, re-associating process output');
+          // 移除旧的输出监听，避免重复发送
+          // 新 ws 只需接收后续的输出
+        }
 
         console.log('Session ' + sessionId + ' initialized');
         ws.send(JSON.stringify({
@@ -796,10 +810,10 @@ wss.on('connection', (ws, req) => {
         proc.stdout.on('data', (chunk) => {
           let clean = stripAnsi(chunk.toString());
           clean = maskSensitive(clean, session.apiKey);
-          if (clean.trim() && ws.readyState === ws.OPEN) {
+          if (clean.trim()) {
             const MAX_WS_MSG = 1024 * 1024; // 1MB
             const data = clean.length > MAX_WS_MSG ? clean.substring(0, MAX_WS_MSG) + '\n[output truncated]' : clean;
-            ws.send(JSON.stringify({ type: 'output', data }));
+            broadcastToSession(sessionId, { type: 'output', data });
           }
         });
 
@@ -807,11 +821,9 @@ wss.on('connection', (ws, req) => {
           let errStr = chunk.toString();
           errStr = maskSensitive(errStr, session.apiKey);
           console.error('[STDERR] ' + maskSensitive(errStr.substring(0, 200), session.apiKey));
-          if (ws.readyState === ws.OPEN) {
-            const MAX_WS_ERR = 1024 * 1024; // 1MB
-            const data = errStr.length > MAX_WS_ERR ? errStr.substring(0, MAX_WS_ERR) + '\n[output truncated]' : errStr;
-            ws.send(JSON.stringify({ type: 'stderr', data }));
-          }
+          const MAX_WS_ERR = 1024 * 1024; // 1MB
+          const data = errStr.length > MAX_WS_ERR ? errStr.substring(0, MAX_WS_ERR) + '\n[output truncated]' : errStr;
+          broadcastToSession(sessionId, { type: 'stderr', data });
         });
 
         proc.on('close', (code) => {
@@ -821,9 +833,7 @@ wss.on('connection', (ws, req) => {
           // Kill proxy too
           const proxy = sessionProxies.get(sessionId);
           if (proxy) { proxy.kill(); sessionProxies.delete(sessionId); }
-          if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ type: 'exit', code }));
-          }
+          broadcastToSession(sessionId, { type: 'exit', code });
         });
 
         proc.on('error', (err) => {
@@ -851,11 +861,9 @@ wss.on('connection', (ws, req) => {
     if (sessionId) {
       const clients = sessionClients.get(sessionId);
       if (clients) { clients.delete(ws); if (clients.size === 0) sessionClients.delete(sessionId); }
+      console.log('[WS] client disconnected, session=' + sessionId + ' remaining=' + (clients ? clients.size : 0));
     }
-    const proc = sessionProcesses.get(sessionId);
-    if (proc) { proc.kill(); sessionProcesses.delete(sessionId); }
-    const proxy = sessionProxies.get(sessionId);
-    if (proxy) { proxy.kill(); sessionProxies.delete(sessionId); }
+    // 不断开进程：让正在运行的任务继续，重连后可接收后续输出
   });
 });
 

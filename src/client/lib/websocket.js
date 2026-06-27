@@ -3,7 +3,7 @@
  * Supports both WebSocket and SSE for streaming responses
  */
 import { isConnected, connectionStatus, sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
-import { addMessage, appendToLastAssistant, isWaiting, isTyping } from '$stores/chat.store.js';
+import { messages, addMessage, appendToLastAssistant, isWaiting, isTyping } from '$stores/chat.store.js';
 import { stripAnsi } from '$lib/utils.js';
 import { get } from 'svelte/store';
 
@@ -68,7 +68,8 @@ function connectWebSocketProtocol(sid, token, autoReconnect) {
   ws.onclose = () => {
     isConnected.set(false);
     connectionStatus.set('disconnected');
-    isWaiting.set(false);
+    // 不重置 isWaiting：正在运行的任务不会因断连而终止（服务端已改为广播），
+    // 重连后输出可继续回到 UI。60s 超时由 App.svelte 的 $effect 处理。
     isTyping.set(false);
 
     // Auto reconnect using current session values from store
@@ -122,7 +123,7 @@ function connectSSE(sid, token, autoReconnect) {
   eventSource.onerror = () => {
     isConnected.set(false);
     connectionStatus.set('error');
-    isWaiting.set(false);
+    // 不重置 isWaiting：同 WebSocket 逻辑，保持等待状态
     isTyping.set(false);
 
     if (autoReconnectEnabled && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
@@ -273,6 +274,14 @@ function handleServerMessage(msg) {
       }
       break;
     case 'output':
+      // 确保有一条 assistant 消息可追加（断连重连后可能没有）
+      {
+        const msgs = get(messages);
+        const last = msgs[msgs.length - 1];
+        if (!last || last.role !== 'assistant') {
+          addMessage('assistant', '');
+        }
+      }
       appendToLastAssistant(stripAnsi(msg.data || ''));
       break;
     case 'done':
