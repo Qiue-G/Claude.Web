@@ -67,51 +67,146 @@ function classifyError(status, originalMessage) {
   };
 }
 
-// --- Translation functions ---
+// ===== Tool translation: Anthropic ↔ OpenAI =====
+// cli-dev 发送 Anthropic Messages API 格式（含 tools + tool_use/tool_result 内容块）
+// 本代理将其转换为 OpenAI Chat Completions 格式（tools + tool_calls/tool role），
+// 并将响应转换回 Anthropic 格式，使非 Anthropic 模型也能使用工具调用。
 
-function translateToOpenRouter(anthropicBody, model) {
+// 流式翻译中追踪 tool_calls 的模块级状态
+const toolCallBuffers = new Map();
+
+function resetToolBuffers() {
+  toolCallBuffers.clear();
+}
+
+// --- Request: Anthropic tools → OpenAI functions ---
+
+function translateTools(anthropicTools) {
+  if (!anthropicTools || !Array.isArray(anthropicTools) || anthropicTools.length === 0) return undefined;
+  return anthropicTools.map(t => ({
+    type: 'function',
+    function: {
+      name: t.name,
+      description: t.description || '',
+      parameters: t.input_schema || { type: 'object', properties: {} }
+    }
+  }));
+}
+
+function translateMessages(anthropicBody) {
   const msgs = anthropicBody.messages || [];
   const systemMsg = anthropicBody.system;
-  const messages = [];
+  const result = [];
 
+  // 系统消息
   if (systemMsg) {
     if (typeof systemMsg === 'string') {
-      messages.push({ role: 'system', content: systemMsg });
+      result.push({ role: 'system', content: systemMsg });
     } else if (Array.isArray(systemMsg)) {
-      messages.push({ role: 'system', content: systemMsg.map(s => s.text || '').join('\n') });
+      result.push({ role: 'system', content: systemMsg.map(s => s.text || '').join('\n') });
     }
   }
 
   for (const m of msgs) {
     if (typeof m.content === 'string') {
-      messages.push({ role: m.role, content: m.content });
-    } else if (Array.isArray(m.content)) {
-      const text = m.content.map(c => c.text || c.type || '').join('\n');
-      messages.push({ role: m.role, content: text });
+      result.push({ role: m.role, content: m.content });
+      continue;
+    }
+    if (!Array.isArray(m.content) || m.content.length === 0) {
+      result.push({ role: m.role, content: '' });
+      continue;
+    }
+
+    // —— assistant 消息：包含 tool_use 内容块 ——
+    if (m.role === 'assistant') {
+      const toolUses = m.content.filter(c => c.type === 'tool_use');
+      const textParts = m.content.filter(c => c.type === 'text').map(c => c.text).filter(Boolean);
+
+      if (toolUses.length > 0) {
+        result.push({
+          role: 'assistant',
+          content: textParts.length > 0 ? textParts.join('\n') : null,
+          tool_calls: toolUses.map((c, i) => ({
+            id: c.id || `call_${Date.now()}_${i}`,
+            type: 'function',
+            function: {
+              name: c.name,
+              arguments: JSON.stringify(c.input || {})
+            }
+          }))
+        });
+        continue;
+      }
+    }
+
+    // —— user 消息：包含 tool_result 内容块 ——
+    if (m.role === 'user') {
+      const toolResults = m.content.filter(c => c.type === 'tool_result');
+      if (toolResults.length > 0) {
+        for (const tr of toolResults) {
+          const content = Array.isArray(tr.content)
+            ? tr.content.map(c => (typeof c === 'string' ? c : c.text || '')).join('\n')
+            : (typeof tr.content === 'string' ? tr.content : '');
+          result.push({ role: 'tool', tool_call_id: tr.tool_use_id, content });
+        }
+        continue;
+      }
+    }
+
+    // —— 普通 user 消息：处理文本和图片 ——
+    const text = m.content.filter(c => c.type === 'text').map(c => c.text).filter(Boolean).join('\n');
+    const images = m.content.filter(c => c.type === 'image');
+
+    if (images.length > 0) {
+      const parts = [];
+      if (text) parts.push({ type: 'text', text });
+      for (const img of images) {
+        if (img.source?.type === 'base64') {
+          parts.push({
+            type: 'image_url',
+            image_url: { url: `data:${img.source.media_type || 'image/png'};base64,${img.source.data}` }
+          });
+        }
+      }
+      result.push({ role: m.role, content: parts });
+    } else {
+      result.push({ role: m.role, content: text || '' });
     }
   }
 
-  return {
-    model: model || MODEL,
-    messages,
-    max_tokens: anthropicBody.max_tokens || 4096,
-    temperature: anthropicBody.temperature ?? 0.7,
-    stream: anthropicBody.stream || false
-  };
+  return result;
 }
+
+// --- Response: OpenAI tool_calls → Anthropic tool_use (非流式) ---
 
 function translateToAnthropic(orResponse, model) {
   const choice = orResponse.choices?.[0];
-  const content = choice?.message?.content || '';
+  const message = choice?.message;
   const finishReason = choice?.finish_reason || 'stop';
+
+  const contentBlocks = [];
+
+  if (message?.content) {
+    contentBlocks.push({ type: 'text', text: message.content });
+  }
+
+  const toolCalls = message?.tool_calls;
+  if (toolCalls && toolCalls.length > 0) {
+    for (const tc of toolCalls) {
+      if (tc.type !== 'function') continue;
+      let input = {};
+      try { input = JSON.parse(tc.function.arguments); } catch (e) { input = { _raw: tc.function.arguments }; }
+      contentBlocks.push({ type: 'tool_use', id: tc.id, name: tc.function.name, input });
+    }
+  }
 
   return {
     id: orResponse.id || 'msg_' + Math.random().toString(36).slice(2),
     type: 'message',
     role: 'assistant',
-    content: [{ type: 'text', text: content }],
+    content: contentBlocks.length > 0 ? contentBlocks : [{ type: 'text', text: '' }],
     model: orResponse.model || model || MODEL,
-    stop_reason: finishReason === 'stop' ? 'end_turn' : 'max_tokens',
+    stop_reason: finishReason === 'tool_calls' ? 'tool_use' : (finishReason === 'stop' ? 'end_turn' : 'max_tokens'),
     stop_sequence: null,
     usage: orResponse.usage ? {
       input_tokens: orResponse.usage.prompt_tokens || 0,
@@ -120,15 +215,82 @@ function translateToAnthropic(orResponse, model) {
   };
 }
 
+// --- Response: OpenAI streaming tool_calls delta → Anthropic content_block events ---
+
 function translateStreamChunk(orChunk) {
   const delta = orChunk.choices?.[0]?.delta;
-  if (!delta || !delta.content) return null;
+  if (!delta) return null;
 
-  return {
-    type: 'content_block_delta',
-    delta: { type: 'text_delta', text: delta.content },
-    index: 0
+  // tool_calls delta → content_block_start (first chunk with id) / content_block_delta (arguments)
+  if (delta.tool_calls && delta.tool_calls.length > 0) {
+    const results = [];
+    for (const tc of delta.tool_calls) {
+      const idx = tc.index;
+      // 偏移索引：anthropic 的 index 0 是 text，tool_use 从 1 开始
+      const aiIdx = 1 + idx;
+
+      if (tc.id) {
+        // 首个 chunk：发送 content_block_start
+        toolCallBuffers.set(idx, {
+          id: tc.id,
+          name: tc.function?.name || '',
+          arguments: tc.function?.arguments || ''
+        });
+        results.push({
+          type: 'content_block_start',
+          index: aiIdx,
+          content_block: {
+            type: 'tool_use',
+            id: tc.id,
+            name: tc.function?.name || '',
+            input: {}
+          }
+        });
+      } else {
+        // 后续 chunk：累积 arguments 并发送 input_json_delta
+        const buf = toolCallBuffers.get(idx);
+        if (buf && tc.function?.arguments) {
+          buf.arguments += tc.function.arguments;
+          results.push({
+            type: 'content_block_delta',
+            index: aiIdx,
+            delta: { type: 'input_json_delta', partial_json: tc.function.arguments }
+          });
+        }
+      }
+    }
+    return results;
+  }
+
+  // text delta（原始行为）
+  if (delta.content) {
+    return {
+      type: 'content_block_delta',
+      delta: { type: 'text_delta', text: delta.content },
+      index: 0
+    };
+  }
+
+  return null;
+}
+
+// --- Request entry point ---
+
+function translateToOpenRouter(anthropicBody, model) {
+  const messages = translateMessages(anthropicBody);
+  const tools = translateTools(anthropicBody.tools);
+
+  const body = {
+    model: model || MODEL,
+    messages,
+    max_tokens: anthropicBody.max_tokens || 4096,
+    temperature: anthropicBody.temperature ?? 0.7,
+    stream: anthropicBody.stream || false
   };
+
+  if (tools) body.tools = tools;
+
+  return body;
 }
 
 // --- Core: fetch with retry & fallback ---
@@ -234,7 +396,9 @@ const server = createServer(async (req, res) => {
         const decoder = new TextDecoder();
         let buffer = '';
         let totalChars = 0;
+        let totalToolBlocks = 0;
         let usageInfo = null;
+        resetToolBuffers();
 
         while (true) {
           const { done, value } = await reader.read();
@@ -250,6 +414,12 @@ const server = createServer(async (req, res) => {
 
             const dataStr = trimmed.slice(6);
             if (dataStr === '[DONE]') {
+              // 发送 content_block_stop 给所有已追踪的 tool call
+              for (const [idx] of toolCallBuffers) {
+                totalToolBlocks++;
+                res.write(`data: ${JSON.stringify({type: 'content_block_stop', index: 1 + idx})}\n\n`);
+              }
+              resetToolBuffers();
               res.write(`event: message_stop\ndata: {}\n\n`);
               continue;
             }
@@ -262,8 +432,12 @@ const server = createServer(async (req, res) => {
               }
               const chunk = translateStreamChunk(orChunk);
               if (chunk) {
-                totalChars += (chunk.delta?.text?.length || 0);
-                res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+                // translateStreamChunk 对 tool_calls delta 返回数组，对 text delta 返回单对象
+                const chunks = Array.isArray(chunk) ? chunk : [chunk];
+                for (const c of chunks) {
+                  if (c.delta?.text) totalChars += c.delta.text.length;
+                  res.write(`data: ${JSON.stringify(c)}\n\n`);
+                }
               }
             } catch (e) {}
           }
@@ -273,7 +447,8 @@ const server = createServer(async (req, res) => {
         if (usageInfo) {
           console.error(`[proxy] usage: input=${usageInfo.prompt_tokens || 0} output=${usageInfo.completion_tokens || 0} model=${modelUsed}`);
         }
-        console.error(`[proxy] ← streamed ~${totalChars} chars via ${modelUsed}`);
+        const toolInfo = totalToolBlocks > 0 ? `, tool_blocks=${totalToolBlocks}` : '';
+        console.error(`[proxy] ← streamed ~${totalChars} chars${toolInfo} via ${modelUsed}`);
         res.end();
       } else {
         const orData = await orResp.json();
@@ -282,7 +457,9 @@ const server = createServer(async (req, res) => {
         if (orData.usage) {
           console.error(`[proxy] usage: input=${orData.usage.prompt_tokens || 0} output=${orData.usage.completion_tokens || 0} model=${modelUsed}`);
         }
-        console.error(`[proxy] ← ${anthropicResp.content[0]?.text?.length || 0} chars via ${modelUsed}`);
+        const toolCount = anthropicResp.content.filter(c => c.type === 'tool_use').length;
+        const toolInfo = toolCount > 0 ? `, tools=${toolCount}` : '';
+        console.error(`[proxy] ← ${anthropicResp.content[0]?.text?.length || 0} chars${toolInfo} via ${modelUsed}`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(anthropicResp));
       }
