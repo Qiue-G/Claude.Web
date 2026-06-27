@@ -20,7 +20,10 @@ RUN npm ci
 
 # Copy app files
 COPY src/ ./src/
-COPY public/ ./public/
+COPY vite.config.js svelte.config.js ./
+
+# Build frontend (creates public/ directory with production assets)
+RUN npm run build
 
 # Clone and build free-code
 RUN git clone https://github.com/paoloanzn/free-code.git /free-code \

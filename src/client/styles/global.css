@@ -1,0 +1,89 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg-base: #0a0a0c;
+  --bg-raised: #111114;
+  --bg-panel: #15151a;
+  --bg-code: #1a1a20;
+  --bg-toolbar: #0d0d10;
+  --bg-input: rgba(255,255,255,0.08);
+  --bg-hover: rgba(255,255,255,0.04);
+  --bg-accent-dim: rgba(217,119,6,0.1);
+  --bg-accent-dim2: rgba(217,119,6,0.15);
+  --border: rgba(255,255,255,0.06);
+  --border-hover: rgba(217,119,6,0.3);
+  --text-primary: #e5e5e5;
+  --text-secondary: #c4c4c4;
+  --text-muted: #8b8b9e;
+  --text-dim: #6b6b80;
+  --amber: #d97706;
+  --amber-bright: #f59e0b;
+  --green: #22c55e;
+  --red: #ef4444;
+  --blue: #3b82f6;
+  --cyan: #67e8f9;
+  --font-sans: 'PingFang SC','Hiragino Sans GB','Microsoft YaHei',ui-sans-serif,system-ui,-apple-system,sans-serif;
+  --font-mono: 'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+
+/* 浅色主题 */
+[data-theme="light"] {
+  --bg-base: #ffffff;
+  --bg-raised: #f8f9fa;
+  --bg-panel: #f0f1f3;
+  --bg-code: #e9ecef;
+  --bg-toolbar: #f8f9fa;
+  --bg-input: rgba(0,0,0,0.05);
+  --bg-hover: rgba(0,0,0,0.03);
+  --bg-accent-dim: rgba(217,119,6,0.1);
+  --bg-accent-dim2: rgba(217,119,6,0.15);
+  --border: rgba(0,0,0,0.1);
+  --border-hover: rgba(217,119,6,0.4);
+  --text-primary: #1a1a1a;
+  --text-secondary: #4a4a4a;
+  --text-muted: #6b6b6b;
+  --text-dim: #999999;
+  --amber: #d97706;
+  --amber-bright: #f59e0b;
+  --green: #16a34a;
+  --red: #dc2626;
+  --blue: #2563eb;
+  --cyan: #0891b2;
+}
+
+html, body {
+  height: 100%;
+  font-family: var(--font-sans);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  overflow: hidden;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+@keyframes msgFadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes logoFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes statusPulse {
+  0%, 100% { transform: scale(1); opacity: 0.4; }
+  50% { transform: scale(1.8); opacity: 0; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

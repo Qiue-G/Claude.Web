@@ -16,8 +16,18 @@ const __dirname = pathDirname(__filename);
 try {
   const envContent = await readFile('.env', 'utf-8');
   envContent.split('\n').forEach(line => {
-    const [key, ...valueParts] = line.split('=');
-    if (key && valueParts.length > 0) process.env[key.trim()] = valueParts.join('=').trim();
+    const trimmed = line.trim();
+    // 跳过空行和注释
+    if (!trimmed || trimmed.startsWith('#')) return;
+    const eqIndex = trimmed.indexOf('=');
+    if (eqIndex === -1) return;
+    let key = trimmed.slice(0, eqIndex).trim();
+    let value = trimmed.slice(eqIndex + 1).trim();
+    // 去除引号
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (key) process.env[key] = value;
   });
 } catch (e) {}
 
@@ -25,7 +35,7 @@ const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
-const FREE_CODE_DIR = process.env.FREE_CODE_DIR || '/free-code';
+const FREE_CODE_DIR = process.env.FREE_CODE_DIR || (process.platform === 'win32' ? join(__dirname, '../..') : '/free-code');
 const CONFIG_PATH = process.env.AGENT_CONFIG_PATH || join(FREE_CODE_DIR, 'agent-config.json');
 const VERSION = '7.3.1';
 
@@ -281,6 +291,8 @@ app.use(helmet({
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:"],
       connectSrc: ["'self'", "ws:", "wss:"],
+      frameAncestors: ["'self'", "*"],
+      upgradeInsecureRequests: null, // Disable to allow HTTP in development
     },
   },
   crossOriginEmbedderPolicy: false,
@@ -301,7 +313,7 @@ app.use(express.static(join(__dirname, '../../public'), {
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('X-XSS-Protection', '0');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
@@ -458,6 +470,79 @@ app.get('/api/config', (req, res) => {
     };
   }
   res.json({ version: VERSION, defaults: DEFAULTS, providers });
+});
+
+// ===== SSE Input API (for SSE mode) =====
+app.post('/api/input', async (req, res) => {
+  const { sessionId, token, data } = req.body;
+
+  if (!sessionId || !token || !data) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  const session = getSession(sessionId, token);
+  if (!session) {
+    return res.status(401).json({ error: 'Invalid session' });
+  }
+
+  // Rate limit
+  if (!checkRateLimit('input:' + sessionId, RATE_MAX_INPUT, RATE_WINDOW)) {
+    return res.status(429).json({ error: 'Too many requests. Please slow down.' });
+  }
+
+  // Max 2 concurrent processes per session
+  const currentCount = wsProcCount.get(sessionId) || 0;
+  if (currentCount >= 2) {
+    return res.status(429).json({ error: 'Already processing. Wait for completion.' });
+  }
+
+  const oldProc = sessionProcesses.get(sessionId);
+  if (oldProc) oldProc.kill();
+
+  console.log('[SSE INPUT] message length: ' + (data ? data.length : 0));
+
+  wsProcCount.set(sessionId, (wsProcCount.get(sessionId) || 0) + 1);
+
+  try {
+    const proc = await spawnCli(session, data);
+    sessionProcesses.set(sessionId, proc);
+
+    let output = '';
+
+    proc.stdout.on('data', (chunk) => {
+      let clean = stripAnsi(chunk.toString());
+      clean = maskSensitive(clean, session.apiKey);
+      if (clean.trim()) {
+        output += clean;
+      }
+    });
+
+    proc.stderr.on('data', (chunk) => {
+      let errStr = chunk.toString();
+      errStr = maskSensitive(errStr, session.apiKey);
+      console.error('[STDERR] ' + maskSensitive(errStr.substring(0, 200), session.apiKey));
+    });
+
+    proc.on('close', (code) => {
+      wsProcCount.set(sessionId, Math.max(0, (wsProcCount.get(sessionId) || 0) - 1));
+      sessionProcesses.delete(sessionId);
+      console.log('[SSE PROC] exited code=' + code);
+    });
+
+    // Wait for process to complete (with timeout)
+    await new Promise((resolve) => {
+      const timeout = setTimeout(resolve, 30000); // 30s timeout
+      proc.on('close', () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+    });
+
+    res.json({ success: true, output: output.substring(0, 1024 * 1024) }); // Max 1MB
+  } catch (error) {
+    console.error('[SSE INPUT] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 
@@ -685,10 +770,12 @@ wss.on('connection', (ws, req) => {
         const oldProc = sessionProcesses.get(sessionId);
         if (oldProc) oldProc.kill();
 
-        console.log('[INPUT] message length: ' + (message.data ? message.data.length : 0));
+        // message.data 可能是字符串或对象 { text, files, images }
+        const prompt = typeof message.data === 'string' ? message.data : message.data.text;
+        console.log('[INPUT] prompt length: ' + (prompt ? prompt.length : 0));
 
         wsProcCount.set(sessionId, (wsProcCount.get(sessionId) || 0) + 1);
-        const proc = await spawnCli(session, message.data);
+        const proc = await spawnCli(session, prompt);
         sessionProcesses.set(sessionId, proc);
 
         proc.stdout.on('data', (chunk) => {

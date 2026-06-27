@@ -5,17 +5,25 @@
   "type": "module",
   "scripts": {
     "dev": "node src/server/index.js",
-    "build": "npm run build:client && npm run build:server",
-    "build:client": "echo 'Static files served directly'",
-    "build:server": "echo 'Server is plain JS'",
-    "start": "NODE_ENV=production node src/server/index.js"
+    "dev:client": "vite",
+    "build": "vite build",
+    "start": "cross-env NODE_ENV=production node src/server/index.js",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "ws": "^8.16.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "express": "^4.18.2",
     "helmet": "^7.1.0",
-    "uuid": "^9.0.0"
+    "highlight.js": "^11.11.1",
+    "marked": "^18.0.5",
+    "uuid": "^9.0.0",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "cross-env": "^7.0.3",
+    "svelte": "^5.56.4",
+    "vite": "^8.1.0"
   }
 }
