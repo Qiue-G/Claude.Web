@@ -97,6 +97,8 @@
           {/each}
         </div>
         <textarea
+          id="code-editor"
+          name="code-editor"
           bind:this={textarea}
           class="editor-textarea"
           value={content}

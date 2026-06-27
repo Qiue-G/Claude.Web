@@ -55,6 +55,8 @@
       <div class="search-container">
         <Icon name="search" size="md" />
         <input
+          id="command-palette-input"
+          name="command-palette-input"
           bind:this={inputElement}
           bind:value={searchQuery}
           placeholder={$t('command.search')}

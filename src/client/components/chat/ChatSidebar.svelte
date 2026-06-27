@@ -120,7 +120,7 @@
 
   <div class="search-box">
     <Icon name="search" size="sm" />
-    <input type="text" class="search-input" placeholder={$t('common.search') + '...'} bind:value={searchQuery} />
+    <input type="text" class="search-input" id="sidebar-search" name="sidebar-search" placeholder={$t('common.search') + '...'} bind:value={searchQuery} />
     {#if searchQuery}
       <button class="search-clear" on:click={() => searchQuery = ''}><Icon name="close" size="sm" /></button>
     {/if}
@@ -148,6 +148,8 @@
           <input 
             type="text" 
             class="edit-input"
+            id="session-rename-input"
+            name="session-rename"
             bind:value={editTitle}
             on:blur={saveEdit}
             on:keydown={(e) => {
