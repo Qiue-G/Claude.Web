@@ -10,6 +10,9 @@
   let editTitle = '';
   let searchQuery = '';
 
+  // 强制 locale 变化时重渲染 (formatTime 函数体内使用了 $t，但 Svelte 编译器不会追踪函数体内的 store)
+  $: void($t);
+
   let filteredSessions = [];
   let searchResults = []; // { sessionId, matchTitle, matchContent }
 
@@ -102,9 +105,9 @@
     const days = Math.floor(diff / 86400000);
 
     if (diff < 60000) return $t('time.justNow');
-    if (diff < 3600000) return minutes === 1 ? $t('time.minuteAgo') : $t('time.minutesAgo').replace('{n}', minutes);
-    if (diff < 86400000) return hours === 1 ? $t('time.hourAgo') : $t('time.hoursAgo').replace('{n}', hours);
-    if (diff < 604800000) return days === 1 ? $t('time.dayAgo') : $t('time.daysAgo').replace('{n}', days);
+    if (diff < 3600000) return minutes === 1 ? $t('time.minuteAgo') : $t('time.minutesAgo', { n: minutes });
+    if (diff < 86400000) return hours === 1 ? $t('time.hourAgo') : $t('time.hoursAgo', { n: hours });
+    if (diff < 604800000) return days === 1 ? $t('time.dayAgo') : $t('time.daysAgo', { n: days });
 
     return date.toLocaleDateString();
   }
