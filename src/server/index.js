@@ -341,7 +341,8 @@ app.post('/api/session', async (req, res) => {
 
     const { apiKey, model, provider } = req.body;
     if (!apiKey || typeof apiKey !== 'string' || apiKey.length > 200) return res.status(400).json({ error: 'Invalid API key' });
-    if (model && (typeof model !== 'string' || model.length > 100)) return res.status(400).json({ error: 'Invalid model' });
+    // 校验 model 名称：只允许字母、数字、短横线、下划线、点、斜杠（用于模型名如 openai/gpt-4）
+    if (model && (typeof model !== 'string' || model.length > 100 || !/^[\w.\-\/]+$/.test(model))) return res.status(400).json({ error: 'Invalid model' });
     const VALID_PROVIDERS = ['openrouter', 'anthropic', 'openai', 'deepseek'];
     if (provider && !VALID_PROVIDERS.includes(provider)) return res.status(400).json({ error: 'Invalid provider' });
     if (sessions.size >= MAX_SESSIONS) return res.status(503).json({ error: 'Too many sessions' });
@@ -865,6 +866,7 @@ process.on('uncaughtException', (err) => {
 
 process.on('unhandledRejection', (reason) => {
   console.error('[FATAL] Unhandled rejection:', reason);
+  process.exit(1);
 });
 
 // ===== WebSocket heartbeat =====
