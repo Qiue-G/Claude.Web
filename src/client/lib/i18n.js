@@ -33,6 +33,8 @@ const translations = {
     'status.reconnecting': '重连中',
     'status.disconnected': '未连接',
     'status.error': '连接错误',
+    'status.reconnectingMsg': '连接断开，{seconds}秒后尝试重连 ({attempt}/{max})...',
+    'status.reconnected': '连接已恢复',
 
     // 聊天
     'chat.new': '新对话',
@@ -41,6 +43,7 @@ const translations = {
     'chat.placeholder': '输入消息... (Enter 发送, Shift+Enter 换行)',
     'chat.timeout': '响应超时，请重试',
     'chat.attachFile': '附加文件',
+    'chat.sendFailed': '发送失败：WebSocket 连接不可用，请刷新页面重试',
     'chat.confirmDeleteSession': '确定要删除会话',
     'chat.copy': '复制',
     'chat.copied': '已复制',
@@ -193,6 +196,8 @@ const translations = {
     'status.reconnecting': 'Reconnecting',
     'status.disconnected': 'Disconnected',
     'status.error': 'Connection Error',
+    'status.reconnectingMsg': 'Connection lost, retrying in {seconds}s ({attempt}/{max})...',
+    'status.reconnected': 'Connection restored',
 
     // Chat
     'chat.new': 'New Chat',
@@ -200,6 +205,7 @@ const translations = {
     'chat.sending': 'Sending...',
     'chat.placeholder': 'Type a message... (Enter to send, Shift+Enter for new line)',
     'chat.timeout': 'Response timed out, please try again',
+    'chat.sendFailed': 'Send failed: WebSocket connection unavailable, please refresh the page',
     'chat.attachFile': 'Attach File',
     'chat.confirmDeleteSession': 'Are you sure you want to delete session',
     'chat.copy': 'Copy',
@@ -361,7 +367,15 @@ export function getLocale() {
 }
 
 // 派生翻译函数 - 组件中使用 $t('key') 自动解包
-// 这样语言切换时所有使用 $t 的组件自动重新渲染
+// 支持插值：$t('key', { name: 'value' }) 替换 {name}
 export const t = derived(currentLocale, ($locale) => {
-  return (key) => translations[$locale]?.[key] || translations.zh[key] || key;
+  return (key, params) => {
+    let str = translations[$locale]?.[key] || translations.zh[key] || key;
+    if (params) {
+      for (const [k, v] of Object.entries(params)) {
+        str = str.replace(`{${k}}`, v);
+      }
+    }
+    return str;
+  };
 });

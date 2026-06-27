@@ -5,6 +5,7 @@
 import { isConnected, connectionStatus, sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
 import { messages, addMessage, appendToLastAssistant, isWaiting, isTyping } from '$stores/chat.store.js';
 import { stripAnsi } from '$lib/utils.js';
+import { t } from '$lib/i18n.js';
 import { get } from 'svelte/store';
 
 let ws = null;
@@ -81,7 +82,7 @@ function connectWebSocketProtocol(sid, token, autoReconnect) {
       const delay = RECONNECT_DELAYS[reconnectAttempts] || RECONNECT_DELAYS[RECONNECT_DELAYS.length - 1];
       reconnectAttempts++;
       connectionStatus.set('reconnecting');
-      addMessage('system', `连接断开，${delay / 1000}秒后尝试重连 (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+      addMessage('system', get(t)('status.reconnectingMsg', { seconds: delay / 1000, attempt: reconnectAttempts, max: MAX_RECONNECT_ATTEMPTS }));
       reconnectTimer = setTimeout(() => {
         connectWebSocket(currentSid, currentToken, autoReconnectEnabled, useSSEMode);
       }, delay);
@@ -231,7 +232,7 @@ export async function sendInput(data) {
   // 所有方式都失败，重置等待状态
   isWaiting.set(false);
   isTyping.set(false);
-  addMessage('system', '发送失败：WebSocket 连接不可用，请刷新页面重试');
+  addMessage('system', get(t)('chat.sendFailed'));
 }
 
 export function disconnectWebSocket() {
@@ -270,7 +271,7 @@ function handleServerMessage(msg) {
       if (get(isWaiting)) {
         isWaiting.set(false);
         isTyping.set(false);
-        addMessage('system', '连接已恢复');
+        addMessage('system', get(t)('status.reconnected'));
       }
       break;
     case 'output':
@@ -303,7 +304,7 @@ function handleServerMessage(msg) {
         sessionToken.set(null);
         autoReconnectEnabled = false;
       }
-      addMessage('system', msg.message || 'Unknown error');
+      addMessage('system', msg.message || get(t)('common.error'));
       break;
     case 'model_update':
       // Update model health
