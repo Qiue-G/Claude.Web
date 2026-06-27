@@ -162,7 +162,10 @@ export function sendInput(data) {
 
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(payload));
-  } else if (eventSource && eventSource.readyState === EventSource.OPEN) {
+    return;
+  }
+
+  if (eventSource && eventSource.readyState === EventSource.OPEN) {
     // For SSE, we need to send via HTTP POST to /api/input
     const csrf = get(csrfToken);
     const headers = { 'Content-Type': 'application/json' };
@@ -172,6 +175,30 @@ export function sendInput(data) {
       headers,
       body: JSON.stringify(payload.data)
     }).catch(err => console.error('Failed to send input:', err));
+    return;
+  }
+
+  // WebSocket 不可用，尝试恢复连接
+  const sid = get(sessionId);
+  const token = get(sessionToken);
+  if (sid && token) {
+    connectWebSocket(sid, token, autoReconnectEnabled, useSSEMode);
+    // 等待连接建立后重试
+    setTimeout(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(payload));
+      } else {
+        // 连接仍不可用，重置等待状态
+        isWaiting.set(false);
+        isTyping.set(false);
+        addMessage('system', '发送失败：WebSocket 连接不可用，请刷新页面重试');
+      }
+    }, 2000);
+  } else {
+    // 没有凭证，直接报错
+    isWaiting.set(false);
+    isTyping.set(false);
+    addMessage('system', '发送失败：未连接到模型，请先选择模型连接');
   }
 }
 

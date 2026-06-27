@@ -12,7 +12,7 @@
   import { isConnected } from '$stores/session.store.js';
   import { activeModelId, savedModels } from '$stores/models.store.js';
   import { fileContents } from '$stores/files.store.js';
-  import { messages, isWaiting, addMessage } from '$stores/chat.store.js';
+  import { messages, isWaiting, isTyping, addMessage } from '$stores/chat.store.js';
   import { initChatHistory, createSession, switchSession, currentSessionId } from '$stores/chatHistory.store.js';
   import { chatSidebarOpen, fileSidebarOpen, toggleChatSidebar, toggleFileSidebar, openCommandPalette, showToast } from '$stores/ui.store.js';
   import { toggleTheme } from '$stores/theme.store.js';
@@ -125,6 +125,25 @@
       showToast('连接失败: ' + (err.message || '未知错误'), 'error');
     }
   }
+
+  let sendTimeout = $state(null);
+
+  // 发送超时自动恢复
+  $effect(() => {
+    if ($isWaiting) {
+      sendTimeout = setTimeout(() => {
+        isWaiting.set(false);
+        isTyping.set(false);
+        addMessage('system', '响应超时，请重试');
+        sendTimeout = null;
+      }, 60000);
+    } else {
+      if (sendTimeout) {
+        clearTimeout(sendTimeout);
+        sendTimeout = null;
+      }
+    }
+  });
 
   function handleChatSend(data) {
     const text = typeof data === 'string' ? data : data.text;

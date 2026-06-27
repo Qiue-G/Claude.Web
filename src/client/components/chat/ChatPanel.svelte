@@ -1,5 +1,5 @@
 <script>
-  import { messages, addMessage, updateMessage } from '$stores/chat.store.js';
+  import { messages, updateMessage } from '$stores/chat.store.js';
   import {
     currentSession,
     createSession
@@ -42,7 +42,7 @@
     const images = typeof detail === 'object' ? (detail.images || []) : [];
 
     if (!text || !text.trim()) return;
-    addMessage('user', text.trim());
+    // addMessage 由 App.svelte 的 handleChatSend 统一处理，这里只触发父级事件
     onsend?.({ text: text.trim(), files, images });
   }
 
@@ -86,7 +86,6 @@
       on:retry={handleRetryMessage}
       on:rate={handleRateMessage}
       on:suggestion={(e) => {
-        addMessage('user', e.detail);
         onsend?.(e.detail);
       }}
       {suggestions}
