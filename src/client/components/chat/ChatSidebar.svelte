@@ -10,16 +10,25 @@
   let editTitle = '';
   let searchQuery = '';
 
-  let filteredSessions = [];
   let searchResults = []; // { sessionId, matchTitle, matchContent }
 
+  // 响应式格式化列表：当 sessions 或 locale 变化时重新生成
+  let formattedSessions = [];
+
   $: {
+    $t; // 建立对 locale store 的依赖
+    // 先给所有 session 加上 timeDisplay（每次 $t 变化生成新对象，强制模板刷新）
+    const decorated = $sessions.map(s => ({
+      ...s,
+      timeDisplay: formatTime(s.updatedAt)
+    }));
+
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       const results = [];
       const seen = new Set();
 
-      $sessions.forEach(session => {
+      decorated.forEach(session => {
         // 搜索标题
         if (session.title.toLowerCase().includes(q)) {
           if (!seen.has(session.id)) {
@@ -42,10 +51,10 @@
       });
 
       searchResults = results;
-      filteredSessions = $sessions.filter(s => seen.has(s.id));
+      formattedSessions = decorated.filter(s => seen.has(s.id));
     } else {
       searchResults = [];
-      filteredSessions = $sessions;
+      formattedSessions = decorated;
     }
   }
 
@@ -134,7 +143,7 @@
       </div>
     {/if}
 
-    {#each filteredSessions as session (session.id)}
+    {#each formattedSessions as session (session.id)}
       <div 
         class="session-item" 
         class:active={$currentSessionId === session.id}
@@ -161,7 +170,7 @@
         {:else}
           <div class="session-content">
             <div class="session-title">{session.title}</div>
-            <div class="session-time">{formatTime(session.updatedAt)}</div>
+            <div class="session-time">{session.timeDisplay}</div>
             {#if searchQuery.trim()}
               {@const result = searchResults.find(r => r.sessionId === session.id)}
               {#if result?.matchContent}
