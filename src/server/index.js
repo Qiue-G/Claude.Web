@@ -283,10 +283,15 @@ async function spawnCli(session, prompt) {
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
   : [
-      'https://claudefree-production.up.railway.app',
       'http://localhost:3000',
       'http://127.0.0.1:3000',
     ];
+
+// Railway 部署：自动添加部署域名
+const RAILWAY_URL = process.env.RAILWAY_PUBLIC_DOMAIN || process.env.RAILWAY_STATIC_URL;
+if (RAILWAY_URL) {
+  ALLOWED_ORIGINS.push('https://' + RAILWAY_URL);
+}
 
 const app = express();
 
