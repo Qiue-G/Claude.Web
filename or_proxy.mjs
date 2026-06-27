@@ -1,8 +1,8 @@
 /**
- * or_proxy.mjs v5
- * Local proxy: Anthropic Messages API → OpenAI Chat Completions
+ * or_proxy.mjs v6
+ * Local proxy: Anthropic Messages API ↔ OpenAI Chat Completions (with Tool Use support)
  * Supports OpenRouter, DeepSeek, and any OpenAI-compatible API.
- * v5: retry on transient failures + fallback model health degradation.
+ * v6: Anthropic tools ↔ OpenAI functions bidirectional translation + streaming support
  */
 import { createServer } from 'http';
 
@@ -500,9 +500,17 @@ server.listen(PORT, '127.0.0.1', () => {
   const addr = server.address();
   process.stdout.write(String(addr.port));
   const info = FALLBACK_MODEL
-    ? `[proxy] v5 listening on 127.0.0.1:${addr.port} target=${BASE_URL} model=${MODEL} fallback=${FALLBACK_MODEL}`
-    : `[proxy] v5 listening on 127.0.0.1:${addr.port} target=${BASE_URL} model=${MODEL} (no fallback)`;
+    ? `[proxy] v6 listening on 127.0.0.1:${addr.port} target=${BASE_URL} model=${MODEL} fallback=${FALLBACK_MODEL}`
+    : `[proxy] v6 listening on 127.0.0.1:${addr.port} target=${BASE_URL} model=${MODEL} (no fallback)`;
   console.error(info);
+});
+
+// --- Global error handlers: prevent silent crashes ---
+process.on('unhandledRejection', (reason) => {
+  console.error('[proxy] UNHANDLED REJECTION:', reason instanceof Error ? reason.stack : reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[proxy] UNCAUGHT EXCEPTION:', err.stack);
 });
 
 process.stdin.resume();
