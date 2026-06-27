@@ -11,13 +11,14 @@
 
   import { isConnected } from '$stores/session.store.js';
   import { activeModelId, savedModels } from '$stores/models.store.js';
-  import { fileContents, fileTree } from '$stores/files.store.js';
+  import { fileContents } from '$stores/files.store.js';
   import { messages, isWaiting, addMessage } from '$stores/chat.store.js';
   import { initChatHistory, createSession, switchSession, currentSessionId } from '$stores/chatHistory.store.js';
   import { chatSidebarOpen, fileSidebarOpen, toggleChatSidebar, toggleFileSidebar, openCommandPalette, showToast } from '$stores/ui.store.js';
   import { toggleTheme } from '$stores/theme.store.js';
   import { connectWebSocket, sendInput } from '$lib/websocket.js';
   import { createSession as apiCreateSession } from '$apis/session.api.js';
+  import { writeFile } from '$apis/files.api.js';
   import { sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
   import { get } from 'svelte/store';
 
@@ -92,8 +93,21 @@
     fileContents.update(files => ({ ...files, [path]: content }));
   }
 
-  function handleSaveFile(e) {
-    showToast('保存功能暂不可用', 'error');
+  async function handleSaveFile(e) {
+    const { path, content } = e.detail;
+    if (!path) {
+      showToast('没有文件可保存', 'error');
+      return;
+    }
+    try {
+      const sid = get(sessionId);
+      const tok = get(sessionToken);
+      const csrf = get(csrfToken);
+      await writeFile(sid, path, content, tok, csrf);
+      showToast('文件已保存: ' + path, 'success');
+    } catch (err) {
+      showToast('保存失败: ' + (err.message || '未知错误'), 'error');
+    }
   }
 
   async function handleConnectModel(e) {

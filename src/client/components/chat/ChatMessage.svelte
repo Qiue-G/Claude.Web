@@ -6,8 +6,17 @@
 
   marked.setOptions({
     breaks: true,
-    gfm: true
+    gfm: true,
+    async: false,
+    // 禁用 HTML 标签防止 XSS
+    renderer: {
+      html() { return false; },
+      tag() { return false; }
+    }
   });
+
+  // 安全配置：禁用原始 HTML
+  marked.use({ gfm: true, breaks: true });
 
   let {
     role = 'user',

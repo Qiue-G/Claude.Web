@@ -2,7 +2,7 @@
  * WebSocket Manager - handles real-time communication with server
  * Supports both WebSocket and SSE for streaming responses
  */
-import { isConnected, connectionStatus, sessionId, sessionToken } from '$stores/session.store.js';
+import { isConnected, connectionStatus, sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
 import { addMessage, appendToLastAssistant, isWaiting, isTyping } from '$stores/chat.store.js';
 import { stripAnsi } from '$lib/utils.js';
 import { get } from 'svelte/store';
@@ -164,9 +164,12 @@ export function sendInput(data) {
     ws.send(JSON.stringify(payload));
   } else if (eventSource && eventSource.readyState === EventSource.OPEN) {
     // For SSE, we need to send via HTTP POST to /api/input
+    const csrf = get(csrfToken);
+    const headers = { 'Content-Type': 'application/json' };
+    if (csrf) headers['X-CSRF-Token'] = csrf;
     fetch('/api/input', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(payload.data)
     }).catch(err => console.error('Failed to send input:', err));
   }
