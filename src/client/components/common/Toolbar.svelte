@@ -37,7 +37,7 @@
 <div class="toolbar">
   <div class="toolbar-left">
     <button class="toolbar-btn" on:click={handleToggleSidebar} title={$t('command.toggleSidebar')}>
-      <Icon name="menu" size="md" />
+      <Icon name="panelLeft" size="md" />
     </button>
 
     <div class="toolbar-divider"></div>

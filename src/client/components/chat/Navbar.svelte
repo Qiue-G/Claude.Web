@@ -34,7 +34,7 @@
         aria-label={sidebarOpen ? $t('command.closeChatSidebar') : $t('command.toggleChatSidebar')}
         title={$t('command.toggleChatSidebar')}
       >
-        <Icon name="history" size="md" />
+        <Icon name="panelLeft" size="md" />
       </button>
     {/if}
 
