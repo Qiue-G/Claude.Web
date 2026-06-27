@@ -42,7 +42,7 @@
     const files = typeof detail === 'object' ? (detail.files || []) : [];
     const images = typeof detail === 'object' ? (detail.images || []) : [];
 
-    if (!text || !text.trim()) return;
+    if ((!text || !text.trim()) && files.length === 0 && images.length === 0) return;
     // addMessage 由 App.svelte 的 handleChatSend 统一处理，这里只触发父级事件
     onsend?.({ text: text.trim(), files, images });
   }
