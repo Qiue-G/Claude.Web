@@ -154,7 +154,27 @@ function bufferSSEContent(text) {
   }
 }
 
-export function sendInput(data) {
+// 等待 WebSocket 就绪（轮询检测）
+function waitForWsOpen(timeoutMs = 5000) {
+  return new Promise((resolve, reject) => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      resolve();
+      return;
+    }
+    const interval = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        clearInterval(interval);
+        resolve();
+      }
+    }, 100);
+    setTimeout(() => {
+      clearInterval(interval);
+      reject(new Error('WebSocket not ready'));
+    }, timeoutMs);
+  });
+}
+
+export async function sendInput(data) {
   // 支持字符串（兼容旧代码）或对象 { text, params }
   const payload = typeof data === 'string'
     ? { type: 'input', data: { text: data } }
@@ -178,28 +198,26 @@ export function sendInput(data) {
     return;
   }
 
-  // WebSocket 不可用，尝试恢复连接
+  // WebSocket 不可用，尝试恢复连接并等待就绪
   const sid = get(sessionId);
   const token = get(sessionToken);
   if (sid && token) {
     connectWebSocket(sid, token, autoReconnectEnabled, useSSEMode);
-    // 等待连接建立后重试
-    setTimeout(() => {
+    try {
+      await waitForWsOpen(5000);
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(payload));
-      } else {
-        // 连接仍不可用，重置等待状态
-        isWaiting.set(false);
-        isTyping.set(false);
-        addMessage('system', '发送失败：WebSocket 连接不可用，请刷新页面重试');
+        return;
       }
-    }, 2000);
-  } else {
-    // 没有凭证，直接报错
-    isWaiting.set(false);
-    isTyping.set(false);
-    addMessage('system', '发送失败：未连接到模型，请先选择模型连接');
+    } catch (_) {
+      // 等待超时，继续到错误处理
+    }
   }
+
+  // 所有方式都失败，重置等待状态
+  isWaiting.set(false);
+  isTyping.set(false);
+  addMessage('system', '发送失败：WebSocket 连接不可用，请刷新页面重试');
 }
 
 export function disconnectWebSocket() {
