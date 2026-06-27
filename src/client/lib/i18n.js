@@ -37,6 +37,7 @@ const translations = {
     // 聊天
     'chat.new': '新对话',
     'chat.send': '发送',
+    'chat.sending': '发送中...',
     'chat.placeholder': '输入消息... (Enter 发送, Shift+Enter 换行)',
     'chat.attachFile': '附加文件',
     'chat.confirmDeleteSession': '确定要删除会话',
@@ -195,6 +196,7 @@ const translations = {
     // Chat
     'chat.new': 'New Chat',
     'chat.send': 'Send',
+    'chat.sending': 'Sending...',
     'chat.placeholder': 'Type a message... (Enter to send, Shift+Enter for new line)',
     'chat.attachFile': 'Attach File',
     'chat.confirmDeleteSession': 'Are you sure you want to delete session',

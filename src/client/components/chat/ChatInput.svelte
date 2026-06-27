@@ -295,8 +295,8 @@
       class:loading={$isWaiting}
       onclick={handleSend}
       disabled={$isWaiting || (!inputText.trim() && attachedFiles.length === 0 && pastedImages.length === 0)}
-      aria-label={$isWaiting ? '发送中...' : $t('chat.send')}
-      title={$isWaiting ? '发送中...' : $t('chat.send')}
+      aria-label={$isWaiting ? $t('chat.sending') : $t('chat.send')}
+      title={$isWaiting ? $t('chat.sending') : $t('chat.send')}
     >
       {#if $isWaiting}
         <span class="send-spinner"></span>
