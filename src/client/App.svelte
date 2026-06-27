@@ -118,7 +118,9 @@
   }
 
   async function handleSaveFile(e) {
-    const { path, content } = e.detail;
+    const detail = e.detail;
+    const path = typeof detail === 'string' ? detail : detail.path;
+    const content = typeof detail === 'object' ? detail.content : undefined;
     if (!path) {
       showToast('没有文件可保存', 'error');
       return;
@@ -127,7 +129,8 @@
       const sid = get(sessionId);
       const tok = get(sessionToken);
       const csrf = get(csrfToken);
-      await writeFile(sid, path, content, tok, csrf);
+      const saveContent = content !== undefined ? content : (get(fileContents)[path] || '');
+      await writeFile(sid, path, saveContent, tok, csrf);
       showToast('文件已保存: ' + path, 'success');
     } catch (err) {
       showToast('保存失败: ' + (err.message || '未知错误'), 'error');
