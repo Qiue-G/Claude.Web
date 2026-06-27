@@ -291,7 +291,7 @@ app.use(helmet({
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:"],
       connectSrc: ["'self'", "ws:", "wss:"],
-      frameAncestors: ["'self'", "*"],
+      frameAncestors: ["'self'"],
       upgradeInsecureRequests: null, // Disable to allow HTTP in development
     },
   },
@@ -707,7 +707,7 @@ const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024 });
 wss.on('connection', (ws, req) => {
   // Verify WebSocket origin
   const wsOrigin = req.headers.origin;
-  if (wsOrigin && !ALLOWED_ORIGINS.includes(wsOrigin)) {
+  if (!wsOrigin || !ALLOWED_ORIGINS.includes(wsOrigin)) {
     ws.send(JSON.stringify({ type: 'error', message: 'WebSocket origin not allowed' }));
     ws.close();
     return;
