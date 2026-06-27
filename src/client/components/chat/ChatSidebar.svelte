@@ -143,7 +143,7 @@
       </div>
     {/if}
 
-    {#each formattedSessions as session (session.id)}
+    {#each formattedSessions as session}
       <div 
         class="session-item" 
         class:active={$currentSessionId === session.id}
