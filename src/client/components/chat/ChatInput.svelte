@@ -196,7 +196,7 @@
   ondragover={handleDragOver}
   ondrop={handleDrop}
   role="region"
-  aria-label="message input"
+  aria-label={$t('chat.inputPlaceholder')}
 >
   {#if isDragging}
     <div class="drop-overlay" aria-hidden="true">
@@ -285,6 +285,7 @@
       rows="1"
       disabled={$isWaiting}
       id="chat-message-input"
+      name="chat-message-input"
       aria-label={$t('chat.inputPlaceholder')}
     ></textarea>
 

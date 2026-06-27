@@ -210,6 +210,9 @@ const translations = {
     'chat.suggestion4': 'View help',
     'chat.noMessages': 'No chat history',
     'chat.startHint': 'Click "New Chat" to start',
+    'chat.helpful': 'Helpful',
+    'chat.needsImprovement': 'Needs Improvement',
+    'chat.inputPlaceholder': 'Message input box',
 
     // Files
     'files.title': 'Files',
