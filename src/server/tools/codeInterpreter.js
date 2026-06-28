@@ -33,3 +33,16 @@ export function extractPythonBlocks(text) {
   }
   return blocks;
 }
+
+export function codeInterpreterResult(code, { stdout, stderr, exitCode }) {
+  const content = [];
+  if (stdout) content.push(`[输出]\n${stdout.trim()}`);
+  if (stderr) content.push(`[错误]\n${stderr.trim()}`);
+  const text = content.join('\n\n') || '无输出';
+  return {
+    tool: 'code_interpreter',
+    ok: exitCode === 0,
+    content: text,
+    metadata: { exitCode, codeLength: code.length, outputLength: text.length }
+  };
+}

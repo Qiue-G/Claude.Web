@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildPrompt } from '../src/server/runtime/promptBuilder.js';
 
-test('buildPrompt keeps stable sections and appends user message last', () => {
+test('buildPrompt keeps stable sections via toolResults', () => {
   const prompt = buildPrompt({
     toolInstructions: 'Tool A',
-    webSearchResults: 'Result A',
+    toolResults: [{ tool: 'web_search', ok: true, content: 'Result A' }],
     userMessage: 'Hello world'
   });
 
@@ -23,8 +23,8 @@ test('buildPrompt omits empty sections', () => {
 test('buildPrompt includes toolResults in stable order before user message', () => {
   const prompt = buildPrompt({
     toolInstructions: 'Tool instruction',
-    webSearchResults: 'Search result',
     toolResults: [
+      { tool: 'web_search', ok: true, content: 'Search result' },
       { tool: 'file_analysis', ok: true, content: 'File context' },
       { tool: 'code_interpreter', ok: true, content: 'Code output' }
     ],

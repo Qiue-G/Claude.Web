@@ -16,15 +16,11 @@ function appendToolResultSections(sections, toolResults = []) {
   }
 }
 
-export function buildPrompt({ toolInstructions = '', webSearchResults = '', toolResults = [], userMessage = '' } = {}) {
+export function buildPrompt({ toolInstructions = '', toolResults = [], userMessage = '' } = {}) {
   const sections = [];
 
   if (toolInstructions && toolInstructions.trim()) {
     sections.push(`[System Instructions]\nYou have the following tools available:\n${toolInstructions.trim()}`);
-  }
-
-  if (webSearchResults && webSearchResults.trim()) {
-    sections.push(`[Web Search Results]\n${webSearchResults.trim()}`);
   }
 
   appendToolResultSections(sections, toolResults);

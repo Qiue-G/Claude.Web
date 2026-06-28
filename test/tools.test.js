@@ -26,3 +26,20 @@ test('getToolDefinitions returns UI metadata and configuration state', () => {
   assert.equal(imageGeneration.configured, false);
   assert.equal(imageGeneration.unavailableReason, 'missing API key');
 });
+
+test('webSearch returns ToolResult format', async () => {
+  const { searchWeb } = await import('../src/server/tools/webSearch.js');
+  const mockFetch = async () => ({
+    json: async () => ({
+      AbstractText: 'JavaScript is a programming language',
+      AbstractURL: 'https://en.wikipedia.org/wiki/JavaScript',
+      RelatedTopics: []
+    })
+  });
+  const result = await searchWeb('JavaScript', mockFetch);
+  assert.equal(result.tool, 'web_search');
+  assert.equal(result.ok, true);
+  assert.match(result.content, /JavaScript/);
+  assert.ok(Array.isArray(result.sources));
+  assert.ok(result.metadata);
+});

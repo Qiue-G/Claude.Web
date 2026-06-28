@@ -739,14 +739,14 @@ wss.on('connection', (ws, req) => {
         const originalPrompt = typeof message.data === 'string' ? message.data : message.data.text;
         let prompt = originalPrompt;
         const tools = (typeof message.data === 'object' ? message.data.tools : null) || [];
-        let webSearchResults = '';
         const toolResults = [];
         let userMessageForPrompt = originalPrompt;
 
         if (tools.includes('web_search') && originalPrompt && originalPrompt.trim()) {
           broadcastToSession(sessionId, { type: 'output', data: '\n[正在搜索...]\n' });
-          webSearchResults = await searchWeb(originalPrompt);
-          console.log('[WEB_SEARCH] results length: ' + webSearchResults.length + ' chars');
+          const result = await searchWeb(originalPrompt);
+          if (result.content) toolResults.push(result);
+          console.log('[WEB_SEARCH] results length: ' + result.content.length + ' chars');
         }
 
         if (tools.includes('file_analysis') && originalPrompt && originalPrompt.trim()) {
@@ -759,7 +759,6 @@ wss.on('connection', (ws, req) => {
 
         prompt = buildPrompt({
           toolInstructions: getToolInstructions(tools),
-          webSearchResults,
           toolResults,
           userMessage: userMessageForPrompt
         });
