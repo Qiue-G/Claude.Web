@@ -2,11 +2,10 @@ import express from 'express';
 import { WebSocketServer } from 'ws';
 import cors from 'cors';
 import helmet from 'helmet';
-import { readFile, writeFile, mkdir } from 'fs/promises';
+import { readFile, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, resolve as pathResolve } from 'path';
 import { spawn } from 'child_process';
-import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import { dirname as pathDirname } from 'path';
 import { searchWeb } from './tools/webSearch.js';
@@ -16,6 +15,7 @@ import { analyzeFilesFromPromptContext, stripFileBlocksFromPrompt } from './tool
 import { buildPrompt } from './runtime/promptBuilder.js';
 import { createFileRouter } from './routes/fileRoutes.js';
 import { createWsHandler } from './routes/wsHandler.js';
+import { createSessionManager } from './sessionManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = pathDirname(__filename);
@@ -104,7 +104,9 @@ setInterval(() => {
   }
 }, 300000);
 
-const sessions = new Map();
+// ===== Session Manager (persisted to JSON) =====
+const { sessions, createSession, getSession, deleteSession, loadSessions } = createSessionManager(WORKSPACE_DIR);
+
 const sessionProcesses = new Map();
 const sessionProxies = new Map(); // proxy processes
 const wsProcCount = new Map();    // active process count per session
@@ -142,27 +144,6 @@ function buildSafeEnv(extraVars = {}) {
     if (process.env[key]) safeEnv[key] = process.env[key];
   }
   return { ...safeEnv, ...extraVars };
-}
-
-async function createSession(apiKey, model, provider) {
-  const sessionId = uuidv4();
-  const sessionToken = uuidv4();
-  const csrfToken = uuidv4(); // CSRF protection token
-  const sessionDir = join(WORKSPACE_DIR, sessionId);
-  await mkdir(WORKSPACE_DIR, { recursive: true });
-  await mkdir(sessionDir, { recursive: true });
-  const session = { id: sessionId, token: sessionToken, csrfToken, apiKey, model, provider, dir: sessionDir, createdAt: Date.now(), lastActivity: Date.now(), currentModel: model, modelHealth: 'connecting' };
-  sessions.set(sessionId, session);
-  return session;
-}
-
-function getSession(sessionId, token) {
-  const session = sessions.get(sessionId);
-  if (session) {
-    if (token && session.token !== token) return null;
-    session.lastActivity = Date.now();
-  }
-  return session;
 }
 
 // Push model health updates to connected WebSocket clients
@@ -364,7 +345,7 @@ app.post('/api/session', async (req, res) => {
     const VALID_PROVIDERS = ['openrouter', 'anthropic', 'openai', 'deepseek'];
     if (provider && !VALID_PROVIDERS.includes(provider)) return res.status(400).json({ error: 'Invalid provider' });
     if (sessions.size >= MAX_SESSIONS) return res.status(503).json({ error: 'Too many sessions' });
-    const session = await createSession(apiKey, model || DEFAULTS.model, provider || DEFAULTS.provider);
+    const session = await createSession(apiKey, model || DEFAULTS.model, provider || DEFAULTS.provider, MAX_SESSIONS);
     res.json({ sessionId: session.id, token: session.token, csrfToken: session.csrfToken });
   } catch (error) { res.status(500).json({ error: 'Failed to create session' }); }
 });
@@ -386,7 +367,7 @@ app.delete('/api/session/:id', async (req, res) => {
     if (oldProc) { oldProc.kill(); sessionProcesses.delete(req.params.id); }
     const oldProxy = sessionProxies.get(req.params.id);
     if (oldProxy) { oldProxy.kill(); sessionProxies.delete(req.params.id); }
-    sessions.delete(req.params.id);
+    await deleteSession(req.params.id);
   }
   res.json({ success: true });
 });
@@ -518,6 +499,9 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
 });
 
+// ===== Startup: load persisted sessions =====
+await loadSessions();
+
 const server = app.listen(
 PORT, HOST, () => {
   console.log('Free-code Web Server v' + VERSION + ' on ' + HOST + ':' + PORT);
@@ -559,18 +543,22 @@ setInterval(() => {
 
 // ===== Session timeout cleanup =====
 const SESSION_TIMEOUT = parseInt(process.env.SESSION_TIMEOUT || '3600000');
-setInterval(() => {
+setInterval(async () => {
   const now = Date.now();
+  const expiredIds = [];
   for (const [id, session] of sessions) {
     if (now - session.lastActivity > SESSION_TIMEOUT) {
+      expiredIds.push(id);
       const proc = sessionProcesses.get(id);
       if (proc) { try { proc.kill(); } catch (e) {} sessionProcesses.delete(id); }
       const proxy = sessionProxies.get(id);
       if (proxy) { try { proxy.kill(); } catch (e) {} sessionProxies.delete(id); }
-      sessions.delete(id);
       sessionClients.delete(id);
       wsProcCount.delete(id);
-      console.log('[SESSION] Expired:', id);
     }
+  }
+  if (expiredIds.length > 0) {
+    for (const id of expiredIds) await deleteSession(id);
+    console.log('[SESSION] Expired ' + expiredIds.length + ' sessions');
   }
 }, 60000);
