@@ -1,5 +1,5 @@
 <script>
-  import { messages, updateMessage } from '$stores/chat.store.js';
+  import { messages, updateMessage, deleteMessage, deleteMessagesAfter } from '$stores/chat.store.js';
   import {
     currentSession,
     createSession
@@ -26,8 +26,9 @@
   } = $props();
 
   let editContent = $state('');
+  let editingMessageId = $state(null);
 
-  // i18n 建议按钮
+  // 覆盖 suggestions（使用已引入的 $t）
   let suggestions = $derived([
     { text: $t('chat.suggestion1'), label: $t('chat.suggestion1'), icon: '⚛' },
     { text: $t('chat.suggestion2'), label: $t('chat.suggestion2'), icon: '📁' },
@@ -42,7 +43,13 @@
     const images = typeof detail === 'object' ? (detail.images || []) : [];
 
     if ((!text || !text.trim()) && files.length === 0 && images.length === 0) return;
-    // addMessage 由 App.svelte 的 handleChatSend 统一处理，这里只触发父级事件
+
+    // 如果是编辑模式，删除被编辑消息之后的所有消息
+    if (editingMessageId) {
+      deleteMessagesAfter(editingMessageId);
+      editingMessageId = null;
+    }
+
     onsend?.({ text: text.trim(), files, images });
   }
 
@@ -52,6 +59,7 @@
   function handleEditMessage(e) {
     const { id, content } = e.detail;
     editContent = content;
+    editingMessageId = id;
   }
 
   function handleRetryMessage(e) {
@@ -60,7 +68,12 @@
     const msgs = $currentSession.messages || [];
     if (id) {
       for (let i = msgs.findIndex(m => m.id === id) - 1; i >= 0; i--) {
-        if (msgs[i].role === 'user') { onsend?.(msgs[i].content); break; }
+        if (msgs[i].role === 'user') {
+          const userMsgId = msgs[i].id;
+          deleteMessagesAfter(userMsgId);
+          onsend?.(msgs[i].content);
+          break;
+        }
       }
     }
   }
@@ -68,6 +81,11 @@
   function handleRateMessage(e) {
     const { id, rating } = e.detail;
     updateMessage(id, { rating });
+  }
+
+  function handleDeleteMessage(e) {
+    const { id } = e.detail;
+    deleteMessage(id);
   }
 </script>
 
@@ -82,13 +100,12 @@
   <div class="chat-content">
     <Messages
       messages={$messages}
-      on:edit={handleEditMessage}
-      on:retry={handleRetryMessage}
-      on:rate={handleRateMessage}
-      on:suggestion={(e) => {
-        onsend?.(e.detail);
-      }}
       {suggestions}
+      onedit={handleEditMessage}
+      onretry={handleRetryMessage}
+      onrate={handleRateMessage}
+      ondelete={handleDeleteMessage}
+      onsuggestion={(text) => onsend?.(text)}
     />
 
     <div class="input-area">
@@ -106,7 +123,7 @@
         on:toggleParams={toggleParamsPanel}
         paramsOpen={$paramsPanelOpen}
         {editContent}
-        on:editSent={() => editContent = ''}
+        on:editSent={() => { editContent = ''; editingMessageId = null; }}
       />
     </div>
   </div>

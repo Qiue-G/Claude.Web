@@ -20,7 +20,8 @@
     files = null,
     onedit = null,
     onretry = null,
-    onrate = null
+    onrate = null,
+    ondelete = null
   } = $props();
 
   let copied = $state(false);
@@ -73,6 +74,10 @@
 
   function retryMessage() {
     onretry?.({ id: messageId });
+  }
+
+  function deleteMsg() {
+    ondelete?.({ id: messageId });
   }
 
   function rateMessage(direction) {
@@ -143,6 +148,11 @@
           title={$t('chat.needsImprovement')}
         >
           <Icon name="thumbsDown" size="sm" />
+        </button>
+      {/if}
+      {#if role !== 'system'}
+        <button class="action-btn delete-btn" onclick={deleteMsg} title={$t('common.delete')}>
+          <Icon name="trash" size="sm" />
         </button>
       {/if}
     </div>
@@ -393,6 +403,17 @@
   .rating-btn.active {
     background: var(--bg-accent-dim);
     color: var(--amber);
+    border-color: var(--border-hover);
+  }
+
+  .delete-btn {
+    margin-left: auto;
+    color: var(--text-dim);
+    border-color: transparent;
+  }
+
+  .delete-btn:hover {
+    color: var(--red, #ef4444);
     border-color: var(--border-hover);
   }
 </style>

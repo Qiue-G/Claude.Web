@@ -136,3 +136,23 @@ export function deleteMessage(messageId) {
     };
   }));
 }
+
+/**
+ * 删除指定消息之后的所有消息（用于编辑/重试）
+ */
+export function deleteMessagesAfter(messageId) {
+  const sessionId = get(currentSessionId);
+  if (!sessionId) return;
+
+  sessions.update(s => s.map(session => {
+    if (session.id !== sessionId) return session;
+    const msgs = session.messages || [];
+    const idx = msgs.findIndex(m => m.id === messageId);
+    if (idx === -1) return session;
+    return {
+      ...session,
+      messages: msgs.slice(0, idx + 1),
+      updatedAt: Date.now()
+    };
+  }));
+}

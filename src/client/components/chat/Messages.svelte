@@ -1,5 +1,4 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
   import ChatMessage from './ChatMessage.svelte';
   import Placeholder from './Placeholder.svelte';
   import { isWaiting } from '$stores/chat.store.js';
@@ -8,10 +7,13 @@
     messages = [],
     emptyTitle = '',
     emptySubtitle = '',
-    suggestions = []
+    suggestions = [],
+    onsuggestion = null,
+     onedit = null,
+     onretry = null,
+     onrate = null,
+     ondelete = null
   } = $props();
-
-  const dispatch = createEventDispatcher();
 
   let messagesContainer;
   let userScrolledUp = $state(false);
@@ -40,11 +42,11 @@
 
 <div bind:this={messagesContainer} class="messages-container" onscroll={handleScroll}>
   {#if messages.length === 0}
-    <Placeholder title={emptyTitle || 'Welcome'} subtitle={emptySubtitle || 'AI-powered coding assistant'} icon="⚙" {suggestions} on:suggestion={(e) => dispatch('suggestion', e.detail)} />
+    <Placeholder title={emptyTitle || 'Welcome'} subtitle={emptySubtitle || 'AI-powered coding assistant'} icon="⚙" {suggestions} on:suggestion={(e) => onsuggestion?.(e.detail)} />
   {:else}
     <div class="messages-list">
       {#each messages as msg, i (msg.id)}
-        <ChatMessage role={msg.role} content={msg.content} time={msg.time} messageId={msg.id} files={msg.files} streaming={i === messages.length - 1 && msg.role === 'assistant' && $isWaiting} rating={msg.rating} />
+        <ChatMessage role={msg.role} content={msg.content} time={msg.time} messageId={msg.id} files={msg.files} streaming={i === messages.length - 1 && msg.role === 'assistant' && $isWaiting} rating={msg.rating} {onedit} {onretry} {onrate} {ondelete} />
       {/each}
     </div>
   {/if}
