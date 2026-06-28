@@ -25,6 +25,7 @@ import { createSessionRouter } from './routes/sessionRoutes.js';
 import { createModelRouter } from './routes/modelRoutes.js';
 import { createHealthRouter } from './routes/healthRoutes.js';
 import { createConfigRouter } from './routes/configRoutes.js';
+import { createSearchRouter } from './routes/searchRoutes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = pathDirname(__filename);
@@ -376,6 +377,9 @@ app.use('/api/health', createHealthRouter({
 
 // ===== Config & Tools API ====
 app.use('/api', createConfigRouter({ getToolDefinitions, PROVIDERS, DEFAULTS, VERSION, mcpManager }));
+
+// ===== Search API ====
+app.use('/api/search', createSearchRouter({ db }));
 
 // ===== File API ====
 // All file CRUD operations are handled by routes/fileRoutes.js

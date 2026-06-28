@@ -3,58 +3,73 @@
   import Icon from '$components/common/Icon.svelte';
   import { createEventDispatcher } from 'svelte';
   import { t } from '$lib/i18n.js';
+  import { searchChats } from '$apis/search.api.js';
 
   const dispatch = createEventDispatcher();
 
   let editingId = null;
   let editTitle = '';
   let searchQuery = '';
+  let searchLoading = false;
 
   let searchResults = []; // { sessionId, matchTitle, matchContent }
 
   // 响应式格式化列表：当 sessions 或 locale 变化时重新生成
   let formattedSessions = [];
 
-  $: {
-    $t; // 建立对 locale store 的依赖
-    // 先给所有 session 加上 timeDisplay（每次 $t 变化生成新对象，强制模板刷新）
-    const decorated = $sessions.map(s => ({
-      ...s,
-      timeDisplay: formatTime(s.updatedAt)
-    }));
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      const results = [];
-      const seen = new Set();
-
-      decorated.forEach(session => {
-        // 搜索标题
-        if (session.title.toLowerCase().includes(q)) {
-          if (!seen.has(session.id)) {
-            results.push({ sessionId: session.id, matchTitle: session.title, matchContent: '' });
-            seen.add(session.id);
-          }
-        }
-        // 搜索消息内容
-        (session.messages || []).forEach(msg => {
-          if (msg.content && msg.content.toLowerCase().includes(q)) {
-            if (!seen.has(session.id)) {
-              const snippet = msg.content.length > 80
-                ? msg.content.substring(0, 80) + '...'
-                : msg.content;
-              results.push({ sessionId: session.id, matchTitle: session.title, matchContent: snippet });
-              seen.add(session.id);
-            }
-          }
-        });
-      });
-
-      searchResults = results;
-      formattedSessions = decorated.filter(s => seen.has(s.id));
-    } else {
+  // 搜索防抖
+  let searchTimer = null;
+  function handleSearchInput() {
+    if (searchTimer) clearTimeout(searchTimer);
+    if (!searchQuery.trim()) {
       searchResults = [];
-      formattedSessions = decorated;
+      formattedSessions = $sessions.map(s => ({ ...s, timeDisplay: formatTime(s.updatedAt) }));
+      return;
+    }
+    searchTimer = setTimeout(() => doSearch(), 300);
+  }
+
+  async function doSearch() {
+    const q = searchQuery.trim();
+    if (!q) return;
+    searchLoading = true;
+    try {
+      const data = await searchChats(q);
+      searchResults = data.results.map(r => ({
+        sessionId: r.sessionId,
+        matchTitle: r.title,
+        matchContent: r.snippet
+      }));
+      const seenIds = new Set(data.results.map(r => r.sessionId));
+      formattedSessions = $sessions
+        .filter(s => seenIds.has(s.id))
+        .map(s => ({ ...s, timeDisplay: formatTime(s.updatedAt) }));
+      // 未在本地找到的 session，从搜索结果创建占位
+      for (const r of data.results) {
+        if (!$sessions.find(s => s.id === r.sessionId)) {
+          formattedSessions.push({
+            id: r.sessionId,
+            title: r.title,
+            timeDisplay: formatTime(r.timestamp),
+            _fromSearch: true
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Search failed:', e);
+      searchResults = [];
+    } finally {
+      searchLoading = false;
+    }
+  }
+
+  $: {
+    $t;
+    if (!searchQuery.trim()) {
+      formattedSessions = $sessions.map(s => ({
+        ...s,
+        timeDisplay: formatTime(s.updatedAt)
+      }));
     }
   }
 
@@ -129,7 +144,7 @@
 
   <div class="search-box">
     <Icon name="search" size="sm" />
-    <input type="text" class="search-input" id="sidebar-search" name="sidebar-search" placeholder={$t('common.search') + '...'} bind:value={searchQuery} />
+    <input type="text" class="search-input" id="sidebar-search" name="sidebar-search" placeholder={$t('common.search') + '...'} bind:value={searchQuery} on:input={handleSearchInput} />
     {#if searchQuery}
       <button class="search-clear" on:click={() => searchQuery = ''}><Icon name="close" size="sm" /></button>
     {/if}
@@ -139,7 +154,11 @@
     {#if searchQuery.trim()}
       <div class="search-results-header">
         <span>搜索 "<strong>{searchQuery}</strong>"</span>
-        <span class="search-count">找到 {searchResults.length} 个</span>
+        {#if searchLoading}
+          <span class="search-count">搜索中...</span>
+        {:else}
+          <span class="search-count">找到 {searchResults.length} 个</span>
+        {/if}
       </div>
     {/if}
 
