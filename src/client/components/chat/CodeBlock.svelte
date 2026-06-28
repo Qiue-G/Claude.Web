@@ -103,7 +103,7 @@
 
 <div class="code-block">
   <div class="code-block-hdr">
-    <span class="code-lang">{displayLang}{#if lineCount > 0}<span class="code-lines">{lineCount} 行</span>{/if}</span>
+    <span class="code-lang">{displayLang}{#if lineCount > 0}<span class="code-lines">{$t('code.lines', { n: lineCount })}</span>{/if}</span>
     <button class="copy-btn" class:copied on:click={copyCode}>
       <Icon name="copy" size="sm" />
       {copied ? $t('common.copied') : $t('common.copy')}

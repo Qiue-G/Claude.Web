@@ -202,7 +202,7 @@
     <div class="drop-overlay" aria-hidden="true">
       <div class="drop-message">
         <Icon name="upload" size="lg" />
-        <span>松开以上传文件</span>
+        <span>{$t('files.dropToUpload')}</span>
       </div>
     </div>
   {/if}

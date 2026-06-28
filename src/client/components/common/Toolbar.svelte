@@ -62,7 +62,7 @@
 
     {#if $tokenStats.input > 0}
       <div class="token-stats" title="Token 使用情况">
-        <span class="token-label">Tokens</span>
+        <span class="token-label">{$t('toolbar.tokens')}</span>
         <div class="token-bar">
           <div class="token-fill" style="width: {Math.min(tokenPct, 100)}%"></div>
         </div>

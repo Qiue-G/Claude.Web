@@ -72,7 +72,7 @@
       tabindex="-1"
     >
       <header class="controls-header">
-        <h2 id="controls-title" class="controls-title">Tools & Skills</h2>
+        <h2 id="controls-title" class="controls-title">{$t('controls.title')}</h2>
         <button
           type="button"
           class="close-btn"
@@ -86,11 +86,11 @@
 
       <div class="controls-body">
         <p class="controls-hint">
-          启用/禁用工具，模型将在对话中使用启用的工具。
+          {$t('controls.hint')}
         </p>
 
         {#if loadError}
-          <p class="controls-warning">工具状态加载失败，已使用本地默认配置。</p>
+          <p class="controls-warning">{$t('controls.warning')}</p>
         {/if}
 
         <ul class="tool-list">
@@ -112,7 +112,7 @@
                   <span class="tool-label">
                     {tool.label}
                     {#if !tool.configured}
-                      <span class="tool-badge">未配置</span>
+                      <span class="tool-badge">{$t('controls.unconfigured')}</span>
                     {/if}
                   </span>
                   <span class="tool-desc">

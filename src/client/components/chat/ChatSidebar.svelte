@@ -153,11 +153,11 @@
   <div class="session-list">
     {#if searchQuery.trim()}
       <div class="search-results-header">
-        <span>搜索 "<strong>{searchQuery}</strong>"</span>
+        <span>{$t('search.header')} "<strong>{searchQuery}</strong>"</span>
         {#if searchLoading}
-          <span class="search-count">搜索中...</span>
+          <span class="search-count">{$t('search.searching')}</span>
         {:else}
-          <span class="search-count">找到 {searchResults.length} 个</span>
+          <span class="search-count">{$t('search.found', { n: searchResults.length })}</span>
         {/if}
       </div>
     {/if}

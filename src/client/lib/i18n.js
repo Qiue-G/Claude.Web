@@ -165,6 +165,32 @@ const translations = {
     // 确认
     'confirm.deleteSession': '确定要删除',
     'confirm.deleteModel': '确定要删除模型',
+
+    // 工具控制
+    'controls.title': 'Tools & Skills',
+    'controls.hint': '启用/禁用工具，模型将在对话中使用启用的工具。',
+    'controls.warning': '工具状态加载失败，已使用本地默认配置。',
+    'controls.unconfigured': '未配置',
+
+    // 工具审批
+    'approval.title': '工具调用审批',
+    'approval.subtitle': 'AI 请求调用以下工具，请选择允许执行的工具：',
+    'approval.rejectAll': '全部拒绝',
+    'approval.allow': '允许选中的',
+
+    // 搜索
+    'search.header': '搜索',
+    'search.searching': '搜索中...',
+    'search.found': '找到 {n} 个',
+
+    // 代码
+    'code.lines': '{n} 行',
+
+    // 文件上传
+    'files.dropToUpload': '松开以上传文件',
+
+    // 工具栏
+    'toolbar.tokens': 'Tokens',
   },
 
   en: {
@@ -328,6 +354,32 @@ const translations = {
     // Confirm
     'confirm.deleteSession': 'Are you sure you want to delete',
     'confirm.deleteModel': 'Are you sure you want to delete the model',
+
+    // Tool Controls
+    'controls.title': 'Tools & Skills',
+    'controls.hint': 'Enable or disable tools. Enabled tools will be available to the model.',
+    'controls.warning': 'Failed to load tool states, using local defaults.',
+    'controls.unconfigured': 'Not configured',
+
+    // Tool Approval
+    'approval.title': 'Tool Approval',
+    'approval.subtitle': 'AI requests to use the following tools. Select which to allow:',
+    'approval.rejectAll': 'Reject All',
+    'approval.allow': 'Allow Selected',
+
+    // Search
+    'search.header': 'Search',
+    'search.searching': 'Searching...',
+    'search.found': '{n} found',
+
+    // Code
+    'code.lines': '{n} lines',
+
+    // File upload
+    'files.dropToUpload': 'Release to upload files',
+
+    // Toolbar
+    'toolbar.tokens': 'Tokens',
   }
 };
 
