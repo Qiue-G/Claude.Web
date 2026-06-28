@@ -44,7 +44,7 @@
   {:else}
     <div class="messages-list">
       {#each messages as msg, i (msg.id)}
-        <ChatMessage role={msg.role} content={msg.content} time={msg.time} messageId={msg.id} streaming={i === messages.length - 1 && msg.role === 'assistant' && $isWaiting} rating={msg.rating} />
+        <ChatMessage role={msg.role} content={msg.content} time={msg.time} messageId={msg.id} files={msg.files} streaming={i === messages.length - 1 && msg.role === 'assistant' && $isWaiting} rating={msg.rating} />
       {/each}
     </div>
   {/if}

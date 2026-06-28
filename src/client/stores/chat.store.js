@@ -31,12 +31,13 @@ export const tokenStats = writable({
 /**
  * 添加一条消息到当前会话
  */
-export function addMessage(role, content, meta) {
+export function addMessage(role, content, meta, files) {
   const msg = {
     id: Date.now() + Math.random(),
     role,
     content,
     meta: meta || null,
+    files: files || null,
     time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
   };
 

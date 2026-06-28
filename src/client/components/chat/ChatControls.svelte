@@ -36,7 +36,7 @@
       label: 'File Analysis',
       description: '分析上传的文件内容',
       icon: 'file',
-      enabled: true
+      enabled: false
     }
   ];
 

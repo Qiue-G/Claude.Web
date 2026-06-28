@@ -185,27 +185,37 @@
     if (!get(currentSessionId)) {
       createSession('新对话');
     }
-    // 读取附件文件内容嵌入到消息中，让 AI 能看到
-    let fileContent = '';
+
+    // 读取附件文件内容嵌入到消息文本中（给 AI 看）
+    let fileContentForAI = '';
+    const fileMeta = []; // 用于 UI 展示的文件元数据
     if (files.length > 0) {
       const parts = [];
       for (const file of files) {
         try {
           const content = await file.text();
           parts.push(`--- ${file.name} ---\n${content}`);
+          fileMeta.push({ name: file.name, size: file.size });
         } catch (e) {
           parts.push(`--- ${file.name} ---\n[无法读取文件内容: ${e.message}]`);
+          fileMeta.push({ name: file.name, size: 0 });
         }
       }
-      fileContent = parts.join('\n\n');
+      fileContentForAI = parts.join('\n\n');
     }
     // 图片作为消息的一部分
     let imageContent = '';
     if (images.length > 0) {
       imageContent = '\n\n[包含图片]';
     }
-    const fullText = [text.trim(), fileContent].filter(Boolean).join('\n\n') + imageContent;
-    addMessage('user', fullText);
+
+    // 给 AI 发送的内容包含文件内容
+    const fullText = [text.trim(), fileContentForAI].filter(Boolean).join('\n\n') + imageContent;
+
+    // UI 显示只包含用户输入的文字 + 文件名（文件内容和图片不展示在消息渲染中）
+    const displayText = text.trim() + (fileMeta.length > 0 ? '\n[已附加文件]' : '') + imageContent;
+
+    addMessage('user', displayText, null, fileMeta.length > 0 ? fileMeta : null);
     isWaiting.set(true);
     sendInput({ text: fullText, files: [], images, tools: get(enabledTools) });
   }

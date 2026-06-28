@@ -47,6 +47,69 @@ const TOOL_INSTRUCTIONS = {
   file_analysis: 'You have the ability to analyze uploaded files including documents, images, and data files. When the user uploads a file, examine its contents and provide insights.'
 };
 
+// ===== Web Search (DuckDuckGo 免费 API，无需 API Key) =====
+async function searchWeb(query) {
+  const maxResults = 5;
+  try {
+    // DuckDuckGo Instant Answer API
+    const apiRes = await fetch(
+      `https://api.duckduckgo.com/?q=${encodeURIComponent(query.substring(0, 200))}&format=json&no_html=1&skip_disambig=1`,
+      { headers: { 'User-Agent': 'FreeCode/1.0' }, signal: AbortSignal.timeout(8000) }
+    );
+    const data = await apiRes.json();
+
+    const parts = [];
+    if (data.AbstractText) parts.push(`摘要: ${data.AbstractText}${data.AbstractURL ? '\n来源: ' + data.AbstractURL : ''}`);
+    if (data.Answer) parts.push(`答案: ${data.Answer}`);
+
+    if (data.RelatedTopics && Array.isArray(data.RelatedTopics)) {
+      const results = data.RelatedTopics
+        .filter(t => t.Text && t.FirstURL)
+        .slice(0, maxResults);
+      if (results.length > 0) {
+        parts.push('搜索结果:');
+        results.forEach((r, i) => parts.push(`${i+1}. ${r.Text} — ${r.FirstURL}`));
+      }
+    }
+
+    return parts.length > 0 ? parts.join('\n') : `未找到 "${query}" 的相关结果`;
+  } catch (e) {
+    console.error('[SEARCH] Error:', e.message);
+    return `[搜索失败: ${e.message}]`;
+  }
+}
+
+// ===== Python 代码执行 =====
+function executePython(code) {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => { proc.kill(); resolve({ stdout: '', stderr: '[超时] 执行超过 15 秒', exitCode: -1 }); }, 15000);
+    const proc = spawn('python3', ['-c', code], { timeout: 15000 });
+    let stdout = '', stderr = '';
+    proc.stdout.on('data', d => stdout += d.toString());
+    proc.stderr.on('data', d => stderr += d.toString());
+    proc.on('close', (code) => {
+      clearTimeout(timeout);
+      resolve({ stdout, stderr, exitCode: code });
+    });
+    proc.on('error', (e) => {
+      clearTimeout(timeout);
+      resolve({ stdout: '', stderr: '无法启动 Python: ' + e.message, exitCode: -1 });
+    });
+  });
+}
+
+// ===== 从 AI 输出中提取 Python 代码块 =====
+function extractPythonBlocks(text) {
+  const blocks = [];
+  const regex = /```(?:python|py)\n?([\s\S]*?)```/g;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const code = match[1].trim();
+    if (code) blocks.push(code);
+  }
+  return blocks;
+}
+
 // ===== Load agent config =====
 let agentConfig = { defaults: { provider: 'openrouter', model: '' }, providers: {} };
 try {
@@ -737,11 +800,19 @@ wss.on('connection', (ws, req) => {
         let prompt = typeof message.data === 'string' ? message.data : message.data.text;
         const tools = (typeof message.data === 'object' ? message.data.tools : null) || [];
 
+        // ===== Web Search 预处理：启用搜索时自动获取搜索结果注入 prompt =====
+        if (tools.includes('web_search') && prompt && prompt.trim()) {
+          broadcastToSession(sessionId, { type: 'output', data: '\n[正在搜索...]\n' });
+          const searchResults = await searchWeb(prompt);
+          console.log('[WEB_SEARCH] results length: ' + searchResults.length + ' chars');
+          prompt = `[Web Search Results]\n${searchResults}\n\n[User Message]\n${prompt}`;
+        }
+
         // 注入启用的工具指令
         if (tools.length > 0) {
           const toolInstructions = tools.map(t => TOOL_INSTRUCTIONS[t]).filter(Boolean).join('\n');
           if (toolInstructions) {
-            prompt = `[System Instructions]\nYou have the following tools available:\n${toolInstructions}\n\n[User Message]\n${prompt}`;
+            prompt = `[System Instructions]\nYou have the following tools available:\n${toolInstructions}\n\n${prompt}`;
           }
         }
 
@@ -751,11 +822,16 @@ wss.on('connection', (ws, req) => {
         const proc = await spawnCli(session, prompt);
         sessionProcesses.set(sessionId, proc);
 
+        // ===== 代码解释器：缓冲完整输出，关闭时检测 Python 代码块 =====
+        let codeInterpreterBuffer = '';
+        const hasCodeInterpreter = tools.includes('code_interpreter');
+
         proc.stdout.on('data', (chunk) => {
           let clean = stripAnsi(chunk.toString());
           clean = maskSensitive(clean, session.apiKey);
           if (clean.trim()) {
-            const MAX_WS_MSG = 1024 * 1024; // 1MB
+            if (hasCodeInterpreter) codeInterpreterBuffer += clean;
+            const MAX_WS_MSG = 1024 * 1024;
             const data = clean.length > MAX_WS_MSG ? clean.substring(0, MAX_WS_MSG) + '\n[output truncated]' : clean;
             broadcastToSession(sessionId, { type: 'output', data });
           }
@@ -764,19 +840,37 @@ wss.on('connection', (ws, req) => {
         proc.stderr.on('data', (chunk) => {
           let errStr = chunk.toString();
           errStr = maskSensitive(errStr, session.apiKey);
+          if (hasCodeInterpreter) codeInterpreterBuffer += errStr;
           console.error('[STDERR] ' + maskSensitive(errStr.substring(0, 200), session.apiKey));
-          const MAX_WS_ERR = 1024 * 1024; // 1MB
+          const MAX_WS_ERR = 1024 * 1024;
           const data = errStr.length > MAX_WS_ERR ? errStr.substring(0, MAX_WS_ERR) + '\n[output truncated]' : errStr;
           broadcastToSession(sessionId, { type: 'stderr', data });
         });
 
-        proc.on('close', (code) => {
+        proc.on('close', async (code) => {
           console.log('[DONE] exit code ' + code);
           sessionProcesses.delete(sessionId);
           wsProcCount.set(sessionId, Math.max(0, (wsProcCount.get(sessionId) || 0) - 1));
           // Kill proxy too
           const proxy = sessionProxies.get(sessionId);
           if (proxy) { proxy.kill(); sessionProxies.delete(sessionId); }
+
+          // ===== 代码解释器：执行 Python 代码块 =====
+          if (hasCodeInterpreter && codeInterpreterBuffer.trim()) {
+            const blocks = extractPythonBlocks(codeInterpreterBuffer);
+            if (blocks.length > 0) {
+              for (let i = 0; i < blocks.length; i++) {
+                broadcastToSession(sessionId, { type: 'output', data: `\n[执行 Python 代码块 ${i + 1}/${blocks.length}...]\n` });
+                const result = await executePython(blocks[i]);
+                let output = `\n[代码块 ${i + 1} 执行完毕]`;
+                if (result.stdout) output += `\n输出:\n${result.stdout}`;
+                if (result.stderr) output += `\n错误:\n${result.stderr}`;
+                if (result.exitCode !== 0) output += `\n退出码: ${result.exitCode}`;
+                broadcastToSession(sessionId, { type: 'output', data: output + '\n' });
+              }
+            }
+          }
+
           broadcastToSession(sessionId, { type: 'exit', code });
           broadcastToSession(sessionId, { type: 'done' });
         });

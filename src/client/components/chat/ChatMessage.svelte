@@ -1,7 +1,7 @@
 <script>
   import CodeBlock from './CodeBlock.svelte';
   import Icon from '$components/common/Icon.svelte';
-  import { escapeHtml } from '$lib/utils.js';
+  import { escapeHtml, formatFileSize } from '$lib/utils.js';
   import { t } from '$lib/i18n.js';
   import { marked } from 'marked';
 
@@ -17,6 +17,7 @@
     streaming = false,
     messageId = null,
     rating = null,
+    files = null,
     onedit = null,
     onretry = null,
     onrate = null
@@ -87,6 +88,19 @@
     {/if}
   </div>
   <div class="chat-msg-body">
+    {#if files && files.length > 0}
+      <div class="file-attachments">
+        {#each files as file}
+          <div class="file-attachment">
+            <Icon name="paperclip" size="sm" />
+            <span class="file-name">{file.name}</span>
+            {#if file.size}
+              <span class="file-size">{formatFileSize(file.size)}</span>
+            {/if}
+          </div>
+        {/each}
+      </div>
+    {/if}
     {#each parsedParts as part}
       {#if part.type === 'code'}
         <CodeBlock code={part.content} language={part.language} />
@@ -166,6 +180,37 @@
     font-size: 14px;
     line-height: 1.7;
     color: var(--text-secondary);
+  }
+
+  .file-attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .file-attachment {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+  }
+
+  .file-attachment .file-name {
+    color: var(--text-primary);
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-attachment .file-size {
+    color: var(--text-dim);
+    font-size: 11px;
   }
 
   .markdown-content {

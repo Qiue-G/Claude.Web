@@ -756,6 +756,37 @@ html, body {
     color: var(--text-secondary);
   }
 
+  .file-attachments.svelte-1f2c7o2 {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .file-attachment.svelte-1f2c7o2 {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+  }
+
+  .file-attachment.svelte-1f2c7o2 .file-name:where(.svelte-1f2c7o2) {
+    color: var(--text-primary);
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-attachment.svelte-1f2c7o2 .file-size:where(.svelte-1f2c7o2) {
+    color: var(--text-dim);
+    font-size: 11px;
+  }
+
   .markdown-content.svelte-1f2c7o2 {
     word-break: break-word;
   }
