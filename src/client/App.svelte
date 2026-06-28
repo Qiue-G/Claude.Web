@@ -184,17 +184,29 @@
   }
 
   let sendTimeout = $state(null);
+  let isApprovalActive = $state(false); // 跟踪审批弹窗状态
 
   // 发送超时自动恢复（工具审批等待时不超时）
   $effect(() => {
-    if ($isWaiting && !pendingApproval) {
-      sendTimeout = setTimeout(() => {
-        isWaiting.set(false);
-        isTyping.set(false);
-        addMessage('system', get(t)('chat.timeout'));
+    if (isApprovalActive) {
+      // 审批期间：不启动任何超时
+      if (sendTimeout) {
+        clearTimeout(sendTimeout);
         sendTimeout = null;
-      }, 60000);
+      }
+    } else if ($isWaiting) {
+      // 非审批期间的等待：启动超时
+      if (!sendTimeout) {
+        const timeoutMs = 90000; // 审批后的等待给 90s
+        sendTimeout = setTimeout(() => {
+          isWaiting.set(false);
+          isTyping.set(false);
+          addMessage('system', get(t)('chat.timeout'));
+          sendTimeout = null;
+        }, timeoutMs);
+      }
     } else {
+      // 非等待状态：清除超时
       if (sendTimeout) {
         clearTimeout(sendTimeout);
         sendTimeout = null;
@@ -202,17 +214,9 @@
     }
   });
 
-  // 审批结束后重置超时（让 AI 继续回复）
+  // 监听审批弹窗状态
   $effect(() => {
-    if (pendingApproval === null && sendTimeout === null && $isWaiting) {
-      // 审批刚完成，isWaiting 仍为 true，重新启动超时
-      sendTimeout = setTimeout(() => {
-        isWaiting.set(false);
-        isTyping.set(false);
-        addMessage('system', get(t)('chat.timeout'));
-        sendTimeout = null;
-      }, 90000); // 审批后给 90s（搜索结果可能较慢）
-    }
+    isApprovalActive = pendingApproval !== null;
   });
 
   async function handleChatSend(data) {

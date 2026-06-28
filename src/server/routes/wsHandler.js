@@ -161,13 +161,15 @@ export function createWsHandler(deps) {
 
           // ===== 工具审批流程 =====
           let approvedTools = tools; // 默认全部批准（无审批流程时保持原行为）
+          let approvalWasTriggered = false;
           if (tools.length > 0) {
+            approvalWasTriggered = true;
             const approvalId = sessionId + '_' + Date.now();
             const approvalPromise = new Promise((resolve) => {
               const timeout = setTimeout(() => {
                 pendingApprovals.delete(approvalId);
                 resolve([]); // 超时自动拒绝全部
-              }, 30000);
+              }, 120000); // 2 分钟超时（给用户充分审批时间）
 
               pendingApprovals.set(approvalId, {
                 resolve: (approved) => {
@@ -227,6 +229,9 @@ export function createWsHandler(deps) {
                 }
               }
             }
+          }
+          // 无论是否批准工具，都发送完成信号关闭审批弹窗
+          if (approvalWasTriggered) {
             broadcastToSession(sessionId, { type: 'tool_approval_complete' });
           }
 
