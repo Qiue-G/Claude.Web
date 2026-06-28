@@ -36,6 +36,9 @@ const TOOL_DEFINITIONS = [
 
 const TOOL_BY_ID = new Map(TOOL_DEFINITIONS.map(tool => [tool.id, tool]));
 
+/**
+ * Get tool instructions for enabled built-in tools.
+ */
 export function getToolInstructions(enabledTools = []) {
   const enabled = new Set(enabledTools);
   return TOOL_DEFINITIONS
@@ -44,11 +47,44 @@ export function getToolInstructions(enabledTools = []) {
     .join('\n');
 }
 
+/**
+ * Check if a tool ID is a built-in tool.
+ */
+export function isBuiltinTool(toolId) {
+  return TOOL_BY_ID.has(toolId);
+}
+
+/**
+ * Check if a tool ID is an MCP tool (prefixed with "mcp_").
+ */
+export function isMcpTool(toolId) {
+  return toolId.startsWith('mcp_');
+}
+
+/**
+ * Parse an MCP tool ID into { serverName, toolName }.
+ * Format: mcp_{serverName}_{toolName}
+ */
+export function parseMcpToolId(toolId) {
+  // mcp_{serverName}_{toolName}
+  const parts = toolId.split('_');
+  if (parts.length < 3 || parts[0] !== 'mcp') return null;
+  const serverName = parts[1];
+  const toolName = parts.slice(2).join('_');
+  return { serverName, toolName };
+}
+
+/**
+ * Check if a built-in tool is configured.
+ */
 export function isToolConfigured(toolId, env = process.env) {
   const tool = TOOL_BY_ID.get(toolId);
   return tool ? tool.configured(env) : false;
 }
 
+/**
+ * Get built-in tool definitions.
+ */
 export function getToolDefinitions(env = process.env) {
   return TOOL_DEFINITIONS.map(tool => {
     const configured = tool.configured(env);

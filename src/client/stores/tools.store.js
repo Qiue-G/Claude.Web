@@ -1,6 +1,6 @@
 import { writable, derived } from 'svelte/store';
 
-// 默认工具状态
+// 默认工具状态（仅内置工具）
 const defaultTools = {
   web_search: false,
   code_interpreter: false,
@@ -26,10 +26,16 @@ export const enabledTools = derived(toolStates, ($states) =>
 export function setAvailableTools(tools) {
   availableTools.set(tools);
   const configured = new Set(tools.filter(tool => tool.configured).map(tool => tool.id));
+
   toolStates.update(states => {
     const next = { ...states };
+    // 关闭已不存在的工具
     for (const id of Object.keys(next)) {
       if (!configured.has(id)) next[id] = false;
+    }
+    // 为新工具添加默认关闭状态
+    for (const id of configured) {
+      if (next[id] === undefined) next[id] = false;
     }
     return next;
   });

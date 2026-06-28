@@ -18,6 +18,7 @@ import { createWsHandler } from './routes/wsHandler.js';
 import { createSessionManager } from './sessionManager.js';
 import { createMessageStore } from './messageStore.js';
 import { initDb } from './db.js';
+import { createMcpManager } from './mcp/index.js';
 import { createRateLimiter } from './lib/rateLimiter.js';
 import { createModelStats } from './lib/modelStats.js';
 import { createSessionRouter } from './routes/sessionRoutes.js';
@@ -94,6 +95,29 @@ const { sessions, createSession, getSession, deleteSession, loadSessions } = cre
 
 // ===== Message Store (persisted to SQLite) =====
 const messageStore = createMessageStore({ db, saveDb });
+
+// ===== MCP Manager =====
+const mcpConfigs = [];
+if (agentConfig.mcpServers && Array.isArray(agentConfig.mcpServers)) {
+  mcpConfigs.push(...agentConfig.mcpServers);
+}
+// Also support MCP_SERVERS env var as JSON override
+try {
+  if (process.env.MCP_SERVERS) {
+    const envServers = JSON.parse(process.env.MCP_SERVERS);
+    if (Array.isArray(envServers)) mcpConfigs.push(...envServers);
+  }
+} catch (e) {
+  console.warn('[MCP] failed to parse MCP_SERVERS env:', e.message);
+}
+const mcpManager = createMcpManager();
+if (mcpConfigs.length > 0) {
+  mcpManager.connectServers(mcpConfigs).then(() => {
+    console.log('[MCP] connected ' + mcpManager.getServerNames().length + ' servers');
+  });
+} else {
+  console.log('[MCP] no MCP servers configured');
+}
 
 const sessionProcesses = new Map();
 const sessionProxies = new Map(); // proxy processes
@@ -351,7 +375,7 @@ app.use('/api/health', createHealthRouter({
 }));
 
 // ===== Config & Tools API ====
-app.use('/api', createConfigRouter({ getToolDefinitions, PROVIDERS, DEFAULTS, VERSION }));
+app.use('/api', createConfigRouter({ getToolDefinitions, PROVIDERS, DEFAULTS, VERSION, mcpManager }));
 
 // ===== File API ====
 // All file CRUD operations are handled by routes/fileRoutes.js
@@ -391,7 +415,7 @@ wss.on('connection', createWsHandler({
   getSession, sessions, sessionProcesses, sessionProxies, sessionClients, wsProcCount,
   broadcastToSession, spawnCli, maskSensitive, stripAnsi,
   checkRateLimit, ALLOWED_ORIGINS, RATE_WINDOW, RATE_MAX_INPUT,
-  messageStore
+  messageStore, mcpManager
 }));
 
 process.on('SIGTERM', () => {

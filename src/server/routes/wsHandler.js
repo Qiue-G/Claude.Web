@@ -2,7 +2,7 @@ import { extractPythonBlocks, executePython } from '../tools/codeInterpreter.js'
 import { searchWeb } from '../tools/webSearch.js';
 import { analyzeFilesFromPromptContext, stripFileBlocksFromPrompt } from '../tools/fileAnalysis.js';
 import { buildPrompt } from '../runtime/promptBuilder.js';
-import { getToolInstructions } from '../tools/registry.js';
+import { getToolInstructions, isBuiltinTool, isMcpTool, parseMcpToolId } from '../tools/registry.js';
 
 // 等待用户审批的工具请求（用 approvalId 索引）
 const pendingApprovals = new Map();
@@ -31,7 +31,7 @@ export function createWsHandler(deps) {
       getSession, sessions, sessionProcesses, sessionProxies, sessionClients, wsProcCount,
       broadcastToSession, spawnCli, maskSensitive, stripAnsi,
       checkRateLimit, ALLOWED_ORIGINS, RATE_WINDOW, RATE_MAX_INPUT,
-      messageStore
+      messageStore, mcpManager
     } = deps;
 
     // Verify WebSocket origin
@@ -209,12 +209,40 @@ export function createWsHandler(deps) {
                   userMessageForPrompt = stripFileBlocksFromPrompt(originalPrompt);
                 }
               }
+
+              // MCP tool execution
+              if (isMcpTool(toolId) && mcpManager) {
+                const parsed = parseMcpToolId(toolId);
+                if (parsed) {
+                  broadcastToSession(sessionId, { type: 'output', data: `\n[执行 MCP 工具: ${parsed.serverName}/${parsed.toolName}...]\n` });
+                  const result = await mcpManager.callTool(parsed.serverName, parsed.toolName, { query: originalPrompt });
+                  if (result.content) {
+                    toolResults.push({
+                      type: 'tool_result',
+                      tool: toolId,
+                      content: result.content,
+                      isError: result.isError
+                    });
+                  }
+                }
+              }
             }
             broadcastToSession(sessionId, { type: 'tool_approval_complete' });
           }
 
+          // Build prompt with MCP tool instructions too
+          let toolInstructions = getToolInstructions(approvedTools || []);
+          if (mcpManager && mcpManager.isConnected()) {
+            const mcpTools = await mcpManager.listTools();
+            for (const mcpTool of mcpTools) {
+              if (approvedTools.includes(mcpTool.id)) {
+                toolInstructions += '\n' + mcpTool.instruction;
+              }
+            }
+          }
+
           prompt = buildPrompt({
-            toolInstructions: getToolInstructions(approvedTools || []),
+            toolInstructions,
             toolResults,
             userMessage: userMessageForPrompt,
             history: messageStore ? (await messageStore.loadMessages(sessionId)).slice(0, -1) : []
