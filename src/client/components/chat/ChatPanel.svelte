@@ -57,13 +57,13 @@
   function handleSettings() { openControlsPanel(); }
 
   function handleEditMessage(e) {
-    const { id, content } = e.detail;
+    const { id, content } = e; // 注意：prop 回调直接传值，不是事件对象
     editContent = content;
     editingMessageId = id;
   }
 
   function handleRetryMessage(e) {
-    const { id } = e.detail;
+    const { id } = e; // 注意：prop 回调直接传值，不是事件对象
     if (!$currentSession) return;
     const msgs = $currentSession.messages || [];
     if (id) {
@@ -79,12 +79,12 @@
   }
 
   function handleRateMessage(e) {
-    const { id, rating } = e.detail;
+    const { id, rating } = e; // 注意：prop 回调直接传值，不是事件对象
     updateMessage(id, { rating });
   }
 
   function handleDeleteMessage(e) {
-    const { id } = e.detail;
+    const { id } = e; // 注意：prop 回调直接传值，不是事件对象
     deleteMessage(id);
   }
 </script>
