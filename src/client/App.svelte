@@ -23,6 +23,7 @@
   import { sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
   import { get } from 'svelte/store';
   import { t } from '$lib/i18n.js';
+  import { readFilesForAI } from '$lib/attachments.js';
 
   let showConfigModal = $state(false);
 
@@ -186,22 +187,13 @@
       createSession('新对话');
     }
 
-    // 读取附件文件内容嵌入到消息文本中（给 AI 看）
+    // 读取附件文件内容嵌入到消息文本中（给 AI 看），UI 只展示文件卡片元数据
     let fileContentForAI = '';
-    const fileMeta = []; // 用于 UI 展示的文件元数据
+    let fileMeta = [];
     if (files.length > 0) {
-      const parts = [];
-      for (const file of files) {
-        try {
-          const content = await file.text();
-          parts.push(`--- ${file.name} ---\n${content}`);
-          fileMeta.push({ name: file.name, size: file.size });
-        } catch (e) {
-          parts.push(`--- ${file.name} ---\n[无法读取文件内容: ${e.message}]`);
-          fileMeta.push({ name: file.name, size: 0 });
-        }
-      }
-      fileContentForAI = parts.join('\n\n');
+      const result = await readFilesForAI(files);
+      fileContentForAI = result.content;
+      fileMeta = result.fileMeta;
     }
     // 图片作为消息的一部分
     let imageContent = '';

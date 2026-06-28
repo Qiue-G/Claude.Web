@@ -8,6 +8,8 @@ const defaultTools = {
   file_analysis: false
 };
 
+export const availableTools = writable([]);
+
 // 工具状态存储
 export const toolStates = writable({ ...defaultTools });
 
@@ -17,6 +19,21 @@ export const enabledTools = derived(toolStates, ($states) =>
     .filter(([, enabled]) => enabled)
     .map(([id]) => id)
 );
+
+/**
+ * 更新后端可用工具列表，并自动关闭未配置工具
+ */
+export function setAvailableTools(tools) {
+  availableTools.set(tools);
+  const configured = new Set(tools.filter(tool => tool.configured).map(tool => tool.id));
+  toolStates.update(states => {
+    const next = { ...states };
+    for (const id of Object.keys(next)) {
+      if (!configured.has(id)) next[id] = false;
+    }
+    return next;
+  });
+}
 
 /**
  * 更新单个工具状态

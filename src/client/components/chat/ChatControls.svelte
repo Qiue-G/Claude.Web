@@ -1,60 +1,45 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, onMount } from 'svelte';
   import Icon from '$components/common/Icon.svelte';
   import { t } from '$lib/i18n.js';
+  import { fetchTools } from '$apis/tools.api.js';
+  import { availableTools, setAvailableTools, setToolEnabled, toolStates as toolStatesStore } from '$stores/tools.store.js';
 
   /** @type {boolean} */
   export let open = false;
 
   const dispatch = createEventDispatcher();
 
-  // 可用工具列表
-  const tools = [
-    {
-      id: 'web_search',
-      label: 'Web Search',
-      description: '联网搜索获取最新信息',
-      icon: 'globe',
-      enabled: false
-    },
-    {
-      id: 'code_interpreter',
-      label: 'Code Interpreter',
-      description: '执行 Python 代码并返回结果',
-      icon: 'inbox',
-      enabled: false
-    },
-    {
-      id: 'image_generation',
-      label: 'Image Generation',
-      description: '根据文本描述生成图片',
-      icon: 'eye',
-      enabled: false
-    },
-    {
-      id: 'file_analysis',
-      label: 'File Analysis',
-      description: '分析上传的文件内容',
-      icon: 'file',
-      enabled: false
-    }
+  const fallbackTools = [
+    { id: 'web_search', label: 'Web Search', description: '联网搜索获取最新信息', icon: 'globe', configured: true },
+    { id: 'code_interpreter', label: 'Code Interpreter', description: '执行 Python 代码并返回结果', icon: 'inbox', configured: true },
+    { id: 'image_generation', label: 'Image Generation', description: '根据文本描述生成图片', icon: 'eye', configured: false, unavailableReason: 'missing API key' },
+    { id: 'file_analysis', label: 'File Analysis', description: '分析上传的文件内容', icon: 'file', configured: true }
   ];
 
-  let toolStates = tools.reduce((acc, tool) => {
-    acc[tool.id] = tool.enabled;
-    return acc;
-  }, {});
+  let loadError = '';
+  $: tools = $availableTools.length > 0 ? $availableTools : fallbackTools;
+  $: currentToolStates = $toolStatesStore;
+
+  onMount(async () => {
+    try {
+      const data = await fetchTools();
+      setAvailableTools(data.tools || []);
+    } catch (error) {
+      loadError = error.message;
+      setAvailableTools(fallbackTools);
+    }
+  });
 
   function close() {
     dispatch('close');
   }
 
-  function toggleTool(id) {
-    toolStates = {
-      ...toolStates,
-      [id]: !toolStates[id]
-    };
-    dispatch('change', { id, enabled: toolStates[id] });
+  function toggleTool(tool) {
+    if (!tool.configured) return;
+    const enabled = !currentToolStates[tool.id];
+    setToolEnabled(tool.id, enabled);
+    dispatch('change', { id: tool.id, enabled });
   }
 
   function handleBackdropClick(e) {
@@ -104,24 +89,40 @@
           启用/禁用工具，模型将在对话中使用启用的工具。
         </p>
 
+        {#if loadError}
+          <p class="controls-warning">工具状态加载失败，已使用本地默认配置。</p>
+        {/if}
+
         <ul class="tool-list">
           {#each tools as tool (tool.id)}
             <li class="tool-item">
               <button
                 type="button"
                 class="tool-toggle"
-                class:enabled={toolStates[tool.id]}
-                on:click={() => toggleTool(tool.id)}
-                aria-pressed={toolStates[tool.id]}
+                class:enabled={currentToolStates[tool.id]}
+                class:disabled={!tool.configured}
+                on:click={() => toggleTool(tool)}
+                aria-pressed={currentToolStates[tool.id]}
+                disabled={!tool.configured}
               >
                 <span class="tool-icon" aria-hidden="true">
                   <Icon name={tool.icon} size="md" />
                 </span>
                 <span class="tool-info">
-                  <span class="tool-label">{tool.label}</span>
-                  <span class="tool-desc">{tool.description}</span>
+                  <span class="tool-label">
+                    {tool.label}
+                    {#if !tool.configured}
+                      <span class="tool-badge">未配置</span>
+                    {/if}
+                  </span>
+                  <span class="tool-desc">
+                    {tool.description}
+                    {#if !tool.configured && tool.unavailableReason}
+                      · {tool.unavailableReason}
+                    {/if}
+                  </span>
                 </span>
-                <span class="tool-switch" class:on={toolStates[tool.id]} aria-hidden="true">
+                <span class="tool-switch" class:on={currentToolStates[tool.id]} aria-hidden="true">
                   <span class="switch-knob"></span>
                 </span>
               </button>
@@ -208,6 +209,12 @@
     line-height: 1.5;
   }
 
+  .controls-warning {
+    margin: -8px 0 16px;
+    font-size: 12px;
+    color: var(--warning, #f59e0b);
+  }
+
   .tool-list {
     list-style: none;
     margin: 0;
@@ -233,9 +240,14 @@
     font-family: inherit;
   }
 
-  .tool-toggle:hover {
+  .tool-toggle:hover:not(:disabled) {
     background: var(--bg-hover);
     border-color: var(--border-hover);
+  }
+
+  .tool-toggle:disabled {
+    opacity: 0.62;
+    cursor: not-allowed;
   }
 
   .tool-toggle.enabled {
@@ -270,6 +282,18 @@
     font-size: 13px;
     font-weight: 500;
     color: var(--text-primary);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .tool-badge {
+    padding: 1px 5px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-dim);
+    font-size: 10px;
+    font-weight: 500;
   }
 
   .tool-desc {

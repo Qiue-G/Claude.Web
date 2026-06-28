@@ -7,6 +7,7 @@
     "dev": "node src/server/index.js",
     "dev:client": "vite",
     "build": "vite build",
+    "test": "node --test test/*.test.js",
     "start": "cross-env NODE_ENV=production node src/server/index.js",
     "preview": "vite preview"
   },

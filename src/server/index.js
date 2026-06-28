@@ -9,6 +9,11 @@ import { spawn } from 'child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import { dirname as pathDirname } from 'path';
+import { searchWeb } from './tools/webSearch.js';
+import { executePython, extractPythonBlocks } from './tools/codeInterpreter.js';
+import { getToolDefinitions, getToolInstructions } from './tools/registry.js';
+import { analyzeFilesFromPromptContext, stripFileBlocksFromPrompt } from './tools/fileAnalysis.js';
+import { buildPrompt } from './runtime/promptBuilder.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = pathDirname(__filename);
@@ -38,77 +43,6 @@ const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || (process.platform === 'win32' ? join(__dirname, '../..') : '/free-code');
 const CONFIG_PATH = process.env.AGENT_CONFIG_PATH || join(FREE_CODE_DIR, 'agent-config.json');
 const VERSION = '7.3.1';
-
-// ===== 工具指令映射 =====
-const TOOL_INSTRUCTIONS = {
-  web_search: 'You have the ability to search the web for up-to-date information. When the user asks about current events, news, or any information that may require recent data, use web search to find accurate results.',
-  code_interpreter: 'You have the ability to write and execute Python code to solve problems, perform calculations, analyze data, and generate visualizations. When appropriate, write Python code and indicate that it should be executed.',
-  image_generation: 'You have the ability to generate images based on text descriptions. When the user asks you to create an image, describe what you would generate in detail.',
-  file_analysis: 'You have the ability to analyze uploaded files including documents, images, and data files. When the user uploads a file, examine its contents and provide insights.'
-};
-
-// ===== Web Search (DuckDuckGo 免费 API，无需 API Key) =====
-async function searchWeb(query) {
-  const maxResults = 5;
-  try {
-    // DuckDuckGo Instant Answer API
-    const apiRes = await fetch(
-      `https://api.duckduckgo.com/?q=${encodeURIComponent(query.substring(0, 200))}&format=json&no_html=1&skip_disambig=1`,
-      { headers: { 'User-Agent': 'FreeCode/1.0' }, signal: AbortSignal.timeout(8000) }
-    );
-    const data = await apiRes.json();
-
-    const parts = [];
-    if (data.AbstractText) parts.push(`摘要: ${data.AbstractText}${data.AbstractURL ? '\n来源: ' + data.AbstractURL : ''}`);
-    if (data.Answer) parts.push(`答案: ${data.Answer}`);
-
-    if (data.RelatedTopics && Array.isArray(data.RelatedTopics)) {
-      const results = data.RelatedTopics
-        .filter(t => t.Text && t.FirstURL)
-        .slice(0, maxResults);
-      if (results.length > 0) {
-        parts.push('搜索结果:');
-        results.forEach((r, i) => parts.push(`${i+1}. ${r.Text} — ${r.FirstURL}`));
-      }
-    }
-
-    return parts.length > 0 ? parts.join('\n') : `未找到 "${query}" 的相关结果`;
-  } catch (e) {
-    console.error('[SEARCH] Error:', e.message);
-    return `[搜索失败: ${e.message}]`;
-  }
-}
-
-// ===== Python 代码执行 =====
-function executePython(code) {
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => { proc.kill(); resolve({ stdout: '', stderr: '[超时] 执行超过 15 秒', exitCode: -1 }); }, 15000);
-    const proc = spawn('python3', ['-c', code], { timeout: 15000 });
-    let stdout = '', stderr = '';
-    proc.stdout.on('data', d => stdout += d.toString());
-    proc.stderr.on('data', d => stderr += d.toString());
-    proc.on('close', (code) => {
-      clearTimeout(timeout);
-      resolve({ stdout, stderr, exitCode: code });
-    });
-    proc.on('error', (e) => {
-      clearTimeout(timeout);
-      resolve({ stdout: '', stderr: '无法启动 Python: ' + e.message, exitCode: -1 });
-    });
-  });
-}
-
-// ===== 从 AI 输出中提取 Python 代码块 =====
-function extractPythonBlocks(text) {
-  const blocks = [];
-  const regex = /```(?:python|py)\n?([\s\S]*?)```/g;
-  let match;
-  while ((match = regex.exec(text)) !== null) {
-    const code = match[1].trim();
-    if (code) blocks.push(code);
-  }
-  return blocks;
-}
 
 // ===== Load agent config =====
 let agentConfig = { defaults: { provider: 'openrouter', model: '' }, providers: {} };
@@ -550,6 +484,11 @@ app.get('/api/health/detailed', (req, res) => {
   });
 });
 
+// ===== Tools API =====
+app.get('/api/tools', (req, res) => {
+  res.json({ tools: getToolDefinitions(process.env) });
+});
+
 // ===== Config API =====
 app.get('/api/config', (req, res) => {
   const providers = {};
@@ -797,24 +736,33 @@ wss.on('connection', (ws, req) => {
         if (oldProc) oldProc.kill();
 
         // message.data 可能是字符串或对象 { text, files, images, tools }
-        let prompt = typeof message.data === 'string' ? message.data : message.data.text;
+        const originalPrompt = typeof message.data === 'string' ? message.data : message.data.text;
+        let prompt = originalPrompt;
         const tools = (typeof message.data === 'object' ? message.data.tools : null) || [];
+        let webSearchResults = '';
+        const toolResults = [];
+        let userMessageForPrompt = originalPrompt;
 
-        // ===== Web Search 预处理：启用搜索时自动获取搜索结果注入 prompt =====
-        if (tools.includes('web_search') && prompt && prompt.trim()) {
+        if (tools.includes('web_search') && originalPrompt && originalPrompt.trim()) {
           broadcastToSession(sessionId, { type: 'output', data: '\n[正在搜索...]\n' });
-          const searchResults = await searchWeb(prompt);
-          console.log('[WEB_SEARCH] results length: ' + searchResults.length + ' chars');
-          prompt = `[Web Search Results]\n${searchResults}\n\n[User Message]\n${prompt}`;
+          webSearchResults = await searchWeb(originalPrompt);
+          console.log('[WEB_SEARCH] results length: ' + webSearchResults.length + ' chars');
         }
 
-        // 注入启用的工具指令
-        if (tools.length > 0) {
-          const toolInstructions = tools.map(t => TOOL_INSTRUCTIONS[t]).filter(Boolean).join('\n');
-          if (toolInstructions) {
-            prompt = `[System Instructions]\nYou have the following tools available:\n${toolInstructions}\n\n${prompt}`;
+        if (tools.includes('file_analysis') && originalPrompt && originalPrompt.trim()) {
+          const fileAnalysis = analyzeFilesFromPromptContext(originalPrompt);
+          if (fileAnalysis.content) {
+            toolResults.push(fileAnalysis);
+            userMessageForPrompt = stripFileBlocksFromPrompt(originalPrompt);
           }
         }
+
+        prompt = buildPrompt({
+          toolInstructions: getToolInstructions(tools),
+          webSearchResults,
+          toolResults,
+          userMessage: userMessageForPrompt
+        });
 
         console.log('[INPUT] prompt length: ' + (prompt ? prompt.length : 0) + ', tools: [' + tools.join(',') + ']');
 

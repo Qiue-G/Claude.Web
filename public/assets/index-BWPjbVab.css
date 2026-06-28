@@ -1588,6 +1588,12 @@ html, body {
     line-height: 1.5;
   }
 
+  .controls-warning.svelte-2wdv7f {
+    margin: -8px 0 16px;
+    font-size: 12px;
+    color: var(--warning, #f59e0b);
+  }
+
   .tool-list.svelte-2wdv7f {
     list-style: none;
     margin: 0;
@@ -1613,9 +1619,14 @@ html, body {
     font-family: inherit;
   }
 
-  .tool-toggle.svelte-2wdv7f:hover {
+  .tool-toggle.svelte-2wdv7f:hover:not(:disabled) {
     background: var(--bg-hover);
     border-color: var(--border-hover);
+  }
+
+  .tool-toggle.svelte-2wdv7f:disabled {
+    opacity: 0.62;
+    cursor: not-allowed;
   }
 
   .tool-toggle.enabled.svelte-2wdv7f {
@@ -1650,6 +1661,18 @@ html, body {
     font-size: 13px;
     font-weight: 500;
     color: var(--text-primary);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .tool-badge.svelte-2wdv7f {
+    padding: 1px 5px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-dim);
+    font-size: 10px;
+    font-weight: 500;
   }
 
   .tool-desc.svelte-2wdv7f {
