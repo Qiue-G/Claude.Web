@@ -51,7 +51,7 @@ const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../worksp
 const MAX_SESSIONS = parseInt(process.env.MAX_SESSIONS || '10');
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || (process.platform === 'win32' ? join(__dirname, '../..') : '/free-code');
 const CONFIG_PATH = process.env.AGENT_CONFIG_PATH || join(FREE_CODE_DIR, 'agent-config.json');
-const VERSION = '7.3.1';
+const VERSION = '7.3.2';
 
 // ===== Load agent config =====
 let agentConfig = { defaults: { provider: 'openrouter', model: '' }, providers: {} };
