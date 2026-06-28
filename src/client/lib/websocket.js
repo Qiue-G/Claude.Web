@@ -2,7 +2,7 @@
  * WebSocket Manager - handles real-time communication with server
  */
 import { isConnected, connectionStatus, sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
-import { messages, addMessage, appendToLastAssistant, isWaiting, isTyping } from '$stores/chat.store.js';
+import { messages, addMessage, appendToLastAssistant, isWaiting, isTyping, setMessages } from '$stores/chat.store.js';
 import { stripAnsi } from '$lib/utils.js';
 import { t } from '$lib/i18n.js';
 import { get } from 'svelte/store';
@@ -162,6 +162,11 @@ function handleServerMessage(msg) {
         isWaiting.set(false);
         isTyping.set(false);
         addMessage('system', get(t)('status.reconnected'));
+      }
+      break;
+    case 'history':
+      if (Array.isArray(msg.messages) && msg.messages.length > 0) {
+        setMessages(msg.messages);
       }
       break;
     case 'output':

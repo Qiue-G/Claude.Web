@@ -16,6 +16,7 @@ import { buildPrompt } from './runtime/promptBuilder.js';
 import { createFileRouter } from './routes/fileRoutes.js';
 import { createWsHandler } from './routes/wsHandler.js';
 import { createSessionManager } from './sessionManager.js';
+import { createMessageStore } from './messageStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = pathDirname(__filename);
@@ -106,6 +107,9 @@ setInterval(() => {
 
 // ===== Session Manager (persisted to JSON) =====
 const { sessions, createSession, getSession, deleteSession, loadSessions } = createSessionManager(WORKSPACE_DIR);
+
+// ===== Message Store (persisted to JSON per session) =====
+const messageStore = createMessageStore(WORKSPACE_DIR);
 
 const sessionProcesses = new Map();
 const sessionProxies = new Map(); // proxy processes
@@ -368,6 +372,7 @@ app.delete('/api/session/:id', async (req, res) => {
     const oldProxy = sessionProxies.get(req.params.id);
     if (oldProxy) { oldProxy.kill(); sessionProxies.delete(req.params.id); }
     await deleteSession(req.params.id);
+    await messageStore.deleteSessionMessages(req.params.id);
   }
   res.json({ success: true });
 });
@@ -513,7 +518,8 @@ const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024 });
 wss.on('connection', createWsHandler({
   getSession, sessions, sessionProcesses, sessionProxies, sessionClients, wsProcCount,
   broadcastToSession, spawnCli, maskSensitive, stripAnsi,
-  checkRateLimit, ALLOWED_ORIGINS, RATE_WINDOW, RATE_MAX_INPUT
+  checkRateLimit, ALLOWED_ORIGINS, RATE_WINDOW, RATE_MAX_INPUT,
+  messageStore
 }));
 
 process.on('SIGTERM', () => {
@@ -558,7 +564,10 @@ setInterval(async () => {
     }
   }
   if (expiredIds.length > 0) {
-    for (const id of expiredIds) await deleteSession(id);
-    console.log('[SESSION] Expired ' + expiredIds.length + ' sessions');
-  }
+     for (const id of expiredIds) {
+       await deleteSession(id);
+       await messageStore.deleteSessionMessages(id);
+     }
+     console.log('[SESSION] Expired ' + expiredIds.length + ' sessions');
+   }
 }, 60000);

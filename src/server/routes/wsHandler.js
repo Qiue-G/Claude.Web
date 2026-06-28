@@ -27,7 +27,8 @@ export function createWsHandler(deps) {
     const {
       getSession, sessions, sessionProcesses, sessionProxies, sessionClients, wsProcCount,
       broadcastToSession, spawnCli, maskSensitive, stripAnsi,
-      checkRateLimit, ALLOWED_ORIGINS, RATE_WINDOW, RATE_MAX_INPUT
+      checkRateLimit, ALLOWED_ORIGINS, RATE_WINDOW, RATE_MAX_INPUT,
+      messageStore
     } = deps;
 
     // Verify WebSocket origin
@@ -73,6 +74,15 @@ export function createWsHandler(deps) {
             health: session.modelHealth
           }));
 
+          // 发送历史消息
+          if (messageStore) {
+            const history = await messageStore.loadMessages(sessionId);
+            if (history.length > 0) {
+              ws.send(JSON.stringify({ type: 'history', messages: history }));
+              console.log('[HISTORY] sent ' + history.length + ' messages to client');
+            }
+          }
+
         } else if (message.type === 'input') {
           const session = getSession(sessionId);
           if (!session) {
@@ -109,6 +119,11 @@ export function createWsHandler(deps) {
           const toolResults = [];
           let userMessageForPrompt = originalPrompt;
 
+          // 保存用户消息
+          if (messageStore && originalPrompt && originalPrompt.trim()) {
+            await messageStore.saveMessage(sessionId, { role: 'user', content: originalPrompt });
+          }
+
           if (tools.includes('web_search') && originalPrompt && originalPrompt.trim()) {
             broadcastToSession(sessionId, { type: 'output', data: '\n[正在搜索...]\n' });
             const result = await searchWeb(originalPrompt);
@@ -139,11 +154,14 @@ export function createWsHandler(deps) {
           // ===== 代码解释器：缓冲完整输出，关闭时检测 Python 代码块 =====
           let codeInterpreterBuffer = '';
           const hasCodeInterpreter = tools.includes('code_interpreter');
+          // 累积 AI 输出，关闭时保存完整消息
+          let assistantBuffer = '';
 
           proc.stdout.on('data', (chunk) => {
             let clean = stripAnsi(chunk.toString());
             clean = maskSensitive(clean, session.apiKey);
             if (clean.trim()) {
+              assistantBuffer += clean;
               if (hasCodeInterpreter) codeInterpreterBuffer += clean;
               const MAX_WS_MSG = 1024 * 1024;
               const data = clean.length > MAX_WS_MSG ? clean.substring(0, MAX_WS_MSG) + '\n[output truncated]' : clean;
@@ -154,6 +172,7 @@ export function createWsHandler(deps) {
           proc.stderr.on('data', (chunk) => {
             let errStr = chunk.toString();
             errStr = maskSensitive(errStr, session.apiKey);
+            assistantBuffer += errStr;
             if (hasCodeInterpreter) codeInterpreterBuffer += errStr;
             console.error('[STDERR] ' + maskSensitive(errStr.substring(0, 200), session.apiKey));
             const MAX_WS_ERR = 1024 * 1024;
@@ -188,6 +207,11 @@ export function createWsHandler(deps) {
 
             broadcastToSession(sessionId, { type: 'exit', code });
             broadcastToSession(sessionId, { type: 'done' });
+
+            // 保存助理消息
+            if (messageStore && assistantBuffer.trim()) {
+              await messageStore.saveMessage(sessionId, { role: 'assistant', content: assistantBuffer.trim() });
+            }
           });
 
           proc.on('error', (err) => {

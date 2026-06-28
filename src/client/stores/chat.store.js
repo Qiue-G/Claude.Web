@@ -50,6 +50,20 @@ export function addMessage(role, content, meta, files) {
 }
 
 /**
+ * 替换当前会话的全部消息（用于从服务器加载历史消息）
+ */
+export function setMessages(msgs) {
+  const sessionId = get(currentSessionId);
+  if (!sessionId) return;
+
+  sessions.update(s => s.map(session =>
+    session.id === sessionId
+      ? { ...session, messages: msgs || [], updatedAt: Date.now() }
+      : session
+  ));
+}
+
+/**
  * 清空当前会话的消息
  */
 export function clearMessages() {
