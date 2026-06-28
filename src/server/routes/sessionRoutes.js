@@ -38,6 +38,16 @@ export function createSessionRouter(deps) {
     }
   });
 
+  // 验证当前 session 凭证（用于页面刷新自动重连）
+  router.get('/current', (req, res) => {
+    const sid = req.headers['x-session-id'];
+    const token = req.headers['x-session-token'];
+    if (!sid || !token) return res.status(400).json({ error: 'Missing credentials' });
+    const session = getSession(sid, token);
+    if (!session) return res.status(401).json({ error: 'Invalid session or token' });
+    res.json({ sessionId: session.id, model: session.model, provider: session.provider, currentModel: session.currentModel });
+  });
+
   router.get('/:id', (req, res) => {
     const token = req.headers['x-session-token'];
     const session = getSession(req.params.id, token);

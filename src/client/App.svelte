@@ -21,7 +21,7 @@
   import { toggleTheme } from '$stores/theme.store.js';
   import { connectWebSocket, sendInput } from '$lib/websocket.js';
   import { enabledTools } from '$stores/tools.store.js';
-  import { createSession as apiCreateSession } from '$apis/session.api.js';
+  import { createSession as apiCreateSession, validateSession } from '$apis/session.api.js';
   import { writeFile, readFile, getFileTree } from '$apis/files.api.js';
   import { sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
   import { get } from 'svelte/store';
@@ -241,17 +241,44 @@
 
   onMount(async () => {
     await initChatHistory();
-    // 自动重连：如果有保存的 session 凭证，页面刷新后自动恢复连接
+
+    // 自动重连：验证存储的 session 凭证 → 有效则恢复连接 + 模型状态
     const sid = $sessionId;
     const token = $sessionToken;
     if (sid && token) {
-      connectWebSocket(sid, token);
-      loadFileTree(sid, token);
+      try {
+        const sessionInfo = await validateSession(sid, token);
+        // Session 有效，自动恢复 WebSocket 连接
+        connectWebSocket(sid, token);
+        loadFileTree(sid, token);
+
+        // 恢复模型显示：如果 stored activeModelId 存在，标记为已连接
+        if ($activeModelId) {
+          const m = $savedModels.find(m => m.id === $activeModelId);
+          if (m) showToast('已恢复连接: ' + m.name, 'success');
+        } else {
+          showToast('已恢复连接', 'success');
+        }
+      } catch (_) {
+        // Session 已过期或不合法 → 清理凭据，保持"未连接"状态
+        console.log('[SESSION] stored session expired, clearing credentials');
+        sessionId.set(null);
+        sessionToken.set(null);
+        csrfToken.set(null);
+        // 不清除 savedModels/activeModelId，方便用户一键重新连接
+        if ($activeModelId && $savedModels.length > 0) {
+          const m = $savedModels.find(m => m.id === $activeModelId);
+          if (m) showToast('连接已过期，点击模型重新连接', 'error');
+        }
+      }
+    } else {
+      // 无存储的 session，但如果有保存的模型，提示连接
+      if ($savedModels.length > 0 && $activeModelId) {
+        const m = $savedModels.find(m => m.id === $activeModelId);
+        if (m) showToast('点击「' + m.name + '」连接模型', 'info');
+      }
     }
-    if ($activeModelId && $savedModels.length > 0) {
-      const m = $savedModels.find(m => m.id === $activeModelId);
-      if (m) showToast('已加载模型: ' + m.name, 'success');
-    }
+
     window.addEventListener('keydown', handleGlobalKeydown);
     window.addEventListener('mousemove', handleResizeMove);
     window.addEventListener('mouseup', handleResizeEnd);

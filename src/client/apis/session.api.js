@@ -32,6 +32,21 @@ export async function getSession(sessionId, token) {
 }
 
 /**
+ * Validate stored session credentials (for page refresh auto-reconnect)
+ * Returns session info if valid, throws if invalid/expired.
+ */
+export async function validateSession(sessionId, token) {
+  const res = await fetch(`${BASE}/api/session/current`, {
+    headers: {
+      'x-session-id': sessionId || '',
+      'x-session-token': token || ''
+    }
+  });
+  if (!res.ok) throw new Error('Session expired');
+  return res.json();
+}
+
+/**
  * Delete session
  */
 export async function deleteSession(sessionId, token, csrfToken) {
