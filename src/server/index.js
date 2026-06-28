@@ -17,6 +17,7 @@ import { createFileRouter } from './routes/fileRoutes.js';
 import { createWsHandler } from './routes/wsHandler.js';
 import { createSessionManager } from './sessionManager.js';
 import { createMessageStore } from './messageStore.js';
+import { initDb } from './db.js';
 import { createRateLimiter } from './lib/rateLimiter.js';
 import { createModelStats } from './lib/modelStats.js';
 import { createSessionRouter } from './routes/sessionRoutes.js';
@@ -85,11 +86,14 @@ const RATE_MAX_CREATE = 5;      // max session creates per window per IP
 const RATE_MAX_INPUT = 20;      // max WebSocket inputs per window per session
 const { check: checkRateLimit, remaining: getRateRemaining, snapshot: rateLimitsSnapshot } = createRateLimiter(RATE_WINDOW);
 
-// ===== Session Manager (persisted to JSON) =====
-const { sessions, createSession, getSession, deleteSession, loadSessions } = createSessionManager(WORKSPACE_DIR);
+// ===== Database (SQLite) =====
+const { db, saveDb } = await initDb(WORKSPACE_DIR);
 
-// ===== Message Store (persisted to JSON per session) =====
-const messageStore = createMessageStore(WORKSPACE_DIR);
+// ===== Session Manager (persisted to SQLite) =====
+const { sessions, createSession, getSession, deleteSession, loadSessions } = createSessionManager({ db, saveDb, workspaceDir: WORKSPACE_DIR });
+
+// ===== Message Store (persisted to SQLite) =====
+const messageStore = createMessageStore({ db, saveDb });
 
 const sessionProcesses = new Map();
 const sessionProxies = new Map(); // proxy processes

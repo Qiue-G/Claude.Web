@@ -1,75 +1,96 @@
-import { readFile, writeFile, mkdir } from 'fs/promises';
+import { mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join, dirname as pathDirname } from 'path';
+import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = pathDirname(__filename);
 
 /**
- * Creates a session manager with JSON file persistence.
+ * Creates a session manager backed by SQLite.
  *
- * Sessions are persisted to `{workspaceDir}/_sessions.json`.
- * Runtime-only state (processes, proxies, clients) is NOT stored here.
- *
- * @param {string} workspaceDir - Directory for session data and workspace files
+ * @param {object} deps
+ * @param {import('sql.js').Database} deps.db - SQLite database handle
+ * @param {Function} deps.saveDb - Callback to persist the DB to disk
+ * @param {string} deps.workspaceDir - Directory for session workspace folders
  * @returns {{ sessions: Map, createSession: Function, getSession: Function, deleteSession: Function, saveSessions: Function, loadSessions: Function }}
  */
-export function createSessionManager(workspaceDir) {
+export function createSessionManager({ db, saveDb, workspaceDir }) {
+  // Keep an in-memory Map mirror for O(1) lookups and runtime state
   const sessions = new Map();
-  const filePath = join(workspaceDir, '_sessions.json');
+
+  function rowToSession(row) {
+    return {
+      id: row.id,
+      token: row.token,
+      csrfToken: row.csrfToken,
+      apiKey: row.apiKey,
+      model: row.model,
+      provider: row.provider,
+      dir: row.dir,
+      createdAt: row.createdAt,
+      lastActivity: row.lastActivity,
+      currentModel: row.currentModel,
+      modelHealth: row.modelHealth
+    };
+  }
 
   /**
-   * Load sessions from disk. Called once at startup.
-   * Sets lastActivity to now so sessions don't expire immediately after restart.
+   * Load all sessions from SQLite into memory.
    */
   async function loadSessions() {
     try {
-      if (!existsSync(filePath)) {
-        console.log('[SESSION] no saved sessions file found at ' + filePath);
-        return;
-      }
-      const raw = await readFile(filePath, 'utf-8');
-      const data = JSON.parse(raw);
-      if (!Array.isArray(data)) return;
+      const rows = db.exec('SELECT * FROM sessions');
+      if (rows.length === 0 || !rows[0].values) return;
+      const cols = rows[0].columns;
       const now = Date.now();
-      for (const item of data) {
-        item.lastActivity = now;
-        sessions.set(item.id, item);
+      for (const row of rows[0].values) {
+        const obj = {};
+        cols.forEach((col, i) => { obj[col] = row[i]; });
+        obj.lastActivity = now;
+        const session = rowToSession(obj);
+        sessions.set(session.id, session);
       }
-      console.log('[SESSION] loaded ' + sessions.size + ' sessions from ' + filePath);
+      console.log('[SESSION] loaded ' + sessions.size + ' sessions from SQLite');
     } catch (e) {
       console.log('[SESSION] no saved sessions to load (' + e.message + ')');
     }
   }
 
   /**
-   * Save all sessions to disk as JSON array.
+   * Save all in-memory sessions to SQLite (upsert).
    */
   async function saveSessions() {
     try {
-      const dir = pathDirname(filePath);
-      if (!existsSync(dir)) await mkdir(dir, { recursive: true });
-      const data = JSON.stringify(Array.from(sessions.values()));
-      await writeFile(filePath, data, 'utf-8');
+      const stmt = db.prepare(`
+        INSERT OR REPLACE INTO sessions (id, token, csrfToken, apiKey, model, provider, dir, createdAt, lastActivity, currentModel, modelHealth)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const session of sessions.values()) {
+        stmt.run([
+          session.id, session.token, session.csrfToken, session.apiKey,
+          session.model, session.provider, session.dir, session.createdAt,
+          session.lastActivity, session.currentModel, session.modelHealth
+        ]);
+      }
+      stmt.free();
+      await saveDb();
     } catch (e) {
       console.error('[SESSION] save failed:', e.message);
     }
   }
 
   /**
-   * Create a new session, persist it, and return it.
-   * Returns null if maxSessions is reached.
+   * Create a new session, persist to SQLite, and return it.
    */
   async function createSession(apiKey, model, provider, maxSessions) {
     if (sessions.size >= maxSessions) return null;
+
     const sessionId = uuidv4();
     const sessionToken = uuidv4();
     const csrfToken = uuidv4();
     const sessionDir = join(workspaceDir, sessionId);
-    await mkdir(workspaceDir, { recursive: true });
-    await mkdir(sessionDir, { recursive: true });
+    if (!existsSync(workspaceDir)) await mkdir(workspaceDir, { recursive: true });
+    if (!existsSync(sessionDir)) await mkdir(sessionDir, { recursive: true });
+
+    const now = Date.now();
     const session = {
       id: sessionId,
       token: sessionToken,
@@ -78,19 +99,31 @@ export function createSessionManager(workspaceDir) {
       model,
       provider,
       dir: sessionDir,
-      createdAt: Date.now(),
-      lastActivity: Date.now(),
+      createdAt: now,
+      lastActivity: now,
       currentModel: model,
       modelHealth: 'connecting'
     };
+
     sessions.set(sessionId, session);
-    await saveSessions();
+
+    try {
+      db.run(
+        `INSERT INTO sessions (id, token, csrfToken, apiKey, model, provider, dir, createdAt, lastActivity, currentModel, modelHealth)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [sessionId, sessionToken, csrfToken, apiKey, model, provider, sessionDir, now, now, model, 'connecting']
+      );
+      await saveDb();
+    } catch (e) {
+      console.error('[SESSION] create failed:', e.message);
+    }
+
     return session;
   }
 
   /**
    * Get a session by ID. Validates token if provided.
-   * Updates lastActivity in memory (does not trigger file write).
+   * Updates lastActivity in memory (does not immediately write to DB).
    */
   function getSession(sessionId, token) {
     const session = sessions.get(sessionId);
@@ -102,12 +135,18 @@ export function createSessionManager(workspaceDir) {
   }
 
   /**
-   * Delete a session and persist the change.
+   * Delete a session from SQLite and memory.
    */
   async function deleteSession(sessionId) {
     const existed = sessions.has(sessionId);
     sessions.delete(sessionId);
-    if (existed) await saveSessions();
+    try {
+      db.run('DELETE FROM messages WHERE sessionId = ?', [sessionId]);
+      db.run('DELETE FROM sessions WHERE id = ?', [sessionId]);
+      await saveDb();
+    } catch (e) {
+      console.error('[SESSION] delete failed:', e.message);
+    }
     return existed;
   }
 

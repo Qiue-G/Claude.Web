@@ -1,35 +1,47 @@
-import { readFile, writeFile, mkdir, unlink } from 'fs/promises';
-import { existsSync } from 'fs';
-import { join, dirname as pathDirname } from 'path';
-
 /**
- * Creates a message store that persists conversation messages per session.
+ * Message store backed by SQLite.
  *
- * Messages are stored as JSON arrays in `{workspaceDir}/{sessionId}/messages.json`.
- * Each message: { id, role: 'user'|'assistant'|'system', content, timestamp, files }
+ * Messages are stored in the `messages` table with a sessionId foreign key.
+ * Interface matches the original JSON file store for drop-in replacement.
  *
- * @param {string} workspaceDir - Directory containing session subdirectories
- * @returns {{ loadMessages: Function, saveMessage: Function, appendToLastMessage: Function, deleteSessionMessages: Function }}
+ * @param {object} deps
+ * @param {import('sql.js').Database} deps.db
+ * @param {Function} deps.saveDb
+ * @returns {{ loadMessages: Function, loadMessagesPaginated: Function, saveMessage: Function, appendToLastMessage: Function, deleteSessionMessages: Function }}
  */
-export function createMessageStore(workspaceDir) {
-  function filePathForSession(sessionId) {
-    return join(workspaceDir, sessionId, 'messages.json');
-  }
-
+export function createMessageStore({ db, saveDb }) {
   const PAGE_SIZE = 20;
 
+  function rowToMessage(row) {
+    return {
+      id: row.id,
+      role: row.role,
+      content: row.content,
+      timestamp: row.timestamp,
+      files: row.files ? JSON.parse(row.files) : null
+    };
+  }
+
+  function rowsToMessages(rows) {
+    if (rows.length === 0 || !rows[0].values) return [];
+    const cols = rows[0].columns;
+    return rows[0].values.map(row => {
+      const obj = {};
+      cols.forEach((col, i) => { obj[col] = row[i]; });
+      return rowToMessage(obj);
+    });
+  }
+
   /**
-   * Load all messages for a session.
-   * @param {string} sessionId
-   * @returns {Promise<Array>}
+   * Load all messages for a session (oldest first).
    */
   async function loadMessages(sessionId) {
     try {
-      const fp = filePathForSession(sessionId);
-      if (!existsSync(fp)) return [];
-      const raw = await readFile(fp, 'utf-8');
-      const data = JSON.parse(raw);
-      return Array.isArray(data) ? data : [];
+      const rows = db.exec(
+        'SELECT id, role, content, timestamp, files FROM messages WHERE sessionId = ? ORDER BY timestamp ASC',
+        [sessionId]
+      );
+      return rowsToMessages(rows);
     } catch (e) {
       console.error('[MESSAGE] load failed for ' + sessionId + ': ' + e.message);
       return [];
@@ -38,9 +50,6 @@ export function createMessageStore(workspaceDir) {
 
   /**
    * Load messages with pagination (newest last).
-   * @param {string} sessionId
-   * @param {number} page - 0-based page number (0 = latest page)
-   * @returns {Promise<{messages: Array, page: number, totalPages: number, hasMore: boolean}>}
    */
   async function loadMessagesPaginated(sessionId, page = 0) {
     const all = await loadMessages(sessionId);
@@ -48,70 +57,59 @@ export function createMessageStore(workspaceDir) {
     const startIdx = Math.max(0, all.length - (page + 1) * PAGE_SIZE);
     const endIdx = all.length - page * PAGE_SIZE;
     const messages = all.slice(Math.max(0, startIdx), Math.max(0, endIdx));
-    return {
-      messages,
-      page,
-      totalPages,
-      hasMore: page + 1 < totalPages
-    };
+    return { messages, page, totalPages, hasMore: page + 1 < totalPages };
   }
 
   /**
-   * Save a single message to the session's message file.
-   * @param {string} sessionId
-   * @param {object} msg - { role, content, files?, id? }
-   * @returns {Promise<object>} the saved message with generated id and timestamp
+   * Save a single message.
    */
   async function saveMessage(sessionId, msg) {
-    const messages = await loadMessages(sessionId);
-    const saved = {
-      id: msg.id || (Date.now() + '_' + Math.random().toString(36).slice(2, 8)),
-      role: msg.role || 'user',
-      content: msg.content || '',
-      timestamp: Date.now(),
-      files: msg.files || null
-    };
-    messages.push(saved);
-    await writeMessages(sessionId, messages);
-    return saved;
+    const id = msg.id || (Date.now() + '_' + Math.random().toString(36).slice(2, 8));
+    const timestamp = Date.now();
+    const files = msg.files ? JSON.stringify(msg.files) : null;
+
+    try {
+      db.run(
+        `INSERT INTO messages (id, sessionId, role, content, timestamp, files)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [id, sessionId, msg.role || 'user', msg.content || '', timestamp, files]
+      );
+      await saveDb();
+    } catch (e) {
+      console.error('[MESSAGE] save failed:', e.message);
+    }
+
+    return { id, role: msg.role || 'user', content: msg.content || '', timestamp, files: msg.files || null };
   }
 
   /**
-   * Append text to the last assistant message in the session.
-   * Used for streaming output accumulation.
-   * @param {string} sessionId
-   * @param {string} text
+   * Append text to the last assistant message (for streaming).
    */
   async function appendToLastMessage(sessionId, text) {
-    const messages = await loadMessages(sessionId);
-    if (messages.length === 0) return;
-    const last = messages[messages.length - 1];
-    if (last.role !== 'assistant') return;
-    last.content += text;
-    await writeMessages(sessionId, messages);
+    try {
+      const rows = db.exec(
+        'SELECT id, content FROM messages WHERE sessionId = ? AND role = ? ORDER BY timestamp DESC LIMIT 1',
+        [sessionId, 'assistant']
+      );
+      if (rows.length === 0 || !rows[0].values || rows[0].values.length === 0) return;
+      const lastId = rows[0].values[0][0];
+      const lastContent = rows[0].values[0][1];
+      db.run('UPDATE messages SET content = ? WHERE id = ?', [lastContent + text, lastId]);
+      await saveDb();
+    } catch (e) {
+      console.error('[MESSAGE] append failed:', e.message);
+    }
   }
 
   /**
    * Delete all messages for a session.
-   * @param {string} sessionId
    */
   async function deleteSessionMessages(sessionId) {
     try {
-      const fp = filePathForSession(sessionId);
-      if (existsSync(fp)) await unlink(fp);
+      db.run('DELETE FROM messages WHERE sessionId = ?', [sessionId]);
+      await saveDb();
     } catch (e) {
-      console.error('[MESSAGE] delete failed for ' + sessionId + ': ' + e.message);
-    }
-  }
-
-  async function writeMessages(sessionId, messages) {
-    try {
-      const fp = filePathForSession(sessionId);
-      const dir = pathDirname(fp);
-      if (!existsSync(dir)) await mkdir(dir, { recursive: true });
-      await writeFile(fp, JSON.stringify(messages), 'utf-8');
-    } catch (e) {
-      console.error('[MESSAGE] write failed for ' + sessionId + ': ' + e.message);
+      console.error('[MESSAGE] delete failed:', e.message);
     }
   }
 
