@@ -6,5 +6,7 @@ build/
 public/
 docs/
 test/
+workspace/
+screenshots/
 .DS_Store
 *.log
