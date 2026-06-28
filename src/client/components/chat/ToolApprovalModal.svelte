@@ -4,7 +4,6 @@
    * AI 请求调用工具时，弹窗让用户选择允许或拒绝
    */
   import Icon from '$components/common/Icon.svelte';
-  import { t } from '$lib/i18n.js';
 
   let {
     pendingTools = [],
@@ -32,13 +31,13 @@
     onapprove?.(approvalId, selected);
   }
 
-  function reject() {
+  function rejectAll() {
     onreject?.(approvalId, []);
   }
 
   function handleBackdropClick(e) {
     if (e.target === e.currentTarget) {
-      reject();
+      rejectAll();
     }
   }
 </script>
@@ -49,8 +48,8 @@
   <div class="approval-backdrop" role="presentation" onclick={handleBackdropClick}>
     <div class="approval-modal" role="dialog" aria-modal="true" aria-labelledby="approval-title">
       <header class="approval-header">
-        <h2 id="approval-title" class="approval-title">{@html t('tools.approval.title')}</h2>
-        <p class="approval-subtitle">{@html t('tools.approval.subtitle')}</p>
+        <h2 id="approval-title" class="approval-title">工具调用审批</h2>
+        <p class="approval-subtitle">AI 请求调用以下工具，请选择允许执行的工具：</p>
       </header>
 
       <div class="approval-tools">
@@ -71,12 +70,11 @@
       </div>
 
       <div class="approval-actions">
-        <button class="btn btn-secondary" onclick={reject}>
-          {@html t('tools.approval.rejectAll')}
+        <button class="btn btn-secondary" onclick={rejectAll}>
+          全部拒绝
         </button>
         <button class="btn btn-primary" onclick={approve} disabled={selected.length === 0}>
-          {@html t('tools.approval.approveSelected')}
-          {selected.length > 0 ? `(${selected.length})` : ''}
+          允许选中的 {selected.length > 0 ? `(${selected.length})` : ''}
         </button>
       </div>
     </div>
