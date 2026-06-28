@@ -97,7 +97,7 @@
 
   function handleNewChat() {
     createSession();
-    showToast('新对话已创建', 'success');
+    showToast(get(t)('toast.newChatCreated'), 'success');
   }
 
   function handleSelectChatSession(e) {
@@ -131,7 +131,7 @@
         openFile(file.path, result.content);
       }
     } catch (err) {
-      showToast('打开文件失败: ' + (err.message || '未知错误'), 'error');
+      showToast(get(t)('toast.fileOpenFailed', { error: err.message || get(t)('common.error') }), 'error');
     }
   }
 
@@ -150,7 +150,7 @@
     const path = typeof detail === 'string' ? detail : detail.path;
     const content = typeof detail === 'object' ? detail.content : undefined;
     if (!path) {
-      showToast('没有文件可保存', 'error');
+      showToast(get(t)('toast.noFileToSave'), 'error');
       return;
     }
     try {
@@ -159,9 +159,9 @@
       const csrf = get(csrfToken);
       const saveContent = content !== undefined ? content : (get(fileContents)[path] || '');
       await writeFile(sid, path, saveContent, tok, csrf);
-      showToast('文件已保存: ' + path, 'success');
+      showToast(get(t)('toast.fileSaved', { path }), 'success');
     } catch (err) {
-      showToast('保存失败: ' + (err.message || '未知错误'), 'error');
+      showToast(get(t)('toast.fileSaveFailed', { error: err.message || get(t)('common.error') }), 'error');
     }
   }
 
@@ -174,12 +174,12 @@
       sessionToken.set(session.token);
       if (session.csrfToken) csrfToken.set(session.csrfToken);
       connectWebSocket(session.sessionId, session.token);
-      showToast('已连接: ' + model.name, 'success');
+      showToast(get(t)('toast.connected') + ' ' + model.name, 'success');
       showConfigModal = false;
       // 加载文件列表
       loadFileTree(session.sessionId, session.token);
     } catch (err) {
-      showToast('连接失败: ' + (err.message || '未知错误'), 'error');
+      showToast(get(t)('toast.connectionFailed') + ': ' + (err.message || get(t)('common.error')), 'error');
     }
   }
 
@@ -225,10 +225,10 @@
     const images = typeof data === 'object' ? (data.images || []) : [];
     // 如果没有文字但有附件，允许发送
     if ((!text || !text.trim()) && files.length === 0 && images.length === 0) return;
-    if (!$isConnected) { addMessage('system', '请先连接模型'); return; }
+    if (!$isConnected) { addMessage('system', get(t)('system.connectFirst')); return; }
     // 如果没有当前会话，自动创建新对话
     if (!get(currentSessionId)) {
-      createSession('新对话');
+      createSession(get(t)('chat.new'));
     }
 
     // 读取附件文件内容嵌入到消息文本中（给 AI 看），UI 只展示文件卡片元数据
@@ -242,14 +242,14 @@
     // 图片作为消息的一部分
     let imageContent = '';
     if (images.length > 0) {
-      imageContent = '\n\n[包含图片]';
+      imageContent = '\n\n' + get(t)('system.containsImages');
     }
 
     // 给 AI 发送的内容包含文件内容
     const fullText = [text.trim(), fileContentForAI].filter(Boolean).join('\n\n') + imageContent;
 
     // UI 显示只包含用户输入的文字 + 文件名（文件内容和图片不展示在消息渲染中）
-    const displayText = text.trim() + (fileMeta.length > 0 ? '\n[已附加文件]' : '') + imageContent;
+    const displayText = text.trim() + (fileMeta.length > 0 ? '\n' + get(t)('system.filesAttached') : '') + imageContent;
 
     addMessage('user', displayText, null, fileMeta.length > 0 ? fileMeta : null);
     isWaiting.set(true);
@@ -272,9 +272,9 @@
         // 恢复模型显示：如果 stored activeModelId 存在，标记为已连接
         if ($activeModelId) {
           const m = $savedModels.find(m => m.id === $activeModelId);
-          if (m) showToast('已恢复连接: ' + m.name, 'success');
+          if (m) showToast(get(t)('toast.reconnected') + ': ' + m.name, 'success');
         } else {
-          showToast('已恢复连接', 'success');
+          showToast(get(t)('toast.reconnected'), 'success');
         }
       } catch (_) {
         // Session 已过期或不合法 → 清理凭据，保持"未连接"状态
@@ -285,14 +285,14 @@
         // 不清除 savedModels/activeModelId，方便用户一键重新连接
         if ($activeModelId && $savedModels.length > 0) {
           const m = $savedModels.find(m => m.id === $activeModelId);
-          if (m) showToast('连接已过期，点击模型重新连接', 'error');
+          if (m) showToast(get(t)('toast.sessionExpired'), 'error');
         }
       }
     } else {
       // 无存储的 session，但如果有保存的模型，提示连接
       if ($savedModels.length > 0 && $activeModelId) {
         const m = $savedModels.find(m => m.id === $activeModelId);
-        if (m) showToast('点击「' + m.name + '」连接模型', 'info');
+        if (m) showToast(get(t)('toast.clickToConnect', { name: m.name }), 'info');
       }
     }
 

@@ -123,7 +123,7 @@
               type="text"
               id="name"
               bind:value={formData.name}
-              placeholder="例如：Claude Sonnet 4"
+              placeholder={$t('config.modelExample')}
               required
             />
           </div>
@@ -147,7 +147,7 @@
                   type="text"
                   id="model"
                   bind:value={formData.model}
-                  placeholder="选择或输入模型 ID"
+                  placeholder={$t('config.selectModelId')}
                   list="model-list"
                   required
                 />
@@ -162,7 +162,7 @@
                 type="text"
                 id="model"
                 bind:value={formData.model}
-                placeholder="输入模型 ID"
+                placeholder={$t('config.enterModelId')}
                 required
               />
             {/if}
@@ -174,7 +174,7 @@
               type="password"
               id="apiKey"
               bind:value={formData.apiKey}
-              placeholder="输入 API Key"
+              placeholder={$t('config.enterApiKey')}
               required
             />
           </div>

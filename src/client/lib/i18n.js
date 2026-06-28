@@ -191,6 +191,30 @@ const translations = {
 
     // 工具栏
     'toolbar.tokens': 'Tokens',
+    'toolbar.tokenUsage': 'Token 使用情况',
+
+    // 通用提示
+    'toast.fileSaved': '文件已保存: {path}',
+    'toast.fileSaveFailed': '保存失败: {error}',
+    'toast.fileOpenFailed': '打开文件失败: {error}',
+    'toast.noFileToSave': '没有文件可保存',
+    'toast.newChatCreated': '新对话已创建',
+    'toast.connected': '已连接到',
+    'toast.connectionFailed': '连接失败',
+    'toast.reconnected': '已恢复连接',
+    'toast.sessionExpired': '连接已过期，点击模型重新连接',
+    'toast.clickToConnect': '点击「{name}」连接模型',
+
+    // 系统消息
+    'system.connectFirst': '请先连接模型',
+    'system.filesAttached': '[已附加文件]',
+    'system.containsImages': '[包含图片]',
+
+    // 配置表单占位
+    'config.modelExample': '例如：Claude Sonnet 4',
+    'config.selectModelId': '选择或输入模型 ID',
+    'config.enterModelId': '输入模型 ID',
+    'config.enterApiKey': '输入 API Key',
   },
 
   en: {
@@ -380,6 +404,27 @@ const translations = {
 
     // Toolbar
     'toolbar.tokens': 'Tokens',
+    'toolbar.tokenUsage': 'Token Usage',
+
+    // Toast
+    'toast.fileSaved': 'File saved: {path}',
+    'toast.fileSaveFailed': 'Save failed: {error}',
+    'toast.fileOpenFailed': 'Failed to open file: {error}',
+    'toast.noFileToSave': 'No file to save',
+    'toast.reconnected': 'Connection restored',
+    'toast.sessionExpired': 'Session expired, click the model to reconnect',
+    'toast.clickToConnect': 'Click "{name}" to connect',
+
+    // System messages
+    'system.connectFirst': 'Please connect a model first',
+    'system.filesAttached': '[Files attached]',
+    'system.containsImages': '[Images attached]',
+
+    // Config form placeholders
+    'config.modelExample': 'e.g. Claude Sonnet 4',
+    'config.selectModelId': 'Select or enter model ID',
+    'config.enterModelId': 'Enter model ID',
+    'config.enterApiKey': 'Enter API Key',
   }
 };
 
