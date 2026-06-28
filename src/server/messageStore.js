@@ -16,6 +16,8 @@ export function createMessageStore(workspaceDir) {
     return join(workspaceDir, sessionId, 'messages.json');
   }
 
+  const PAGE_SIZE = 20;
+
   /**
    * Load all messages for a session.
    * @param {string} sessionId
@@ -32,6 +34,26 @@ export function createMessageStore(workspaceDir) {
       console.error('[MESSAGE] load failed for ' + sessionId + ': ' + e.message);
       return [];
     }
+  }
+
+  /**
+   * Load messages with pagination (newest last).
+   * @param {string} sessionId
+   * @param {number} page - 0-based page number (0 = latest page)
+   * @returns {Promise<{messages: Array, page: number, totalPages: number, hasMore: boolean}>}
+   */
+  async function loadMessagesPaginated(sessionId, page = 0) {
+    const all = await loadMessages(sessionId);
+    const totalPages = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
+    const startIdx = Math.max(0, all.length - (page + 1) * PAGE_SIZE);
+    const endIdx = all.length - page * PAGE_SIZE;
+    const messages = all.slice(Math.max(0, startIdx), Math.max(0, endIdx));
+    return {
+      messages,
+      page,
+      totalPages,
+      hasMore: page + 1 < totalPages
+    };
   }
 
   /**
@@ -93,5 +115,5 @@ export function createMessageStore(workspaceDir) {
     }
   }
 
-  return { loadMessages, saveMessage, appendToLastMessage, deleteSessionMessages };
+  return { loadMessages, loadMessagesPaginated, saveMessage, appendToLastMessage, deleteSessionMessages };
 }

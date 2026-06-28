@@ -96,6 +96,11 @@ const sessionProxies = new Map(); // proxy processes
 const wsProcCount = new Map();    // active process count per session
 const sessionClients = new Map(); // sessionId → WebSocket (for model health push)
 
+// ===== 全局进程资源限制 =====
+const GLOBAL_PROCESS_LIMIT = parseInt(process.env.MAX_GLOBAL_PROCESSES || '8');
+let globalProcessCount = 0;
+const PROCESS_TIMEOUT = parseInt(process.env.PROCESS_TIMEOUT || '300000'); // 5 分钟
+
 // ===== Per-model stream health stats =====
 const modelStats = createModelStats();
 
@@ -216,6 +221,12 @@ async function startProxy(session) {
 }
 
 async function spawnCli(session, prompt) {
+  // 全局进程限制
+  if (globalProcessCount >= GLOBAL_PROCESS_LIMIT) {
+    throw new Error('Server busy. Global process limit (' + GLOBAL_PROCESS_LIMIT + ') reached. Try again later.');
+  }
+  globalProcessCount++;
+
   const cliPath = join(FREE_CODE_DIR, 'cli-dev');
   const cliArgs = ['-p', '--bare'];
   if (session.model) cliArgs.push('--model', session.model);
@@ -238,6 +249,26 @@ async function spawnCli(session, prompt) {
     cwd: session.dir,
     env,
     stdio: ['pipe', 'pipe', 'pipe']
+  });
+
+  // 进程超时自动终止
+  const processTimeout = setTimeout(() => {
+    try {
+      proc.kill('SIGKILL');
+      console.log('[PROC] Process timed out after ' + (PROCESS_TIMEOUT / 1000) + 's, killed');
+    } catch (e) {
+      // 进程可能已结束
+    }
+  }, PROCESS_TIMEOUT);
+
+  proc.on('close', () => {
+    clearTimeout(processTimeout);
+    globalProcessCount--;
+  });
+
+  proc.on('error', () => {
+    clearTimeout(processTimeout);
+    globalProcessCount--;
   });
 
   proc.stdin.write(prompt + '\n');

@@ -4,6 +4,9 @@ import { analyzeFilesFromPromptContext, stripFileBlocksFromPrompt } from '../too
 import { buildPrompt } from '../runtime/promptBuilder.js';
 import { getToolInstructions } from '../tools/registry.js';
 
+// 等待用户审批的工具请求（用 approvalId 索引）
+const pendingApprovals = new Map();
+
 /**
  * Creates a WebSocket connection handler.
  * @param {object} deps - Dependency injection
@@ -47,6 +50,32 @@ export function createWsHandler(deps) {
       try {
         const message = JSON.parse(data.toString());
 
+        // ===== 工具审批回复：需要优先于其他消息处理 =====
+        if (message.type === 'tool_approval_response') {
+          const { approvalId, approved } = message;
+          const pending = pendingApprovals.get(approvalId);
+          if (pending) {
+            pending.resolve(approved ? pending.tools : []);
+          }
+          return;
+        }
+
+        // ===== 加载更早的历史消息 =====
+        if (message.type === 'load_more') {
+          const page = message.page || 0;
+          if (sessionId && messageStore) {
+            const pageData = await messageStore.loadMessagesPaginated(sessionId, page);
+            ws.send(JSON.stringify({
+              type: 'history_page',
+              messages: pageData.messages,
+              page: pageData.page,
+              totalPages: pageData.totalPages,
+              hasMore: pageData.hasMore
+            }));
+          }
+          return;
+        }
+
         if (message.type === 'init') {
           sessionId = message.sessionId;
           const token = message.token;
@@ -74,12 +103,18 @@ export function createWsHandler(deps) {
             health: session.modelHealth
           }));
 
-          // 发送历史消息
+          // 发送历史消息（分页，先发最新一页）
           if (messageStore) {
-            const history = await messageStore.loadMessages(sessionId);
-            if (history.length > 0) {
-              ws.send(JSON.stringify({ type: 'history', messages: history }));
-              console.log('[HISTORY] sent ' + history.length + ' messages to client');
+            const pageData = await messageStore.loadMessagesPaginated(sessionId, 0);
+            if (pageData.messages.length > 0) {
+              ws.send(JSON.stringify({
+                type: 'history',
+                messages: pageData.messages,
+                page: pageData.page,
+                totalPages: pageData.totalPages,
+                hasMore: pageData.hasMore
+              }));
+              console.log('[HISTORY] sent ' + pageData.messages.length + ' messages (page 1/' + pageData.totalPages + ') to client');
             }
           }
 
@@ -124,23 +159,62 @@ export function createWsHandler(deps) {
             await messageStore.saveMessage(sessionId, { role: 'user', content: originalPrompt });
           }
 
-          if (tools.includes('web_search') && originalPrompt && originalPrompt.trim()) {
-            broadcastToSession(sessionId, { type: 'output', data: '\n[正在搜索...]\n' });
-            const result = await searchWeb(originalPrompt);
-            if (result.content) toolResults.push(result);
-            console.log('[WEB_SEARCH] results length: ' + result.content.length + ' chars');
+          // ===== 工具审批流程 =====
+          let approvedTools = tools; // 默认全部批准（无审批流程时保持原行为）
+          if (tools.length > 0) {
+            const approvalId = sessionId + '_' + Date.now();
+            const approvalPromise = new Promise((resolve) => {
+              const timeout = setTimeout(() => {
+                pendingApprovals.delete(approvalId);
+                resolve([]); // 超时自动拒绝全部
+              }, 30000);
+
+              pendingApprovals.set(approvalId, {
+                resolve: (approved) => {
+                  clearTimeout(timeout);
+                  pendingApprovals.delete(approvalId);
+                  resolve(approved);
+                },
+                tools,
+                sessionId
+              });
+            });
+
+            broadcastToSession(sessionId, {
+              type: 'tool_approval_request',
+              approvalId,
+              tools: tools.map(t => ({
+                id: t,
+                label: t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+              }))
+            });
+
+            approvedTools = await approvalPromise;
           }
 
-          if (tools.includes('file_analysis') && originalPrompt && originalPrompt.trim()) {
-            const fileAnalysis = analyzeFilesFromPromptContext(originalPrompt);
-            if (fileAnalysis.content) {
-              toolResults.push(fileAnalysis);
-              userMessageForPrompt = stripFileBlocksFromPrompt(originalPrompt);
+          // 执行已批准的工具
+          if (approvedTools && approvedTools.length > 0) {
+            for (const toolId of approvedTools) {
+              if (toolId === 'web_search' && originalPrompt && originalPrompt.trim()) {
+                broadcastToSession(sessionId, { type: 'output', data: '\n[正在搜索...]\n' });
+                const result = await searchWeb(originalPrompt);
+                if (result.content) toolResults.push(result);
+                console.log('[WEB_SEARCH] results length: ' + (result.content ? result.content.length : 0) + ' chars');
+              }
+
+              if (toolId === 'file_analysis' && originalPrompt && originalPrompt.trim()) {
+                const fileAnalysis = analyzeFilesFromPromptContext(originalPrompt);
+                if (fileAnalysis.content) {
+                  toolResults.push(fileAnalysis);
+                  userMessageForPrompt = stripFileBlocksFromPrompt(originalPrompt);
+                }
+              }
             }
+            broadcastToSession(sessionId, { type: 'tool_approval_complete' });
           }
 
           prompt = buildPrompt({
-            toolInstructions: getToolInstructions(tools),
+            toolInstructions: getToolInstructions(approvedTools || []),
             toolResults,
             userMessage: userMessageForPrompt,
             history: messageStore ? (await messageStore.loadMessages(sessionId)).slice(0, -1) : []
@@ -227,7 +301,11 @@ export function createWsHandler(deps) {
       } catch (error) {
         console.error('WebSocket error:', error);
         if (ws.readyState === ws.OPEN) {
-          ws.send(JSON.stringify({ type: 'error', message: 'Internal server error' }));
+          ws.send(JSON.stringify({ type: 'error', message: error.message || 'Internal server error' }));
+        }
+        // 清理进程计数
+        if (sessionId && wsProcCount) {
+          wsProcCount.set(sessionId, Math.max(0, (wsProcCount.get(sessionId) || 0) - 1));
         }
       }
     });

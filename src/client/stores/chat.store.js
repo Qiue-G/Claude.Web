@@ -64,6 +64,26 @@ export function setMessages(msgs) {
 }
 
 /**
+ * 在消息列表前面插入旧消息（用于分页加载更早的历史）
+ * @param {Array} olderMessages - 更早的消息数组
+ */
+export function prependMessages(olderMessages) {
+  const sessionId = get(currentSessionId);
+  if (!sessionId || !olderMessages?.length) return;
+
+  sessions.update(s => s.map(session => {
+    if (session.id !== sessionId) return session;
+    const existingIds = new Set(session.messages.map(m => m.id));
+    const uniqueOlder = olderMessages.filter(m => !existingIds.has(m.id));
+    return {
+      ...session,
+      messages: [...uniqueOlder, ...session.messages],
+      updatedAt: Date.now()
+    };
+  }));
+}
+
+/**
  * 清空当前会话的消息
  */
 export function clearMessages() {

@@ -9,6 +9,8 @@
   import ConfigModal from '$components/models/ConfigModal.svelte';
   import CommandPalette from '$components/common/CommandPalette.svelte';
   import Toast from '$components/common/Toast.svelte';
+  import ToolApprovalModal from '$components/chat/ToolApprovalModal.svelte';
+  import { sendToolApproval } from '$lib/websocket.js';
 
   import { isConnected } from '$stores/session.store.js';
   import { activeModelId, savedModels } from '$stores/models.store.js';
@@ -27,6 +29,30 @@
   import { readFilesForAI } from '$lib/attachments.js';
 
   let showConfigModal = $state(false);
+
+  // 工具审批弹窗状态
+  let pendingApproval = $state(null); // { approvalId, tools }
+
+  function handleToolApprovalRequest(e) {
+    pendingApproval = {
+      approvalId: e.detail.approvalId,
+      tools: e.detail.tools
+    };
+  }
+
+  function handleToolApprovalComplete() {
+    pendingApproval = null;
+  }
+
+  function handleApproveTool(approvalId, selectedTools) {
+    sendToolApproval(approvalId, selectedTools);
+    pendingApproval = null;
+  }
+
+  function handleRejectTool(approvalId) {
+    sendToolApproval(approvalId, []);
+    pendingApproval = null;
+  }
 
   // 聊天/编辑器面板拖拽分割
   let chatFlex = $state(7);
@@ -229,12 +255,16 @@
     window.addEventListener('keydown', handleGlobalKeydown);
     window.addEventListener('mousemove', handleResizeMove);
     window.addEventListener('mouseup', handleResizeEnd);
+    window.addEventListener('tool-approval-request', handleToolApprovalRequest);
+    window.addEventListener('tool-approval-complete', handleToolApprovalComplete);
   });
 
   onDestroy(() => {
     window.removeEventListener('keydown', handleGlobalKeydown);
     window.removeEventListener('mousemove', handleResizeMove);
     window.removeEventListener('mouseup', handleResizeEnd);
+    window.removeEventListener('tool-approval-request', handleToolApprovalRequest);
+    window.removeEventListener('tool-approval-complete', handleToolApprovalComplete);
   });
 
   function handleGlobalKeydown(e) {
@@ -299,6 +329,14 @@
   <ConfigModal bind:open={showConfigModal} on:close={handleCloseConfig} on:connect={handleConnectModel} />
   <CommandPalette />
   <Toast />
+  {#if pendingApproval}
+    <ToolApprovalModal
+      pendingTools={pendingApproval.tools}
+      approvalId={pendingApproval.approvalId}
+      onapprove={handleApproveTool}
+      onreject={handleRejectTool}
+    />
+  {/if}
 </div>
 
 <style>

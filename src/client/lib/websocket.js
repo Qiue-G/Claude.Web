@@ -2,7 +2,7 @@
  * WebSocket Manager - handles real-time communication with server
  */
 import { isConnected, connectionStatus, sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
-import { messages, addMessage, appendToLastAssistant, isWaiting, isTyping, setMessages } from '$stores/chat.store.js';
+import { messages, addMessage, appendToLastAssistant, isWaiting, isTyping, setMessages, prependMessages } from '$stores/chat.store.js';
 import { stripAnsi } from '$lib/utils.js';
 import { t } from '$lib/i18n.js';
 import { get } from 'svelte/store';
@@ -167,6 +167,21 @@ function handleServerMessage(msg) {
     case 'history':
       if (Array.isArray(msg.messages) && msg.messages.length > 0) {
         setMessages(msg.messages);
+        // 如果还有更多历史，保存分页信息
+        if (msg.hasMore) {
+          window.__historyPage = msg.page || 0;
+          window.__historyTotalPages = msg.totalPages || 1;
+          window.__historyHasMore = msg.hasMore;
+        }
+      } else {
+        setMessages([]);
+      }
+      break;
+    case 'history_page':
+      if (Array.isArray(msg.messages) && msg.messages.length > 0) {
+        prependMessages(msg.messages);
+        window.__historyPage = msg.page;
+        window.__historyHasMore = msg.hasMore;
       }
       break;
     case 'output':
@@ -196,7 +211,33 @@ function handleServerMessage(msg) {
       break;
     case 'model_update':
       break;
+    case 'tool_approval_request':
+      window.dispatchEvent(new CustomEvent('tool-approval-request', {
+        detail: {
+          approvalId: msg.approvalId,
+          tools: msg.tools
+        }
+      }));
+      break;
+    case 'tool_approval_complete':
+      window.dispatchEvent(new CustomEvent('tool-approval-complete'));
+      break;
     default:
       break;
+  }
+}
+
+/**
+ * 发送工具审批结果到服务端
+ * @param {string} approvalId
+ * @param {string[]} approved - 批准的 tool id 数组，空数组表示全部拒绝
+ */
+export function sendToolApproval(approvalId, approved) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      type: 'tool_approval_response',
+      approvalId,
+      approved
+    }));
   }
 }
