@@ -1,4 +1,5 @@
 <script>
+  // App root component — v7.3.2
   import { onMount, onDestroy } from 'svelte';
   import Toolbar from '$components/common/Toolbar.svelte';
   import FileTree from '$components/files/FileTree.svelte';
