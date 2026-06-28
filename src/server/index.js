@@ -17,6 +17,12 @@ import { createFileRouter } from './routes/fileRoutes.js';
 import { createWsHandler } from './routes/wsHandler.js';
 import { createSessionManager } from './sessionManager.js';
 import { createMessageStore } from './messageStore.js';
+import { createRateLimiter } from './lib/rateLimiter.js';
+import { createModelStats } from './lib/modelStats.js';
+import { createSessionRouter } from './routes/sessionRoutes.js';
+import { createModelRouter } from './routes/modelRoutes.js';
+import { createHealthRouter } from './routes/healthRoutes.js';
+import { createConfigRouter } from './routes/configRoutes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = pathDirname(__filename);
@@ -74,36 +80,10 @@ function getFallbackModel(provider) {
 }
 
 // ===== Rate Limiter (token bucket, per-IP) =====
-const rateLimits = new Map();
 const RATE_WINDOW = 60000;      // 1 minute window
 const RATE_MAX_CREATE = 5;      // max session creates per window per IP
 const RATE_MAX_INPUT = 20;      // max WebSocket inputs per window per session
-
-function checkRateLimit(key, max, windowMs) {
-  const now = Date.now();
-  let entry = rateLimits.get(key);
-  if (!entry || now - entry.windowStart > windowMs) {
-    entry = { windowStart: now, count: 0 };
-    rateLimits.set(key, entry);
-  }
-  entry.count++;
-  return entry.count <= max;
-}
-
-function getRateRemaining(key, max, windowMs) {
-  const now = Date.now();
-  const entry = rateLimits.get(key);
-  if (!entry || now - entry.windowStart > windowMs) return max;
-  return Math.max(0, max - entry.count);
-}
-
-// Clean stale rate-limit entries every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of rateLimits) {
-    if (now - entry.windowStart > RATE_WINDOW * 2) rateLimits.delete(key);
-  }
-}, 300000);
+const { check: checkRateLimit, remaining: getRateRemaining, snapshot: rateLimitsSnapshot } = createRateLimiter(RATE_WINDOW);
 
 // ===== Session Manager (persisted to JSON) =====
 const { sessions, createSession, getSession, deleteSession, loadSessions } = createSessionManager(WORKSPACE_DIR);
@@ -117,19 +97,7 @@ const wsProcCount = new Map();    // active process count per session
 const sessionClients = new Map(); // sessionId → WebSocket (for model health push)
 
 // ===== Per-model stream health stats =====
-const modelStats = new Map(); // modelId → { total, success, fail, lastOk, lastFail, lastError }
-
-function recordModelSuccess(modelId) {
-  let s = modelStats.get(modelId);
-  if (!s) modelStats.set(modelId, (s = { total: 0, success: 0, fail: 0, lastOk: null, lastFail: null, lastError: null }));
-  s.total++; s.success++; s.lastOk = Date.now();
-}
-
-function recordModelFail(modelId, errorDetail) {
-  let s = modelStats.get(modelId);
-  if (!s) modelStats.set(modelId, (s = { total: 0, success: 0, fail: 0, lastOk: null, lastFail: null, lastError: null }));
-  s.total++; s.fail++; s.lastFail = Date.now(); s.lastError = errorDetail;
-}
+const modelStats = createModelStats();
 
 function stripAnsi(str) {
   str = str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
@@ -226,7 +194,7 @@ async function startProxy(session) {
       if (liveMatch) {
         session.currentModel = liveMatch[1];
         session.modelHealth = 'ok';
-        recordModelSuccess(liveMatch[1]);
+        modelStats.recordSuccess(liveMatch[1]);
         notifyModelUpdate(session);
       }
       // "✗ all failed ... → code" → error
@@ -234,7 +202,7 @@ async function startProxy(session) {
         session.modelHealth = 'error';
         const codeMatch = text.match(/→\s*(\S+)$/);
         const errCode = codeMatch ? codeMatch[1] : 'unknown';
-        recordModelFail(session.currentModel || session.model, errCode);
+        modelStats.recordFail(session.currentModel || session.model, errCode);
         notifyModelUpdate(session);
       }
     });
@@ -332,164 +300,23 @@ app.use(express.static(join(__dirname, '../../public'), {
   }
 }));
 
-app.post('/api/session', async (req, res) => {
-  try {
-    const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
-    if (!checkRateLimit('create:' + clientIp, RATE_MAX_CREATE, RATE_WINDOW)) {
-      return res.status(429).json({
-        error: 'Too many session requests. Please wait before creating another.',
-        retryAfter: 60
-      });
-    }
+// ===== Session API ====
+app.use('/api/session', createSessionRouter({
+  createSession, getSession, deleteSession, sessions, sessionProcesses, sessionProxies, messageStore,
+  checkRateLimit, RATE_WINDOW, RATE_MAX_CREATE, MAX_SESSIONS, DEFAULTS
+}));
 
-    const { apiKey, model, provider } = req.body;
-    if (!apiKey || typeof apiKey !== 'string' || apiKey.length > 200) return res.status(400).json({ error: 'Invalid API key' });
-    // 校验 model 名称：只允许字母、数字、短横线、下划线、点、斜杠（用于模型名如 openai/gpt-4）
-    if (model && (typeof model !== 'string' || model.length > 100 || !/^[\w.\-\/]+$/.test(model))) return res.status(400).json({ error: 'Invalid model' });
-    const VALID_PROVIDERS = ['openrouter', 'anthropic', 'openai', 'deepseek'];
-    if (provider && !VALID_PROVIDERS.includes(provider)) return res.status(400).json({ error: 'Invalid provider' });
-    if (sessions.size >= MAX_SESSIONS) return res.status(503).json({ error: 'Too many sessions' });
-    const session = await createSession(apiKey, model || DEFAULTS.model, provider || DEFAULTS.provider, MAX_SESSIONS);
-    res.json({ sessionId: session.id, token: session.token, csrfToken: session.csrfToken });
-  } catch (error) { res.status(500).json({ error: 'Failed to create session' }); }
-});
+// ===== Model Discovery API ====
+app.use('/api/models', createModelRouter({ getProviderConfig, DEFAULTS }));
 
-app.get('/api/session/:id', (req, res) => {
-  const token = req.headers['x-session-token'];
-  const session = getSession(req.params.id, token);
-  if (!session) return res.status(401).json({ error: 'Invalid session or token' });
-  res.json({ sessionId: session.id, model: session.model, provider: session.provider });
-});
+// ===== Health API ====
+app.use('/api/health', createHealthRouter({
+  sessions, PROVIDERS, DEFAULTS, MAX_SESSIONS, sessionProxies, modelStats,
+  rateLimits: { snapshot: rateLimitsSnapshot }, RATE_MAX_CREATE, VERSION
+}));
 
-app.delete('/api/session/:id', async (req, res) => {
-  const token = req.headers['x-session-token'];
-  const session = getSession(req.params.id, token);
-  if (session) {
-    const csrfToken = req.headers['x-csrf-token'];
-    if (!csrfToken || csrfToken !== session.csrfToken) return res.status(403).json({ error: 'CSRF token missing or invalid' });
-    const oldProc = sessionProcesses.get(req.params.id);
-    if (oldProc) { oldProc.kill(); sessionProcesses.delete(req.params.id); }
-    const oldProxy = sessionProxies.get(req.params.id);
-    if (oldProxy) { oldProxy.kill(); sessionProxies.delete(req.params.id); }
-    await deleteSession(req.params.id);
-    await messageStore.deleteSessionMessages(req.params.id);
-  }
-  res.json({ success: true });
-});
-
-// ===== Model Discovery API (ModelHub-inspired) =====
-// Models are loaded from agent-config.json at startup
-
-app.get('/api/models', (req, res) => {
-  const provider = req.query.provider || DEFAULTS.provider;
-  const cfg = getProviderConfig(provider);
-  const models = cfg.models || [];
-  const sorted = [...models].sort((a, b) => {
-    if (a.tier !== b.tier) return a.tier === 'free' ? -1 : 1;
-    return a.name.localeCompare(b.name);
-  });
-  res.json({
-    provider,
-    models: sorted,
-    fallback: cfg.fallbackModel || null
-  });
-});
-
-app.get('/api/models/:provider', (req, res) => {
-  const cfg = getProviderConfig(req.params.provider);
-  if (!cfg.models || cfg.models.length === 0) return res.status(404).json({ error: 'Unknown provider' });
-  const sorted = [...cfg.models].sort((a, b) => {
-    if (a.tier !== b.tier) return a.tier === 'free' ? -1 : 1;
-    return a.name.localeCompare(b.name);
-  });
-  res.json({
-    provider: req.params.provider,
-    models: sorted,
-    fallback: cfg.fallbackModel || null
-  });
-});
-
-app.get('/api/health', (req, res) => {
-  const mem = process.memoryUsage();
-  res.json({
-    status: 'ok',
-    version: VERSION,
-    sessions: sessions.size,
-    maxSessions: MAX_SESSIONS,
-    uptime: process.uptime(),
-    memory: {
-      heapUsedMB: Math.round(mem.heapUsed / 1024 / 1024),
-      heapTotalMB: Math.round(mem.heapTotal / 1024 / 1024),
-      rssMB: Math.round(mem.rss / 1024 / 1024)
-    }
-  });
-});
-
-app.get('/api/health/detailed', (req, res) => {
-  const models = [];
-  for (const [id, s] of modelStats) {
-    const total = s.total || 0;
-    const rate = total > 0 ? ((s.success / total) * 100).toFixed(1) : '0.0';
-    models.push({
-      id,
-      total, success: s.success, fail: s.fail,
-      successRate: parseFloat(rate),
-      lastOk: s.lastOk, lastFail: s.lastFail, lastError: s.lastError
-    });
-  }
-  models.sort((a, b) => b.total - a.total);
-
-  const sessionList = [];
-  for (const [sid, s] of sessions) {
-    const proxyAlive = sessionProxies.has(sid);
-    sessionList.push({
-      sessionId: sid,
-      model: s.currentModel || s.model,
-      health: s.modelHealth,
-      provider: s.provider,
-      proxyAlive,
-      createdAt: s.createdAt
-    });
-  }
-
-  // Rate limit snapshot
-  const now = Date.now();
-  const rlSnapshot = [];
-  for (const [key, entry] of rateLimits) {
-    rlSnapshot.push({ key, count: entry.count, remaining: Math.max(0, RATE_MAX_CREATE - entry.count) });
-  }
-
-  res.json({
-    models,
-    sessions: sessionList,
-    uptime: process.uptime(),
-    rateLimits: rlSnapshot.length ? rlSnapshot : null,
-    config: {
-      providers: Object.keys(PROVIDERS),
-      defaults: DEFAULTS,
-      maxSessions: MAX_SESSIONS
-    }
-  });
-});
-
-// ===== Tools API =====
-app.get('/api/tools', (req, res) => {
-  res.json({ tools: getToolDefinitions(process.env) });
-});
-
-// ===== Config API =====
-app.get('/api/config', (req, res) => {
-  const providers = {};
-  for (const [p, cfg] of Object.entries(PROVIDERS)) {
-    providers[p] = {
-      baseUrl: cfg.baseUrl || null,
-      fallbackModel: cfg.fallbackModel || null,
-      modelCount: (cfg.models || []).length,
-      aliasCount: Object.keys(cfg.modelAliases || {}).length
-    };
-  }
-  res.json({ version: VERSION, defaults: DEFAULTS, providers });
-});
+// ===== Config & Tools API ====
+app.use('/api', createConfigRouter({ getToolDefinitions, PROVIDERS, DEFAULTS, VERSION }));
 
 // ===== File API ====
 // All file CRUD operations are handled by routes/fileRoutes.js
