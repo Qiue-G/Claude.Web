@@ -142,7 +142,8 @@ export function createWsHandler(deps) {
           prompt = buildPrompt({
             toolInstructions: getToolInstructions(tools),
             toolResults,
-            userMessage: userMessageForPrompt
+            userMessage: userMessageForPrompt,
+            history: messageStore ? (await messageStore.loadMessages(sessionId)).slice(0, -1) : []
           });
 
           console.log('[INPUT] prompt length: ' + (prompt ? prompt.length : 0) + ', tools: [' + tools.join(',') + ']');

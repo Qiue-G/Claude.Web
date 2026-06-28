@@ -48,3 +48,25 @@ test('buildPrompt skips empty toolResults', () => {
   assert.doesNotMatch(prompt, /\[File Analysis\]/);
   assert.match(prompt, /\[User Message\]\nHello/);
 });
+
+test('buildPrompt includes conversation history before user message', () => {
+  const prompt = buildPrompt({
+    userMessage: 'Third message',
+    history: [
+      { role: 'user', content: 'First message' },
+      { role: 'assistant', content: 'First response' },
+      { role: 'user', content: 'Second message' }
+    ]
+  });
+
+  assert.ok(prompt.indexOf('[Conversation History]') < prompt.indexOf('[User Message]'));
+  assert.match(prompt, /user: First message/);
+  assert.match(prompt, /assistant: First response/);
+  assert.match(prompt, /user: Second message/);
+});
+
+test('buildPrompt handles empty history gracefully', () => {
+  const prompt = buildPrompt({ userMessage: 'Hello', history: [] });
+  assert.doesNotMatch(prompt, /\[Conversation History\]/);
+  assert.match(prompt, /\[User Message\]\nHello/);
+});

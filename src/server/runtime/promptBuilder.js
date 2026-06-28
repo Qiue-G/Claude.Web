@@ -16,7 +16,7 @@ function appendToolResultSections(sections, toolResults = []) {
   }
 }
 
-export function buildPrompt({ toolInstructions = '', toolResults = [], userMessage = '' } = {}) {
+export function buildPrompt({ toolInstructions = '', toolResults = [], userMessage = '', history = [] } = {}) {
   const sections = [];
 
   if (toolInstructions && toolInstructions.trim()) {
@@ -24,6 +24,26 @@ export function buildPrompt({ toolInstructions = '', toolResults = [], userMessa
   }
 
   appendToolResultSections(sections, toolResults);
+
+  if (Array.isArray(history) && history.length > 0) {
+    const historyLines = [];
+    let totalLen = 0;
+    const MAX_HISTORY_CHARS = 8000;
+    // 取最近的消息，从最旧到最新排列
+    const recent = history.slice(-20);
+    for (const msg of recent) {
+      const line = (msg.role || 'user') + ': ' + (msg.content || '');
+      if (totalLen + line.length > MAX_HISTORY_CHARS) {
+        historyLines.push('(conversation history truncated)');
+        break;
+      }
+      historyLines.push(line);
+      totalLen += line.length;
+    }
+    if (historyLines.length > 0) {
+      sections.push('[Conversation History]\n' + historyLines.join('\n'));
+    }
+  }
 
   sections.push(`[User Message]\n${String(userMessage || '').trim()}`);
 
