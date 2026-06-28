@@ -185,9 +185,9 @@
 
   let sendTimeout = $state(null);
 
-  // 发送超时自动恢复
+  // 发送超时自动恢复（工具审批等待时不超时）
   $effect(() => {
-    if ($isWaiting) {
+    if ($isWaiting && !pendingApproval) {
       sendTimeout = setTimeout(() => {
         isWaiting.set(false);
         isTyping.set(false);
@@ -199,6 +199,19 @@
         clearTimeout(sendTimeout);
         sendTimeout = null;
       }
+    }
+  });
+
+  // 审批结束后重置超时（让 AI 继续回复）
+  $effect(() => {
+    if (pendingApproval === null && sendTimeout === null && $isWaiting) {
+      // 审批刚完成，isWaiting 仍为 true，重新启动超时
+      sendTimeout = setTimeout(() => {
+        isWaiting.set(false);
+        isTyping.set(false);
+        addMessage('system', get(t)('chat.timeout'));
+        sendTimeout = null;
+      }, 90000); // 审批后给 90s（搜索结果可能较慢）
     }
   });
 
