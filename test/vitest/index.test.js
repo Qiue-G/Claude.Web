@@ -26,7 +26,7 @@ describe('tools.api.js', () => {
   });
 
   it('fetchTools throws on HTTP error', async () => {
-    fetch.mockResolvedValue({ ok: false });
+    fetch.mockResolvedValue({ ok: false, status: 500, json: () => Promise.resolve({ error: 'Failed to fetch tools' }) });
     const { fetchTools } = await import('$apis/tools.api.js');
     await expect(fetchTools()).rejects.toThrow('Failed to fetch tools');
   });
@@ -40,14 +40,18 @@ describe('models.api.js', () => {
     fetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({ models: ['gpt-4'] }) });
     const { fetchModels } = await import('$apis/models.api.js');
     await fetchModels();
-    expect(fetch).toHaveBeenCalledWith('/api/models');
+    expect(fetch).toHaveBeenCalledWith('/api/models', expect.objectContaining({
+      headers: expect.objectContaining({ 'Content-Type': 'application/json' })
+    }));
   });
 
   it('fetchModels includes provider query param', async () => {
     fetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({ models: [] }) });
     const { fetchModels } = await import('$apis/models.api.js');
     await fetchModels('anthropic');
-    expect(fetch).toHaveBeenCalledWith('/api/models?provider=anthropic');
+    expect(fetch).toHaveBeenCalledWith('/api/models?provider=anthropic', expect.objectContaining({
+      headers: expect.objectContaining({ 'Content-Type': 'application/json' })
+    }));
   });
 
   it('fetchConfig returns config', async () => {
@@ -91,7 +95,7 @@ describe('session.api.js', () => {
   });
 
   it('getSession throws on failure', async () => {
-    fetch.mockResolvedValue({ ok: false });
+    fetch.mockResolvedValue({ ok: false, status: 401, json: () => Promise.resolve({ error: 'Invalid session' }) });
     const { getSession } = await import('$apis/session.api.js');
     await expect(getSession('bad', 'token')).rejects.toThrow('Invalid session');
   });
@@ -187,7 +191,7 @@ describe('files.api.js', () => {
   });
 
   it('readFile throws on error', async () => {
-    fetch.mockResolvedValue({ ok: false });
+    fetch.mockResolvedValue({ ok: false, status: 500, json: () => Promise.resolve({ error: 'Failed to read file' }) });
     const { readFile } = await import('$apis/files.api.js');
     await expect(readFile('s1', 'test.txt', 'token')).rejects.toThrow('Failed to read file');
   });

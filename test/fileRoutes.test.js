@@ -57,6 +57,13 @@ async function createTestEnv() {
   const app = express();
   app.use(express.json());
   app.use('/api/files', router);
+  // Centralized error handler (mirrors production setup)
+  app.use((err, req, res, next) => {
+    if (err.status) {
+      return res.status(err.status).json(err.toJSON ? err.toJSON() : { error: err.message });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  });
 
   return { app, session, sessions, workDir, db, closeDb: () => db.close() };
 }

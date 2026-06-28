@@ -5,23 +5,24 @@
  * GET /api/config/mcp — MCP server status
  */
 import { Router } from 'express';
+import { asyncHandler } from '../lib/asyncHandler.js';
 
 export function createConfigRouter(deps) {
   const { getToolDefinitions, PROVIDERS, DEFAULTS, VERSION, mcpManager } = deps;
   const router = Router();
 
-  router.get('/tools', async (req, res) => {
+  router.get('/tools', asyncHandler(async (req, res) => {
     let mcpTools = [];
-    try {
-      if (mcpManager && mcpManager.isConnected()) {
+    if (mcpManager && mcpManager.isConnected()) {
+      try {
         mcpTools = await mcpManager.listTools();
+      } catch (e) {
+        console.warn('[CONFIG] mcp listTools failed:', e.message);
       }
-    } catch (e) {
-      console.warn('[CONFIG] mcp listTools failed:', e.message);
     }
     const builtin = getToolDefinitions(process.env);
     res.json({ tools: [...builtin, ...mcpTools] });
-  });
+  }));
 
   router.get('/config', (req, res) => {
     const providers = {};

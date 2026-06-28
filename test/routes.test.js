@@ -140,6 +140,13 @@ function buildSessionApp() {
     RATE_WINDOW: 60000, RATE_MAX_CREATE: 100, MAX_SESSIONS: 10,
     DEFAULTS: { provider: 'openai', model: 'gpt-4' }
   }));
+  // Centralized error handler (mirrors production setup)
+  app.use((err, req, res, next) => {
+    if (err.status) {
+      return res.status(err.status).json(err.toJSON ? err.toJSON() : { error: err.message });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  });
   return { app, sessions };
 }
 

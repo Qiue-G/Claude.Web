@@ -26,6 +26,7 @@ import { createModelRouter } from './routes/modelRoutes.js';
 import { createHealthRouter } from './routes/healthRoutes.js';
 import { createConfigRouter } from './routes/configRoutes.js';
 import { createSearchRouter } from './routes/searchRoutes.js';
+import { AppError } from './lib/AppError.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = pathDirname(__filename);
@@ -397,11 +398,21 @@ app.get('*', (req, res) => {
 
 // ===== Error handler (must be 4-param to be recognized by Express) =====
 app.use((err, req, res, next) => {
-  console.error('[ERROR] express:', err.message);
-  if (err.type === 'entity.too.large') {
-    return res.status(413).json({ error: 'File too large (max 500KB)' });
+  // AppError — structured errors from route handlers
+  if (err instanceof AppError) {
+    console.error('[ERROR]', err.status, err.message, err.extra?.code || '');
+    return res.status(err.status).json(err.toJSON());
   }
-  res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+
+  // Express body-parser: payload too large
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'File too large (max 500KB)', code: 'payload_too_large' });
+  }
+
+  // Unknown errors
+  console.error('[ERROR] unhandled:', err.message);
+  if (err.stack) console.error(err.stack);
+  res.status(500).json({ error: 'Internal server error', code: 'internal_error' });
 });
 
 // ===== Startup: load persisted sessions =====

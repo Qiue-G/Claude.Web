@@ -1,65 +1,26 @@
 /**
  * Session API - handles session creation, retrieval, and deletion
  */
+import { api } from '$lib/api.js';
 
-const BASE = '';
-
-/**
- * Create a new session
- */
 export async function createSession(apiKey, model, provider) {
-  const res = await fetch(`${BASE}/api/session`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ apiKey, model, provider })
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `HTTP ${res.status}`);
-  }
-  return res.json();
+  return api.post('/api/session', { apiKey, model, provider });
 }
 
-/**
- * Get session info
- */
 export async function getSession(sessionId, token) {
-  const res = await fetch(`${BASE}/api/session/${sessionId}`, {
-    headers: { 'x-session-token': token || '' }
-  });
-  if (!res.ok) throw new Error('Invalid session');
-  return res.json();
+  return api.get(`/api/session/${sessionId}`, { token });
 }
 
-/**
- * Validate stored session credentials (for page refresh auto-reconnect)
- * Returns session info if valid, throws if invalid/expired.
- */
 export async function validateSession(sessionId, token) {
-  const res = await fetch(`${BASE}/api/session/current`, {
+  return api.get('/api/session/current', {
+    noToast: true,
     headers: {
       'x-session-id': sessionId || '',
       'x-session-token': token || ''
     }
   });
-  if (!res.ok) throw new Error('Session expired');
-  return res.json();
 }
 
-/**
- * Delete session
- */
 export async function deleteSession(sessionId, token, csrfToken) {
-  const res = await fetch(`${BASE}/api/session/${sessionId}`, {
-    method: 'DELETE',
-    headers: {
-      'x-session-token': token || '',
-      'x-csrf-token': csrfToken || ''
-    }
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `HTTP ${res.status}`);
-  }
-  return res.json();
+  return api.delete(`/api/session/${sessionId}`, { token, csrfToken });
 }
