@@ -3,9 +3,6 @@ node_modules/
 .env.local
 dist/
 build/
-public/build/
-public/*.js
-public/*.css
-public/favicon.ico
+public/
 .DS_Store
 *.log

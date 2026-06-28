@@ -322,6 +322,16 @@ app.use('/api', createConfigRouter({ getToolDefinitions, PROVIDERS, DEFAULTS, VE
 // All file CRUD operations are handled by routes/fileRoutes.js
 app.use('/api/files', createFileRouter({ getSession, sessions, checkRateLimit, RATE_WINDOW, RATE_MAX_FILE: 60 }));
 
+// ===== SPA fallback: serve index.html for non-API routes =====
+app.get('*', (req, res) => {
+  const indexPath = join(__dirname, '../../public/index.html');
+  if (existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(503).json({ error: 'Frontend not built yet. Run: npm run build' });
+  }
+});
+
 // ===== Error handler (must be 4-param to be recognized by Express) =====
 app.use((err, req, res, next) => {
   console.error('[ERROR] express:', err.message);
