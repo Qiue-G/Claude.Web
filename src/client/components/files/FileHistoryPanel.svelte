@@ -1,6 +1,7 @@
 <script>
-  import { createEventDispatcher, get } from 'svelte';
-  import { sessionId, sessionToken } from '$stores/session.store.js';
+  import { createEventDispatcher } from 'svelte';
+  import { get } from 'svelte/store';
+  import { sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
   import { getFileVersions, getVersionContent, rollbackFile } from '$apis/files.api.js';
   import { showToast } from '$stores/ui.store.js';
   import { t } from '$lib/i18n.js';
@@ -70,7 +71,7 @@
     try {
       const sid = get(sessionId);
       const tok = get(sessionToken);
-      const csrf = get(await import('$stores/session.store.js')).csrfToken;
+      const csrf = get(csrfToken);
       await rollbackFile(sid, versionId, filePath, tok, csrf);
       showToast('已回滚到版本 ' + versionId.substring(0, 8) + '...', 'success');
       dispatch('rollback', { versionId });
