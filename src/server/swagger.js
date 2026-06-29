@@ -774,16 +774,20 @@ Claude.Web 是一个基于 free-code CLI 的 Web 界面，提供 AI 聊天、文
 export function createSwaggerRouter() {
   const router = Router();
 
-  // 提供 swagger-ui-dist 静态资源
+  // 提供 swagger-ui-dist 静态资源 (js/css/favicon)
   router.use('/docs', (req, res, next) => {
-    // 如果是 /api/docs/spec 则跳过静态文件处理
+    // spec 由独立路由处理
     if (req.path === '/spec') return next();
-    // 否则从 swagger-ui-dist 目录提供静态文件
+    // 无扩展名路径（如 /docs/）跳过，由 GET handler 处理
+    if (!req.path.includes('.')) return next();
     expressStatic(req, res, next);
   });
 
-  // Swagger UI 入口页面
+  // Swagger UI 入口页面 — 重定向 /docs -> /docs/ 确保相对路径正确
   router.get('/docs', (req, res) => {
+    if (!req.path.endsWith('/')) {
+      return res.redirect(301, req.baseUrl + req.path + '/');
+    }
     const html = readFileSync(join(swaggerDistPath, 'index.html'), 'utf-8')
       .replace(/https?:\/\/petstore\.swagger\.io\/v2\/swagger\.json/g, './spec')
       .replace(/Swagger UI<\/title>/, 'Claude.Web API 文档</title>');
@@ -801,7 +805,10 @@ export function createSwaggerRouter() {
 
 // Express static middleware bound to swagger-ui-dist path
 function expressStatic(req, res, next) {
-  const filePath = join(swaggerDistPath, req.path === '/docs' ? 'index.html' : req.path.replace(/^\/api\/docs\//, ''));
+  // req.path is relative to mount point (/docs), e.g. /swagger-ui.css
+  // req.baseUrl is /api/docs
+  const relativePath = req.path.replace(/^\//, ''); // strip leading /
+  const filePath = join(swaggerDistPath, relativePath || 'index.html');
   try {
     const content = readFileSync(filePath);
     const ext = filePath.split('.').pop();
