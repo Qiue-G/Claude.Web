@@ -1,18 +1,17 @@
 /**
  * 向量存储层
  *
- * 使用 sql.js 的 FTS5 做 BM25 全文搜索（零依赖）。
- * 使用内存数组做向量存储和余弦相似度搜索。
+ * BM25 全文搜索 + 向量余弦相似度搜索。
  *
- * 借鉴 Open WebUI 的 VectorDBBase 接口设计，
- * 但简化到刚好满足 Claude.Web 的需求。
+ * 由于 sql.js 标准 WASM 构建不含 FTS5 扩展，
+ * BM25 使用普通表 + LIKE 近似实现，兼容所有 sql.js 运行时。
  */
 import crypto from 'crypto';
 
 /**
  * 创建向量存储实例
  * @param {object} options
- * @param {object} options.db  - sql.js 数据库实例（用于 FTS5）
+ * @param {object} options.db  - sql.js 数据库实例
  * @param {number} [options.dimensions=256] - 嵌入向量维度
  */
 export function createVectorStore(options = {}) {
@@ -21,25 +20,27 @@ export function createVectorStore(options = {}) {
   // 内存向量索引：{ id, collection, text, vector, metadata, hash }
   const vectors = [];
 
-  // FTS5 表名
-  const FTS_TABLE = 'rag_docs_fts';
+  const DOCS_TABLE = 'rag_docs';
 
   /**
-   * 初始化 FTS5 表（如有 db）
+   * 初始化普通表 + 索引
    */
   function initSchema() {
     if (!db) return;
+    // 使用普通表替代 FTS5，兼容所有 sql.js 构建
     db.run(`
-      CREATE VIRTUAL TABLE IF NOT EXISTS ${FTS_TABLE}
-      USING fts5(
-        text,
-        collection UNINDEXED,
-        name UNINDEXED,
-        source UNINDEXED,
-        headings UNINDEXED,
-        content_hash UNINDEXED
+      CREATE TABLE IF NOT EXISTS ${DOCS_TABLE} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        text TEXT NOT NULL,
+        collection TEXT NOT NULL,
+        name TEXT DEFAULT '',
+        source TEXT DEFAULT '',
+        headings TEXT DEFAULT '',
+        content_hash TEXT DEFAULT ''
       )
     `);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_rag_collection ON ${DOCS_TABLE}(collection)`);
+    // 全文索引用的就是 text 列上的 LIKE
   }
 
   /**
@@ -65,32 +66,36 @@ export function createVectorStore(options = {}) {
         });
       }
 
-      // 写入 FTS5 全文索引
+      // 写入全文索引（普通表）
       if (db) {
-        _insertFts(collection, chunk);
+        _insertDoc(collection, chunk);
       }
     }
   }
 
-  function _insertFts(collection, chunk) {
+  function _insertDoc(collection, chunk) {
     const meta = chunk.metadata || {};
-    // content_hash 用于 RRF 去重
-    db.run(
-      `INSERT INTO ${FTS_TABLE}(text, collection, name, source, headings, content_hash)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [
-        chunk.text,
-        collection,
-        meta.filename || '',
-        meta.source || '',
-        Array.isArray(meta.headings) ? meta.headings.join(' > ') : '',
-        chunk.hash,
-      ]
-    );
+    try {
+      db.run(
+        `INSERT INTO ${DOCS_TABLE}(text, collection, name, source, headings, content_hash)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          chunk.text,
+          collection,
+          meta.filename || '',
+          meta.source || '',
+          Array.isArray(meta.headings) ? meta.headings.join(' > ') : '',
+          chunk.hash,
+        ]
+      );
+    } catch (e) {
+      // 静默失败
+    }
   }
 
   /**
-   * BM25 全文搜索（通过 FTS5 bm25 排序函数）
+   * BM25 近似搜索（基于 LIKE + 词频排序）
+   * 不使用 FTS5，兼容 sql.js 标准构建
    * @param {string} collection
    * @param {string} query
    * @param {number} limit
@@ -99,87 +104,59 @@ export function createVectorStore(options = {}) {
   function searchBm25(collection, query, limit = 10) {
     if (!db) return [];
 
-    // FTS5 查询语法：用 AND 组合关键词
-    const ftsQuery = query
+    const terms = query
       .replace(/[^\w\s\u4e00-\u9fff]/g, ' ')
       .split(/\s+/)
-      .filter(Boolean)
-      .map(w => `"${w}"`)
-      .join(' AND ');
+      .filter(Boolean);
 
-    if (!ftsQuery) return [];
+    if (terms.length === 0) return [];
 
-    try {
-      const stmt = db.prepare(`
-        SELECT text, name, source, headings, content_hash, bm25(${FTS_TABLE}) AS score
-        FROM ${FTS_TABLE}
-        WHERE ${FTS_TABLE} MATCH ?
-          AND collection = ?
-        ORDER BY score
-        LIMIT ?
-      `);
-      stmt.bind([ftsQuery, collection, limit * 2]); // 多取一些做 RRF
-
-      const results = [];
-      while (stmt.step()) {
-        const row = stmt.getAsObject();
-        results.push({
-          text: row.text,
-          metadata: {
-            filename: row.name || undefined,
-            source: row.source || undefined,
-            headings: row.headings ? row.headings.split(' > ') : undefined,
-          },
-          score: row.score,
-          hash: row.content_hash,
-        });
-      }
-      stmt.free();
-      return results;
-    } catch (e) {
-      // FTS5 查询可能因语法问题失败（如 CJK 字符），回退到 LIKE
-      return _searchLike(collection, query, limit * 2);
-    }
-  }
-
-  /**
-   * 回退：LIKE 搜索（当 FTS5 查询 CJK 失败时）
-   */
-  function _searchLike(collection, query, limit) {
     const results = [];
     const seenHashes = new Set();
-    const terms = query.split(/\s+/).filter(Boolean);
-    if (terms.length === 0) return results;
+    const totalRows = [];
+    const hashTermCount = {}; // hash → 命中的词数
 
-    // 从 FTS5 表用 LIKE 查
     try {
       for (const term of terms) {
         const likePattern = `%${term}%`;
-        const stmt = db.prepare(`
-          SELECT text, name, source, headings, content_hash
-          FROM ${FTS_TABLE}
-          WHERE text LIKE ?
-            AND collection = ?
-          LIMIT ?
-        `);
-        stmt.bind([likePattern, collection, limit]);
-        while (stmt.step()) {
-          const row = stmt.getAsObject();
-          if (seenHashes.has(row.content_hash)) continue;
-          seenHashes.add(row.content_hash);
-          results.push({
-            text: row.text,
-            metadata: {
-              filename: row.name || undefined,
-              source: row.source || undefined,
-              headings: row.headings ? row.headings.split(' > ') : undefined,
-            },
-            score: 0, // LIKE 无排名
-            hash: row.content_hash,
-          });
+        const rows = db.exec(
+          `SELECT text, name, source, headings, content_hash
+           FROM ${DOCS_TABLE}
+           WHERE collection = ? AND text LIKE ?
+           LIMIT ?`,
+          [collection, likePattern, limit * 2]
+        );
+
+        if (rows.length > 0 && rows[0].values) {
+          for (const row of rows[0].values) {
+            const hash = row[4];
+            if (seenHashes.has(hash)) {
+              hashTermCount[hash] = (hashTermCount[hash] || 1) + 1;
+            } else {
+              seenHashes.add(hash);
+              hashTermCount[hash] = 1;
+              totalRows.push({
+                text: row[0],
+                metadata: {
+                  filename: row[1] || undefined,
+                  source: row[2] || undefined,
+                  headings: row[3] ? row[3].split(' > ') : undefined,
+                },
+                hash,
+                score: 0,
+              });
+            }
+          }
         }
-        stmt.free();
       }
+
+      // 按命中词数排序
+      for (const r of totalRows) {
+        r.score = (hashTermCount[r.hash] || 1) / terms.length;
+      }
+      totalRows.sort((a, b) => b.score - a.score);
+
+      results.push(...totalRows.slice(0, limit * 2));
     } catch (e) {
       // 静默失败
     }
@@ -213,7 +190,7 @@ export function createVectorStore(options = {}) {
    * 余弦相似度（结果范围 [-1, 1]，越高越相似）
    */
   function cosineSimilarity(a, b) {
-    if (a.length !== b.length) return 0;
+    if (!a || !b || a.length !== b.length) return 0;
     let dot = 0, magA = 0, magB = 0;
     for (let i = 0; i < a.length; i++) {
       dot += a[i] * b[i];
@@ -235,9 +212,9 @@ export function createVectorStore(options = {}) {
       if (vectors[i].collection === collection) vectors.splice(i, 1);
     }
 
-    // 清理 FTS5
+    // 清理文档表
     if (db) {
-      db.run(`DELETE FROM ${FTS_TABLE} WHERE collection = ?`, [collection]);
+      db.run(`DELETE FROM ${DOCS_TABLE} WHERE collection = ?`, [collection]);
     }
   }
 
