@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM node:22-slim
 
 # Install Bun + build deps for node-pty
 RUN apt-get update && apt-get install -y curl unzip git build-essential python3 socat \
@@ -34,6 +34,8 @@ RUN git clone https://github.com/paoloanzn/free-code.git /free-code \
 
 # Add OpenRouter proxy (translates Anthropic API format to OpenRouter)
 COPY or_proxy.mjs /free-code/or_proxy.mjs
+# Add agent config (provider/model definitions)
+COPY agent-config.json /free-code/agent-config.json
 
 # Create workspace directory
 RUN mkdir -p /workspace
