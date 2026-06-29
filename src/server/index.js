@@ -28,6 +28,7 @@ import { createConfigRouter } from './routes/configRoutes.js';
 import { createSearchRouter } from './routes/searchRoutes.js';
 import { createRagRouter } from './routes/ragRoutes.js';
 import { createRagSystem } from '../rag/index.js';
+import { createSwaggerRouter } from './swagger.js';
 import { AppError } from './lib/AppError.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -402,6 +403,9 @@ app.use('/api/files', createFileRouter({ getSession, sessions, checkRateLimit, R
 
 // ===== RAG API ====
 app.use('/api/rag', createRagRouter({ rag, sessions }));
+
+// ===== Swagger API Docs ====
+app.use('/api', createSwaggerRouter());
 
 // ===== SPA fallback: serve index.html for non-API routes =====
 app.get('*', (req, res) => {

@@ -27,6 +27,8 @@
     "marked": "^18.0.5",
     "pdf-parse": "^2.4.5",
     "sql.js": "^1.14.1",
+    "swagger-jsdoc": "^6.3.0",
+    "swagger-ui-dist": "^5.32.8",
     "uuid": "^9.0.0",
     "ws": "^8.16.0"
   },
