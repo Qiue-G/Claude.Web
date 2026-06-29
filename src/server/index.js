@@ -451,7 +451,7 @@ wss.on('connection', createWsHandler({
   getSession, sessions, sessionProcesses, sessionProxies, sessionClients, wsProcCount,
   broadcastToSession, spawnCli, maskSensitive, stripAnsi,
   checkRateLimit, ALLOWED_ORIGINS, RATE_WINDOW, RATE_MAX_INPUT,
-  messageStore, mcpManager, rag
+  messageStore, mcpManager, rag, agentConfig
 }));
 
 async function gracefulShutdown(signal) {

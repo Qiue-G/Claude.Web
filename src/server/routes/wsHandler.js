@@ -3,6 +3,7 @@ import { searchWeb } from '../tools/webSearch.js';
 import { analyzeFilesFromPromptContext, stripFileBlocksFromPrompt } from '../tools/fileAnalysis.js';
 import { buildPrompt } from '../runtime/promptBuilder.js';
 import { getToolInstructions, isBuiltinTool, isMcpTool, parseMcpToolId } from '../tools/registry.js';
+import { runHooks } from '../runtime/hooksRunner.js';
 
 /**
  * 将 RAG 搜索结果格式化为可读文本
@@ -59,8 +60,9 @@ export function createWsHandler(deps) {
       getSession, sessions, sessionProcesses, sessionProxies, sessionClients, wsProcCount,
       broadcastToSession, spawnCli, maskSensitive, stripAnsi,
       checkRateLimit, ALLOWED_ORIGINS, RATE_WINDOW, RATE_MAX_INPUT,
-      messageStore, mcpManager, rag
+      messageStore, mcpManager, rag, agentConfig
     } = deps;
+    const pluginsConfig = (agentConfig && agentConfig.plugins) || {};
 
     // Verify WebSocket origin
     const wsOrigin = req.headers.origin;
@@ -305,6 +307,22 @@ export function createWsHandler(deps) {
               if (approvedTools.includes(mcpTool.id)) {
                 toolInstructions += '\n' + mcpTool.instruction;
               }
+            }
+          }
+
+          // === Agent 钩子：修改用户提示 ===
+          const hooksCtx = runHooks('onUserPrompt', { prompt: userMessageForPrompt }, pluginsConfig);
+          userMessageForPrompt = hooksCtx.prompt;
+
+          // === Agent 钩子：改写工具结果 ===
+          for (let i = 0; i < toolResults.length; i++) {
+            const tr = toolResults[i];
+            const postCtx = runHooks('postToolUse', {
+              toolName: tr.tool || tr.type || '',
+              result: tr.content || ''
+            }, pluginsConfig);
+            if (postCtx.result !== tr.content) {
+              toolResults[i] = { ...tr, content: postCtx.result };
             }
           }
 
