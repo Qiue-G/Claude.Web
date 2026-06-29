@@ -97,7 +97,7 @@
 |---|---|---|---|---|---|
 | 1 | **RAG 知识库** ✅ 已完成 | open-webui 检索架构 | ~1w | ✅ Phase 1-4 | chunker/embedder/vectorStore/retrieval + extractors + API |
 | 2 | **文件版本管理** — 文件快照、diff 对比、回滚 | Kun Git worktree | ~3d | ✅ 已完成 | `fileRoutes.js` + `FileHistoryPanel.svelte` + `DiffViewer.svelte` |
-| 3 | **UI 插件系统** — 前端组件可插拔架构 | Kun 插件工坊 | ~5d | ❌ 待办 | 需要架构设计 |
+| 3 | **轻量扩展点** — 配置化替代插件系统（主题令牌/工具栏/命令面板/Agent 钩子） | 自研（参考 Kun manifest.json） | ~1d | ✅ 已实施 — 6 文件改动，189 tests |
 
 ### P3 — 远期探索
 
@@ -123,21 +123,9 @@
 | P1 #3 错误处理统一 | ✅ 已完成（`AppError` + `asyncHandler` + 全局 middleware + `Toast.svelte`） |
 | P2 #1 RAG 知识库 | ✅ 已完成 (Phase 1-4) |
 | P2 #2 文件版本管理 | ✅ 已完成 — 写时快照、版本列表、diff 对比、回滚 |
-| P2 #3 UI 插件系统 | ❌ 待办 |
+| P2 #3 轻量扩展点 | ✅ 已完成 — 配置化替代插件系统（主题令牌/工具栏/命令面板/Agent 钩子） |
 
-**P0 + P1 + P2 全部完成。仅剩 1 项待办：P2 #3 UI 插件系统。**
-
-### 推荐剩余实施路径
-
-剩余 2 项待办，建议顺序：
-
-### 第一步：P2 #2 — 文件版本管理（3 天）✅ 已完成
-
-借鉴 Kun 的 Git worktree 方案，实现文件快照、diff 对比、回滚。
-
-### 第二步（剩余）：P2 #3 — UI 插件系统（5 天）
-
-前端组件可插拔架构（远期）。
+**P0 + P1 + P2 全部完成。**
 
 ---
 
