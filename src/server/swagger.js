@@ -789,8 +789,7 @@ export function createSwaggerRouter() {
       return res.redirect(301, req.baseUrl + req.path + '/');
     }
     const html = readFileSync(join(swaggerDistPath, 'index.html'), 'utf-8')
-      .replace(/https?:\/\/petstore\.swagger\.io\/v2\/swagger\.json/g, './spec')
-      .replace(/Swagger UI<\/title>/, 'Claude.Web API 文档</title>');
+      .replace(/<title>Swagger UI<\/title>/, '<title>Claude.Web API 文档</title>');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   });
@@ -806,11 +805,17 @@ export function createSwaggerRouter() {
 // Express static middleware bound to swagger-ui-dist path
 function expressStatic(req, res, next) {
   // req.path is relative to mount point (/docs), e.g. /swagger-ui.css
-  // req.baseUrl is /api/docs
   const relativePath = req.path.replace(/^\//, ''); // strip leading /
   const filePath = join(swaggerDistPath, relativePath || 'index.html');
   try {
-    const content = readFileSync(filePath);
+    let content = readFileSync(filePath, 'utf-8');
+    // Patch swagger-initializer.js to point to our local spec
+    if (relativePath === 'swagger-initializer.js') {
+      content = content.replace(
+        /"https?:\/\/petstore\.swagger\.io\/v2\/swagger\.json"/,
+        '"' + './spec' + '"'
+      );
+    }
     const ext = filePath.split('.').pop();
     const mime = {
       html: 'text/html',
