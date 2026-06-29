@@ -7,6 +7,7 @@
   import { connectionStatus } from '$stores/session.store.js';
   import { tokenStats } from '$stores/chat.store.js';
   import { t } from '$lib/i18n.js';
+  import { registeredToolbarItems, executeCommand } from '$stores/plugins.store.js';
 
   const dispatch = createEventDispatcher();
 
@@ -81,6 +82,15 @@
     >
       <span class="api-label">API</span>
     </a>
+    {#if $registeredToolbarItems.length > 0}
+      <div class="toolbar-divider"></div>
+      {#each $registeredToolbarItems as item}
+        <button class="toolbar-btn" on:click={() => executeCommand(item.command)}
+          title={item.label}>
+          <Icon name={item.icon || 'puzzle'} />
+        </button>
+      {/each}
+    {/if}
     <ThemeToggle />
     <LanguageSelector />
     <ModelSelector

@@ -3,14 +3,17 @@
   import { isCommandPaletteOpen, commands, closeCommandPalette, executeCommand } from '$stores/keyboard.store.js';
   import Icon from '$components/common/Icon.svelte';
   import { t } from '$lib/i18n.js';
+  import { registeredCommands } from '$stores/plugins.store.js';
 
   let searchQuery = '';
   let selectedIndex = 0;
   let inputElement;
 
-  $: filteredCommands = $commands.filter(cmd => 
-    cmd.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    cmd.description.toLowerCase().includes(searchQuery.toLowerCase())
+  $: allCommands = [...$commands, ...$registeredCommands];
+
+  $: filteredCommands = allCommands.filter(cmd => 
+    (cmd.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (cmd.description || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   $: if ($isCommandPaletteOpen) {
