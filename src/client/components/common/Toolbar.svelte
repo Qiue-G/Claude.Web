@@ -72,6 +72,15 @@
   </div>
 
   <div class="toolbar-right">
+    <a
+      class="toolbar-btn api-docs-btn"
+      href="/api/docs/"
+      target="_blank"
+      rel="noopener noreferrer"
+      title="API 文档 (Swagger)"
+    >
+      <span class="api-label">API</span>
+    </a>
     <ThemeToggle />
     <LanguageSelector />
     <ModelSelector
@@ -117,6 +126,22 @@
   .toolbar-btn:hover {
     background: var(--bg-hover);
     color: var(--text-primary);
+  }
+
+  .toolbar-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .api-docs-btn {
+    text-decoration: none;
+  }
+
+  .api-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: var(--accent);
   }
 
   .toolbar-divider {
