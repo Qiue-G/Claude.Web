@@ -22,7 +22,7 @@ export function createSessionRouter(deps) {
     const { apiKey, model, provider } = req.body;
     if (!apiKey || typeof apiKey !== 'string' || apiKey.length > 200)
       throw new AppError(400, 'Invalid API key');
-    if (model && (typeof model !== 'string' || model.length > 100 || !/^[\w.\-\/]+$/.test(model)))
+    if (model && (typeof model !== 'string' || model.length > 100 || !/^[\w.\-\/:]+$/.test(model)))
       throw new AppError(400, 'Invalid model');
     if (provider && !VALID_PROVIDERS.includes(provider))
       throw new AppError(400, 'Invalid provider');

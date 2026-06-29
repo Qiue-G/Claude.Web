@@ -182,6 +182,23 @@ test('POST /api/session creates session and returns credentials', async () => {
   } finally { await srv.close(); }
 });
 
+test('POST /api/session accepts OpenRouter free model IDs with colon suffix', async () => {
+  const { app } = buildSessionApp();
+  const srv = await withApp(app);
+  try {
+    const res = await fetch(srv.url + '/api/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        apiKey: 'sk-test',
+        model: 'nvidia/nemotron-3-ultra-550b-a55b:free',
+        provider: 'openrouter'
+      })
+    });
+    assert.equal(res.status, 200);
+  } finally { await srv.close(); }
+});
+
 // ====================================================================
 // searchRoutes integration
 // ====================================================================
