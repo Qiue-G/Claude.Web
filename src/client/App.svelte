@@ -13,7 +13,7 @@
   import { sendToolApproval } from '$lib/websocket.js';
 
   import { isConnected } from '$stores/session.store.js';
-  import { activeModelId, savedModels } from '$stores/models.store.js';
+  import { activeModelId, savedModels, switchModel } from '$stores/models.store.js';
   import { fileContents, fileTree, openFile, closeTab, currentFile } from '$stores/files.store.js';
   import { messages, isWaiting, isTyping, addMessage } from '$stores/chat.store.js';
   import { initChatHistory, createSession, switchSession, currentSessionId } from '$stores/chatHistory.store.js';
@@ -177,6 +177,7 @@
       sessionId.set(session.sessionId);
       sessionToken.set(session.token);
       if (session.csrfToken) csrfToken.set(session.csrfToken);
+      switchModel(model.id);
       connectWebSocket(session.sessionId, session.token);
       showToast(get(t)('toast.connected') + ' ' + model.name, 'success');
       showConfigModal = false;
