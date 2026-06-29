@@ -311,16 +311,13 @@
       const config = await fetchConfig();
       if (config && config.plugins) {
         initPlugins(config.plugins);
-        // 初始主题令牌（默认激活所有主题插件）
-        const theme = get(effectiveTheme) || 'dark';
-        const tokens = getEnabledTokens(theme, config.plugins);
-        applyThemeTokens(tokens);
-        // 将所有主题插件标记为激活
+        // 将所有主题插件标记为初始激活
         const initialActive = {};
         for (const id of Object.keys(config.plugins)) {
           if (config.plugins[id].manifest?.tokens) initialActive[id] = true;
         }
         activeThemeTokens.set(initialActive);
+        // 初始主题令牌（依赖 $effect 自动注入）
       }
     } catch (e) {
       console.warn('[PLUGINS] failed to load config:', e.message);
@@ -337,9 +334,9 @@
 
   // === 响应主题/插件配置变化，更新主题令牌 ===
   $effect(() => {
-    const cfg = get(pluginsConfig);
-    const theme = get(effectiveTheme);
-    const active = get(activeThemeTokens);
+    const cfg = $pluginsConfig;
+    const theme = $effectiveTheme;
+    const active = $activeThemeTokens;
     if (cfg && theme) {
       const tokens = getEnabledTokens(theme, cfg, active);
       applyThemeTokens(tokens);
