@@ -28,6 +28,9 @@
   import { get } from 'svelte/store';
   import { t } from '$lib/i18n.js';
   import { readFilesForAI } from '$lib/attachments.js';
+  import { initPlugins, pluginsConfig, getEnabledTokens, applyThemeTokens } from '$stores/plugins.store.js';
+  import { effectiveTheme } from '$stores/theme.store.js';
+  import { fetchConfig } from '$apis/models.api.js';
 
   let showConfigModal = $state(false);
 
@@ -302,6 +305,20 @@
     window.addEventListener('mouseup', handleResizeEnd);
     window.addEventListener('tool-approval-request', handleToolApprovalRequest);
     window.addEventListener('tool-approval-complete', handleToolApprovalComplete);
+
+    // === 加载插件配置 ===
+    try {
+      const config = await fetchConfig();
+      if (config && config.plugins) {
+        initPlugins(config.plugins);
+        // 初始主题令牌
+        const theme = get(effectiveTheme) || 'dark';
+        const tokens = getEnabledTokens(theme, config.plugins);
+        applyThemeTokens(tokens);
+      }
+    } catch (e) {
+      console.warn('[PLUGINS] failed to load config:', e.message);
+    }
   });
 
   onDestroy(() => {
@@ -310,6 +327,16 @@
     window.removeEventListener('mouseup', handleResizeEnd);
     window.removeEventListener('tool-approval-request', handleToolApprovalRequest);
     window.removeEventListener('tool-approval-complete', handleToolApprovalComplete);
+  });
+
+  // === 响应主题/插件配置变化，更新主题令牌 ===
+  $effect(() => {
+    const cfg = get(pluginsConfig);
+    const theme = get(effectiveTheme);
+    if (cfg && theme) {
+      const tokens = getEnabledTokens(theme, cfg);
+      applyThemeTokens(tokens);
+    }
   });
 
   function handleGlobalKeydown(e) {

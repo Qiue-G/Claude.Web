@@ -34,7 +34,7 @@ export function createConfigRouter(deps) {
         aliasCount: Object.keys(cfg.modelAliases || {}).length
       };
     }
-    res.json({ version: VERSION, defaults: DEFAULTS, providers, plugins: agentConfig.plugins || {} });
+    res.json({ version: VERSION, defaults: DEFAULTS, providers, plugins: agentConfig?.plugins || {} });
   });
 
   router.get('/config/mcp', (req, res) => {
