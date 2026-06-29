@@ -2,11 +2,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   pluginsConfig,
+  activeThemeTokens,
   registeredToolbarItems,
   registeredCommands,
   getEnabledTokens,
   applyThemeTokens,
-  togglePlugin,
+  executeCommand,
   initPlugins
 } from '../../src/client/stores/plugins.store.js';
 import { get } from 'svelte/store';
@@ -66,15 +67,19 @@ describe('plugins.store', () => {
   });
 
   it('merges tokens by theme', () => {
-    const light = getEnabledTokens('light', mockConfig);
+    const light = getEnabledTokens('light', mockConfig, { starlight: true });
     expect(light['--ds-accent']).toBe('#7a5fd0');
-    const dark = getEnabledTokens('dark', mockConfig);
+    const dark = getEnabledTokens('dark', mockConfig, { starlight: true });
     expect(dark['--ds-accent']).toBe('#a78ff0');
+  });
+
+  it('returns empty for inactive plugin tokens', () => {
+    expect(getEnabledTokens('light', mockConfig, {})).toEqual({});
   });
 
   it('returns empty for disabled plugin tokens', () => {
     const cfg = { starlight: { ...mockConfig.starlight, enabled: false } };
-    expect(getEnabledTokens('light', cfg)).toEqual({});
+    expect(getEnabledTokens('light', cfg, { starlight: true })).toEqual({});
   });
 
   it('injects and removes theme style element', () => {
@@ -87,16 +92,23 @@ describe('plugins.store', () => {
     expect(document.getElementById('plugin-theme-tokens')).toBeNull();
   });
 
-  it('togglePlugin flips enabled state', () => {
-    expect(get(pluginsConfig).starlight.enabled).toBe(true);
-    togglePlugin('starlight');
-    expect(get(pluginsConfig).starlight.enabled).toBe(false);
-    togglePlugin('starlight');
-    expect(get(pluginsConfig).starlight.enabled).toBe(true);
+  it('executeCommand toggles activeThemeTokens', () => {
+    activeThemeTokens.set({ starlight: true });
+    expect(get(activeThemeTokens).starlight).toBe(true);
+    executeCommand('starlight:toggle');
+    expect(get(activeThemeTokens).starlight).toBe(false);
+    executeCommand('starlight:toggle');
+    expect(get(activeThemeTokens).starlight).toBe(true);
   });
 
-  it('togglePlugin ignores unknown id', () => {
-    togglePlugin('nonexistent');
+  it('executeCommand ignores unknown id', () => {
+    executeCommand('nonexistent:action');
+    // should not throw
+  });
+
+  it('executeCommand ignores empty', () => {
+    executeCommand(null);
+    executeCommand('');
     // should not throw
   });
 });

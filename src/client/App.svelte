@@ -28,7 +28,7 @@
   import { get } from 'svelte/store';
   import { t } from '$lib/i18n.js';
   import { readFilesForAI } from '$lib/attachments.js';
-  import { initPlugins, pluginsConfig, getEnabledTokens, applyThemeTokens } from '$stores/plugins.store.js';
+  import { initPlugins, pluginsConfig, activeThemeTokens, getEnabledTokens, applyThemeTokens } from '$stores/plugins.store.js';
   import { effectiveTheme } from '$stores/theme.store.js';
   import { fetchConfig } from '$apis/models.api.js';
 
@@ -311,10 +311,16 @@
       const config = await fetchConfig();
       if (config && config.plugins) {
         initPlugins(config.plugins);
-        // 初始主题令牌
+        // 初始主题令牌（默认激活所有主题插件）
         const theme = get(effectiveTheme) || 'dark';
         const tokens = getEnabledTokens(theme, config.plugins);
         applyThemeTokens(tokens);
+        // 将所有主题插件标记为激活
+        const initialActive = {};
+        for (const id of Object.keys(config.plugins)) {
+          if (config.plugins[id].manifest?.tokens) initialActive[id] = true;
+        }
+        activeThemeTokens.set(initialActive);
       }
     } catch (e) {
       console.warn('[PLUGINS] failed to load config:', e.message);
@@ -333,8 +339,9 @@
   $effect(() => {
     const cfg = get(pluginsConfig);
     const theme = get(effectiveTheme);
+    const active = get(activeThemeTokens);
     if (cfg && theme) {
-      const tokens = getEnabledTokens(theme, cfg);
+      const tokens = getEnabledTokens(theme, cfg, active);
       applyThemeTokens(tokens);
     }
   });

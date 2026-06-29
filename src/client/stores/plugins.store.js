@@ -14,6 +14,9 @@ import { writable, derived } from 'svelte/store';
 /** 原始插件配置（从 /api/config 同步） */
 export const pluginsConfig = writable({});
 
+/** 主题插件令牌激活状态（pluginId → boolean），切换时不隐藏按钮 */
+export const activeThemeTokens = writable({});
+
 /** 初始化/更新插件配置 */
 export function initPlugins(configData) {
   if (configData && typeof configData === 'object') {
@@ -21,17 +24,7 @@ export function initPlugins(configData) {
   }
 }
 
-/** 切换插件的 enabled 状态 */
-export function togglePlugin(id) {
-  pluginsConfig.update(cfg => {
-    if (cfg[id]) {
-      return { ...cfg, [id]: { ...cfg[id], enabled: !cfg[id].enabled } };
-    }
-    return cfg;
-  });
-}
-
-/** 已启用的工具栏按钮 */
+/** 已启用的工具栏按钮（不受主题令牌切换影响） */
 export const registeredToolbarItems = derived(pluginsConfig, ($cfg) => {
   const items = [];
   for (const plugin of Object.values($cfg)) {
@@ -56,15 +49,18 @@ export const registeredCommands = derived(pluginsConfig, ($cfg) => {
 });
 
 /**
- * 获取指定主题下的所有已启用插件令牌
+ * 获取指定主题下的所有已激活令牌
  * @param {'light'|'dark'} theme
  * @param {object} config - pluginsConfig 的当前值
+ * @param {object} active - activeThemeTokens 的当前值
  * @returns {object} 合并后的 CSS 变量键值对
  */
-export function getEnabledTokens(theme, config) {
+export function getEnabledTokens(theme, config, active = {}) {
   const tokens = {};
-  for (const plugin of Object.values(config)) {
+  for (const [id, plugin] of Object.entries(config)) {
     if (!plugin.enabled) continue;
+    // 只有 active 状态为 true 的插件才注入令牌
+    if (active[id] !== true) continue;
     if (plugin.manifest?.tokens?.[theme]) {
       Object.assign(tokens, plugin.manifest.tokens[theme]);
     }
@@ -105,7 +101,10 @@ export function executeCommand(commandId) {
 
   switch (`${pluginId}:${action}`) {
     case 'starlight:toggle':
-      togglePlugin('starlight');
+      activeThemeTokens.update(state => ({
+        ...state,
+        [pluginId]: state[pluginId] === false ? true : false
+      }));
       break;
     default:
       console.warn(`[plugins] unknown command: ${commandId}`);
