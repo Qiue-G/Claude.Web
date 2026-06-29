@@ -5,20 +5,40 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // ========================================================================
 describe('models.store.js', () => {
   beforeEach(() => {
+    if (typeof sessionStorage === 'undefined') {
+      const store = {};
+      Object.defineProperty(globalThis, 'sessionStorage', {
+        value: {
+          getItem: (k) => store[k] ?? null,
+          setItem: (k, v) => { store[k] = String(v); },
+          removeItem: (k) => { delete store[k]; },
+          clear: () => { Object.keys(store).forEach(k => delete store[k]); }
+        },
+        writable: true,
+        configurable: true
+      });
+    }
     localStorage.clear();
+    sessionStorage.clear();
     vi.resetModules();
   });
 
   afterEach(() => vi.restoreAllMocks());
 
-  it('does not persist API keys in savedModels localStorage', async () => {
+  it('restores API keys from sessionStorage without persisting them to localStorage', async () => {
     const { addModel, savedModels } = await import('$stores/models.store.js');
     const { get } = await import('svelte/store');
 
-    addModel({ name: 'Test', provider: 'openai', model: 'gpt-4', apiKey: 'sk-secret' });
+    addModel({ name: 'Test', provider: 'openrouter', model: 'gpt-4', apiKey: 'sk-session' });
+    const stored = JSON.parse(localStorage.getItem('savedModels'));
+    const modelId = stored[0].id;
 
-    expect(get(savedModels)[0].apiKey).toBe('sk-secret');
-    expect(localStorage.getItem('savedModels')).not.toContain('sk-secret');
+    expect(localStorage.getItem('savedModels')).not.toContain('sk-session');
+    expect(sessionStorage.getItem(`modelApiKey:${modelId}`)).toBe('sk-session');
+
+    vi.resetModules();
+    const reloaded = await import('$stores/models.store.js');
+    expect(get(reloaded.savedModels)[0].apiKey).toBe('sk-session');
   });
 });
 
@@ -101,6 +121,12 @@ describe('session.api.js', () => {
     const result = await createSession('sk-test', 'gpt-4', 'openai');
     expect(fetch).toHaveBeenCalledWith('/api/session', expect.objectContaining({ method: 'POST' }));
     expect(result.sessionId).toBe('s1');
+  });
+
+  it('createSession rejects missing API key before sending request', async () => {
+    const { createSession } = await import('$apis/session.api.js');
+    await expect(createSession(undefined, 'gpt-4', 'openai')).rejects.toThrow('API key is required');
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('createSession throws with server error message', async () => {

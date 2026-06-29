@@ -1072,7 +1072,7 @@ src/
 3. `src/server/routes/wsHandler.js`：工具审批通过后调用 `rag.search()` 注入检索结果
 4. `src/server/routes/ragRoutes.js`：RAG HTTP API 路由
 
-[!] Session 级知识库隔离暂未实现：当前 collection 默认使用 sessionId 或 'default'，待 sessionManager 完善后可为每个 session 创建独立集合
+[✓] Session 级知识库隔离已实现：HTTP RAG API 默认使用当前 `session.id`；自定义 collection 会命名空间化为 `${session.id}:${collection}`；WebSocket 自动 `rag_search` 也只使用当前 session 的 collection，不再回退到 `default`。
 
 ---
 

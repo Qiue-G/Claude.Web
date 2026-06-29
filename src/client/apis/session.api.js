@@ -4,6 +4,9 @@
 import { api } from '$lib/api.js';
 
 export async function createSession(apiKey, model, provider) {
+  if (!apiKey || typeof apiKey !== 'string' || !apiKey.trim()) {
+    throw new Error('API key is required');
+  }
   return api.post('/api/session', { apiKey, model, provider });
 }
 

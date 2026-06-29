@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
-import { createWsHandler, applyPreToolUseHook } from '../src/server/routes/wsHandler.js';
+import { createWsHandler, applyPreToolUseHook, getRagSearchCollection } from '../src/server/routes/wsHandler.js';
 
 /** Helper: start a WS server on a random port, return { url, close } */
 function withWsServer(handler) {
@@ -64,6 +64,7 @@ function makeMockDeps(overrides = {}) {
 
 function addSession(deps, id, overrides = {}) {
   deps.sessions.set(id, {
+    id,
     currentModel: 'test-model',
     modelHealth: { status: 'ok' },
     apiKey: 'sk-test',
@@ -307,6 +308,71 @@ test('wsHandler rate limits excessive input', async () => {
     const msg = await new Promise((resolve) => ws.once('message', (d) => resolve(JSON.parse(d.toString()))));
     assert.equal(msg.type, 'error');
     assert.match(msg.message, /Too many/i);
+    ws.close();
+  } finally {
+    await close();
+  }
+});
+
+test('getRagSearchCollection returns the active session id only', () => {
+  assert.equal(getRagSearchCollection({ id: 'rag-session' }), 'rag-session');
+  assert.throws(() => getRagSearchCollection(null), /Invalid session/);
+});
+
+test('wsHandler uses the active session id for automatic RAG search collection', async () => {
+  let approvalId;
+  const ragCalls = [];
+  const deps = makeMockDeps({
+    rag: {
+      search: async (collection, query, options) => {
+        ragCalls.push({ collection, query, options });
+        return [];
+      }
+    },
+    broadcastToSession: (sid, payload) => {
+      if (payload.type === 'tool_approval_request') approvalId = payload.approvalId;
+    },
+    messageStore: {
+      loadMessages: async () => [],
+      loadMessagesPaginated: async () => ({ messages: [], page: 0, totalPages: 1, hasMore: false }),
+      saveMessage: async () => {},
+      deleteSessionMessages: async () => {}
+    }
+  });
+  addSession(deps, 'rag-session');
+  const handler = createWsHandler(deps);
+  const { url, close } = await withWsServer(handler);
+
+  try {
+    const ws = await connectClient(url);
+    ws.send(JSON.stringify({ type: 'init', sessionId: 'rag-session', token: 'valid-token' }));
+    await new Promise((resolve) => ws.once('message', () => resolve()));
+
+    ws.send(JSON.stringify({ type: 'input', data: { text: 'find docs', tools: ['rag_search'] } }));
+    await new Promise((resolve) => {
+      const timer = setInterval(() => {
+        if (approvalId) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, 5);
+    });
+    ws.send(JSON.stringify({ type: 'tool_approval_response', approvalId, approved: true }));
+
+    await new Promise((resolve, reject) => {
+      const started = Date.now();
+      const timer = setInterval(() => {
+        if (ragCalls.length > 0) {
+          clearInterval(timer);
+          resolve();
+        } else if (Date.now() - started > 1000) {
+          clearInterval(timer);
+          reject(new Error('RAG search was not called'));
+        }
+      }, 10);
+    });
+
+    assert.equal(ragCalls[0].collection, 'rag-session');
     ws.close();
   } finally {
     await close();

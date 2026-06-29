@@ -5,6 +5,7 @@ import { writable, derived } from 'svelte/store';
 
 const STORAGE_KEY_MODELS = 'savedModels';
 const STORAGE_KEY_ACTIVE = 'activeModelId';
+const SESSION_API_KEY_PREFIX = 'modelApiKey:';
 
 function loadFromStorage(key, fallback) {
   try {
@@ -19,7 +20,28 @@ function stripApiKeys(models) {
     : [];
 }
 
-export const savedModels = writable(stripApiKeys(loadFromStorage(STORAGE_KEY_MODELS, [])));
+function getSessionApiKey(modelId) {
+  try { return sessionStorage.getItem(SESSION_API_KEY_PREFIX + modelId) || ''; } catch { return ''; }
+}
+
+function setSessionApiKey(modelId, apiKey) {
+  try {
+    if (apiKey) sessionStorage.setItem(SESSION_API_KEY_PREFIX + modelId, apiKey);
+  } catch {}
+}
+
+function removeSessionApiKey(modelId) {
+  try { sessionStorage.removeItem(SESSION_API_KEY_PREFIX + modelId); } catch {}
+}
+
+function restoreSessionApiKeys(models) {
+  return stripApiKeys(models).map(model => {
+    const apiKey = getSessionApiKey(model.id);
+    return apiKey ? { ...model, apiKey } : model;
+  });
+}
+
+export const savedModels = writable(restoreSessionApiKeys(loadFromStorage(STORAGE_KEY_MODELS, [])));
 export const activeModelId = writable(loadFromStorage(STORAGE_KEY_ACTIVE, ''));
 
 savedModels.subscribe(val => {
@@ -36,10 +58,13 @@ export const activeModel = derived(
 );
 
 export function addModel(model) {
-  savedModels.update(models => [...models, { ...model, id: 'model_' + Date.now() }]);
+  const id = 'model_' + Date.now();
+  setSessionApiKey(id, model.apiKey);
+  savedModels.update(models => [...models, { ...model, id }]);
 }
 
 export function removeModel(modelId) {
+  removeSessionApiKey(modelId);
   savedModels.update(models => models.filter(m => m.id !== modelId));
   activeModelId.update(id => id === modelId ? '' : id);
 }

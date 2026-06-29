@@ -38,6 +38,11 @@ export function applyPreToolUseHook(toolName, args, pluginsConfig = {}) {
   return hooksCtx.arguments || args;
 }
 
+export function getRagSearchCollection(session) {
+  if (!session?.id) throw new Error('Invalid session for RAG search');
+  return session.id;
+}
+
 // 等待用户审批的工具请求（用 approvalId 索引）
 const pendingApprovals = new Map();
 
@@ -242,7 +247,7 @@ export function createWsHandler(deps) {
 
               if (toolId === 'rag_search' && originalPrompt && originalPrompt.trim() && rag) {
                 broadcastToSession(sessionId, { type: 'output', data: '\n[正在搜索知识库...]\n' });
-                const collection = sessionId || 'default';
+                const collection = getRagSearchCollection(session);
                 try {
                   const results = await rag.search(collection, originalPrompt, {
                     topK: 5,
