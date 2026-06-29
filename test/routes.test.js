@@ -8,6 +8,8 @@ import { createSessionRouter } from '../src/server/routes/sessionRoutes.js';
 import { createHealthRouter } from '../src/server/routes/healthRoutes.js';
 import { createModelRouter } from '../src/server/routes/modelRoutes.js';
 import { createConfigRouter } from '../src/server/routes/configRoutes.js';
+import { createRagRouter } from '../src/server/routes/ragRoutes.js';
+import { validateUrl, validateUrlReachable } from '../src/server/lib/urlValidator.js';
 
 // ---- Helper: start a server on a random port, return { url, close } ----
 function withApp(app) {
@@ -23,6 +25,23 @@ function withApp(app) {
     server.on('error', reject);
   });
 }
+
+// ====================================================================
+// URL validator
+// ====================================================================
+
+test('validateUrl rejects IPv6 private and link-local literals', () => {
+  assert.equal(validateUrl('http://[fc00::1]/').valid, false);
+  assert.equal(validateUrl('http://[fe80::1]/').valid, false);
+});
+
+test('validateUrlReachable rejects DNS results resolving to private addresses', async () => {
+  const result = await validateUrlReachable('https://example.com', {
+    lookup: async () => [{ address: '127.0.0.1', family: 4 }]
+  });
+  assert.equal(result.valid, false);
+  assert.match(result.error, /private|internal|reserved/i);
+});
 
 // ====================================================================
 // rateLimiter
@@ -208,6 +227,82 @@ test('GET /api/search returns empty for blank query', async () => {
   } finally { await srv.close(); }
 });
 
+// ====================================================================
+// ragRoutes integration
+// ====================================================================
+
+function buildRagApp() {
+  const sessions = new Map();
+  sessions.set('sid-1', {
+    id: 'sid-1',
+    token: 'tok-1',
+    csrfToken: 'csrf-1',
+    createdAt: Date.now(),
+    lastActivity: Date.now()
+  });
+
+  const calls = [];
+  const rag = {
+    totalDocs: 0,
+    ingest: async (collection, input) => { calls.push({ type: 'ingest', collection, input }); return 1; },
+    search: async (collection, query, options) => {
+      calls.push({ type: 'search', collection, query, options });
+      return [];
+    },
+    metrics: {
+      getSearchStats: () => ({ count: 0, avgLatencyMs: 0 }),
+      getEmbedStats: () => ({ totalCalls: 0, successRate: 100, cacheHitRate: 0 }),
+      getIngestStats: () => ({ totalIngestCalls: 0, totalChunksIngested: 0 })
+    },
+    embedder: { model: 'test', dimensions: 4 }
+  };
+
+  const app = express();
+  app.use(express.json());
+  app.use('/api/rag', createRagRouter({ rag, sessions }));
+  app.use((err, req, res, next) => {
+    if (err.status) return res.status(err.status).json(err.toJSON ? err.toJSON() : { error: err.message });
+    res.status(500).json({ error: err.message });
+  });
+  return { app, calls };
+}
+
+test('RAG search namespaces caller-supplied collection under the current session', async () => {
+  const { app, calls } = buildRagApp();
+  const srv = await withApp(app);
+  try {
+    const res = await fetch(srv.url + '/api/rag/search', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-session-id': 'sid-1',
+        'x-session-token': 'tok-1'
+      },
+      body: JSON.stringify({ query: 'hello', collection: 'sid-2' })
+    });
+    assert.equal(res.status, 200);
+    assert.equal(calls[0].collection, 'sid-1:sid-2');
+  } finally { await srv.close(); }
+});
+
+test('RAG ingest namespaces custom collections under the current session', async () => {
+  const { app, calls } = buildRagApp();
+  const srv = await withApp(app);
+  try {
+    const res = await fetch(srv.url + '/api/rag/ingest', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-session-id': 'sid-1',
+        'x-session-token': 'tok-1'
+      },
+      body: JSON.stringify({ text: 'hello', collection: 'notes' })
+    });
+    assert.equal(res.status, 200);
+    assert.equal(calls[0].collection, 'sid-1:notes');
+  } finally { await srv.close(); }
+});
+
 test('POST /api/session rejects missing API key', async () => {
   const { app } = buildSessionApp();
   const srv = await withApp(app);
@@ -287,7 +382,7 @@ test('DELETE /api/session/:id rejects without CSRF', async () => {
 // healthRoutes integration
 // ====================================================================
 
-function buildHealthApp() {
+function buildHealthApp(options = {}) {
   const ms = createModelStats();
   const app = express();
   app.use('/api/health', createHealthRouter({
@@ -295,7 +390,8 @@ function buildHealthApp() {
     DEFAULTS: { provider: 'openai', model: 'gpt-4' },
     MAX_SESSIONS: 10, sessionProxies: new Map(),
     modelStats: ms, rateLimits: { snapshot: () => [] },
-    RATE_MAX_CREATE: 5, VERSION: 'test'
+    RATE_MAX_CREATE: 5, VERSION: 'test',
+    allowDetailedHealth: options.allowDetailedHealth === true
   }));
   return app;
 }
@@ -314,8 +410,17 @@ test('GET /api/health returns basic health info', async () => {
   } finally { await srv.close(); }
 });
 
-test('GET /api/health/detailed returns structured data', async () => {
+test('GET /api/health/detailed is disabled by default', async () => {
   const app = buildHealthApp();
+  const srv = await withApp(app);
+  try {
+    const res = await fetch(srv.url + '/api/health/detailed');
+    assert.equal(res.status, 404);
+  } finally { await srv.close(); }
+});
+
+test('GET /api/health/detailed returns structured data when explicitly enabled', async () => {
+  const app = buildHealthApp({ allowDetailedHealth: true });
   const srv = await withApp(app);
   try {
     const res = await fetch(srv.url + '/api/health/detailed');

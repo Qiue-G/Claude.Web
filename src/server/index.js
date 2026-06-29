@@ -271,55 +271,64 @@ async function spawnCli(session, prompt) {
     throw new Error('Server busy. Global process limit (' + GLOBAL_PROCESS_LIMIT + ') reached. Try again later.');
   }
   globalProcessCount++;
+  let processCountActive = true;
+  const releaseProcessSlot = () => {
+    if (!processCountActive) return;
+    processCountActive = false;
+    globalProcessCount--;
+  };
 
-  const cliPath = join(FREE_CODE_DIR, 'cli-dev');
-  const cliArgs = ['-p', '--bare'];
-  if (session.model) cliArgs.push('--model', session.model);
+  try {
+    const cliPath = join(FREE_CODE_DIR, 'cli-dev');
+    const cliArgs = ['-p', '--bare'];
+    if (session.model) cliArgs.push('--model', session.model);
 
-  const env = buildSafeEnv({
-    HOME: session.dir,
-    ANTHROPIC_API_KEY: session.apiKey,
-    NODE_ENV: 'production'
-  });
+    const env = buildSafeEnv({
+      HOME: session.dir,
+      ANTHROPIC_API_KEY: session.apiKey,
+      NODE_ENV: 'production'
+    });
 
-  // For OpenRouter: start proxy and point CLI at it
-  if (session.provider === 'openrouter' || session.provider === 'deepseek') {
-    const { process: proxy, port } = await startProxy(session);
-    sessionProxies.set(session.id, proxy);
-    env.ANTHROPIC_BASE_URL = 'http://127.0.0.1:' + port;
-    console.log('[CLI] ANTHROPIC_BASE_URL=' + env.ANTHROPIC_BASE_URL);
-  }
-
-  const proc = spawn(cliPath, cliArgs, {
-    cwd: session.dir,
-    env,
-    stdio: ['pipe', 'pipe', 'pipe']
-  });
-
-  // 进程超时自动终止
-  const processTimeout = setTimeout(() => {
-    try {
-      proc.kill('SIGKILL');
-      console.log('[PROC] Process timed out after ' + (PROCESS_TIMEOUT / 1000) + 's, killed');
-    } catch (e) {
-      // 进程可能已结束
+    // For OpenRouter: start proxy and point CLI at it
+    if (session.provider === 'openrouter' || session.provider === 'deepseek') {
+      const { process: proxy, port } = await startProxy(session);
+      sessionProxies.set(session.id, proxy);
+      env.ANTHROPIC_BASE_URL = 'http://127.0.0.1:' + port;
+      console.log('[CLI] ANTHROPIC_BASE_URL=' + env.ANTHROPIC_BASE_URL);
     }
-  }, PROCESS_TIMEOUT);
 
-  proc.on('close', () => {
-    clearTimeout(processTimeout);
-    globalProcessCount--;
-  });
+    const proc = spawn(cliPath, cliArgs, {
+      cwd: session.dir,
+      env,
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
 
-  proc.on('error', () => {
-    clearTimeout(processTimeout);
-    globalProcessCount--;
-  });
+    // 进程超时自动终止
+    const processTimeout = setTimeout(() => {
+      try {
+        proc.kill('SIGKILL');
+        console.log('[PROC] Process timed out after ' + (PROCESS_TIMEOUT / 1000) + 's, killed');
+      } catch (e) {
+        // 进程可能已结束
+      }
+    }, PROCESS_TIMEOUT);
 
-  proc.stdin.write(prompt + '\n');
-  proc.stdin.end();
+    const cleanupProcess = () => {
+      clearTimeout(processTimeout);
+      releaseProcessSlot();
+    };
 
-  return proc;
+    proc.on('close', cleanupProcess);
+    proc.on('error', cleanupProcess);
+
+    proc.stdin.write(prompt + '\n');
+    proc.stdin.end();
+
+    return proc;
+  } catch (e) {
+    releaseProcessSlot();
+    throw e;
+  }
 }
 
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
@@ -388,7 +397,8 @@ app.use('/api/models', createModelRouter({ getProviderConfig, DEFAULTS }));
 // ===== Health API ====
 app.use('/api/health', createHealthRouter({
   sessions, PROVIDERS, DEFAULTS, MAX_SESSIONS, sessionProxies, modelStats,
-  rateLimits: { snapshot: rateLimitsSnapshot }, RATE_MAX_CREATE, VERSION
+  rateLimits: { snapshot: rateLimitsSnapshot }, RATE_MAX_CREATE, VERSION,
+  allowDetailedHealth: process.env.ENABLE_DETAILED_HEALTH === 'true'
 }));
 
 // ===== Config & Tools API ====

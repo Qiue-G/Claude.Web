@@ -6,7 +6,7 @@
  * 过滤导航、页脚等噪声（通过 html-to-text 的 format 回调）。
  */
 import { convert } from 'html-to-text';
-import { validateUrl } from '../../server/lib/urlValidator.js';
+import { validateUrlReachable } from '../../server/lib/urlValidator.js';
 
 export class WebExtractor {
   canHandle(input) {
@@ -15,7 +15,7 @@ export class WebExtractor {
 
   async extract(input) {
     // 前置 URL 安全验证
-    const urlCheck = validateUrl(input.source);
+    const urlCheck = await validateUrlReachable(input.source);
     if (!urlCheck.valid) {
       return { content: '', metadata: { source: input.source, type: 'url', error: `URL验证失败: ${urlCheck.error}` } };
     }

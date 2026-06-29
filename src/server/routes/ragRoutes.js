@@ -23,6 +23,12 @@ export function createRagRouter(deps) {
   const { rag, sessions } = deps;
   const router = Router();
 
+  function getSessionCollection(session, requestedCollection) {
+    const requested = typeof requestedCollection === 'string' ? requestedCollection.trim() : '';
+    if (!requested || requested === session.id) return session.id;
+    return `${session.id}:${requested}`;
+  }
+
   // ===== CSRF protection for write operations =====
   router.use((req, res, next) => {
     if (req.method === 'GET') return next();
@@ -35,6 +41,7 @@ export function createRagRouter(deps) {
 
     const session = sessionId ? sessions.get(sessionId) : null;
     if (!session) throw new AppError(401, 'Invalid session');
+    req.session = session;
 
     // Token validation
     if (token && token !== session.token) {
@@ -65,7 +72,7 @@ export function createRagRouter(deps) {
   router.post('/ingest', asyncHandler(async (req, res) => {
     if (!rag) throw new AppError(503, 'RAG system not initialized');
 
-    const collection = req.body.collection || req.headers['x-session-id'] || 'default';
+    const collection = getSessionCollection(req.session, req.body.collection);
     const metadata = req.body.metadata
       ? (typeof req.body.metadata === 'string' ? JSON.parse(req.body.metadata) : req.body.metadata)
       : {};
@@ -119,7 +126,7 @@ export function createRagRouter(deps) {
       throw new AppError(400, `URL validation failed: ${urlCheck.error}`, { code: 'invalid_url' });
     }
 
-    const collection = req.body.collection || req.headers['x-session-id'] || 'default';
+    const collection = getSessionCollection(req.session, req.body.collection);
     const metadata = req.body.metadata
       ? (typeof req.body.metadata === 'string' ? JSON.parse(req.body.metadata) : req.body.metadata)
       : {};
@@ -152,7 +159,7 @@ export function createRagRouter(deps) {
       throw new AppError(400, `URL validation failed: ${urlCheck.error}`, { code: 'invalid_url' });
     }
 
-    const collection = req.body.collection || req.headers['x-session-id'] || 'default';
+    const collection = getSessionCollection(req.session, req.body.collection);
     const metadata = req.body.metadata
       ? (typeof req.body.metadata === 'string' ? JSON.parse(req.body.metadata) : req.body.metadata)
       : {};
@@ -183,7 +190,7 @@ export function createRagRouter(deps) {
       throw new AppError(400, 'query is required');
     }
 
-    const collection = req.body.collection || req.headers['x-session-id'] || 'default';
+    const collection = getSessionCollection(req.session, req.body.collection);
 
     const results = await rag.search(collection, query.trim(), {
       topK: Math.min(req.body.topK ?? 5, 50),

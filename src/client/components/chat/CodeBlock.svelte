@@ -2,6 +2,7 @@
   import Icon from '$components/common/Icon.svelte';
   import hljs from 'highlight.js/lib/core';
   import { t } from '$lib/i18n.js';
+  import { escapeHtml } from '$lib/utils.js';
   
   // 注册常用语言
   import javascript from 'highlight.js/lib/languages/javascript';
@@ -74,7 +75,7 @@
           highlightedCode = hljs.highlightAuto(code).value;
         }
       } catch (e) {
-        highlightedCode = code;
+        highlightedCode = escapeHtml(code);
       }
     } else {
       highlightedCode = '';

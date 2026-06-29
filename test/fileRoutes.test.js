@@ -250,6 +250,25 @@ test('file GET rejects path traversal', async () => {
   }
 });
 
+test('file GET rejects sibling directory prefix traversal', async () => {
+  const { app, session, workDir, closeDb } = await createTestEnv();
+  const { url, close } = await withApp(app);
+  try {
+    const siblingDir = session.dir + '-evil';
+    mkdirSync(siblingDir, { recursive: true });
+    writeFileSync(join(siblingDir, 'secret.txt'), 'secret');
+
+    const res = await fetch(url + '/api/files/' + session.id + '/..%2f' + session.id + '-evil%2fsecret.txt', {
+      headers: { 'x-session-token': session.token }
+    });
+    assert.equal(res.status, 403);
+    const data = await res.json();
+    assert.match(data.error, /path traversal/i);
+  } finally {
+    await close(); closeDb(); cleanup(workDir); cleanup(session.dir + '-evil');
+  }
+});
+
 test('file POST rejects path traversal', async () => {
   const { app, session, workDir, closeDb } = await createTestEnv();
   const { url, close } = await withApp(app);

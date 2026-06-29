@@ -6,8 +6,7 @@ export default defineConfig({
   plugins: [
     svelte({
       compilerOptions: {
-        dev: true,
-        generate: 'dom' // Force DOM mode for component tests
+        dev: true
       }
     })
   ],

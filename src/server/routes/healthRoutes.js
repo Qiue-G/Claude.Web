@@ -6,7 +6,7 @@
 import { Router } from 'express';
 
 export function createHealthRouter(deps) {
-  const { sessions, PROVIDERS, DEFAULTS, MAX_SESSIONS, sessionProxies, modelStats, rateLimits, RATE_MAX_CREATE, VERSION } = deps;
+  const { sessions, PROVIDERS, DEFAULTS, MAX_SESSIONS, sessionProxies, modelStats, rateLimits, RATE_MAX_CREATE, VERSION, allowDetailedHealth = false } = deps;
   const router = Router();
 
   router.get('/', (req, res) => {
@@ -25,7 +25,8 @@ export function createHealthRouter(deps) {
     });
   });
 
-  router.get('/detailed', (req, res) => {
+  if (allowDetailedHealth) {
+    router.get('/detailed', (req, res) => {
     const models = modelStats.getAll();
 
     const sessionList = [];
@@ -53,6 +54,7 @@ export function createHealthRouter(deps) {
       }
     });
   });
+  }
 
   return router;
 }

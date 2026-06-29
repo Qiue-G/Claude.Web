@@ -5,6 +5,7 @@
  * 用作全局中间件或提取器前置校验。
  */
 import { URL } from 'url';
+import { lookup as dnsLookup } from 'dns/promises';
 
 // 私有 IPv4 段
 const PRIVATE_RANGES = [
@@ -46,6 +47,33 @@ function isInRange(ipInt, range) {
   return ipInt >= start && ipInt <= end;
 }
 
+function normalizeHostname(hostname) {
+  const lower = hostname.toLowerCase();
+  return lower.startsWith('[') && lower.endsWith(']') ? lower.slice(1, -1) : lower;
+}
+
+function isBlockedIpv4(address) {
+  const ipInt = ip4ToInt(address);
+  if (ipInt === null) return false;
+  return [...PRIVATE_RANGES, ...RESERVED_RANGES].some(range => isInRange(ipInt, range));
+}
+
+function isBlockedIpv6(address) {
+  const ip = normalizeHostname(address);
+  return ip === '::1' || ip.startsWith('fc') || ip.startsWith('fd') || ip.startsWith('fe80:') || ip === '::';
+}
+
+function isBlockedAddress(address) {
+  const normalized = normalizeHostname(address);
+  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(normalized)) {
+    return isBlockedIpv4(normalized);
+  }
+  if (normalized.includes(':')) {
+    return isBlockedIpv6(normalized);
+  }
+  return false;
+}
+
 /**
  * 验证 URL 是否安全可访问
  * @param {string} urlStr
@@ -69,7 +97,7 @@ export function validateUrl(urlStr) {
   }
 
   // 2. Hostname 黑名单
-  const hostname = parsed.hostname.toLowerCase();
+  const hostname = normalizeHostname(parsed.hostname);
 
   if (INTERNAL_HOSTNAMES.has(hostname)) {
     return { valid: false, error: `Internal hostname "${hostname}" is not allowed` };
@@ -89,27 +117,41 @@ export function validateUrl(urlStr) {
       return { valid: false, error: 'Invalid IP address format' };
     }
 
-    for (const range of PRIVATE_RANGES) {
-      if (isInRange(ipInt, range)) {
-        return { valid: false, error: `Private IP range (${range.start}-${range.end}) is not allowed` };
-      }
-    }
-
-    for (const range of RESERVED_RANGES) {
-      if (isInRange(ipInt, range)) {
-        return { valid: false, error: `Reserved IP range (${range.start}-${range.end}) is not allowed` };
-      }
+    if (isBlockedIpv4(hostname)) {
+      return { valid: false, error: `Private or reserved IP "${hostname}" is not allowed` };
     }
   }
 
-  // 4. IPv6 环回检查
-  if (hostname.startsWith('[::') || hostname === '::1') {
-    return { valid: false, error: 'IPv6 loopback is not allowed' };
+  // 4. IPv6 内网/环回检查
+  if (hostname.includes(':') && isBlockedIpv6(hostname)) {
+    return { valid: false, error: 'IPv6 private, link-local, or loopback address is not allowed' };
   }
 
   // 5. 最大长度
   if (urlStr.length > 4096) {
     return { valid: false, error: 'URL too long (max 4096 characters)' };
+  }
+
+  return { valid: true };
+}
+
+export async function validateUrlReachable(urlStr, options = {}) {
+  const baseCheck = validateUrl(urlStr);
+  if (!baseCheck.valid) return baseCheck;
+
+  const lookup = options.lookup || dnsLookup;
+  const hostname = normalizeHostname(new URL(urlStr).hostname);
+
+  try {
+    const addresses = await lookup(hostname, { all: true, verbatim: true });
+    const list = Array.isArray(addresses) ? addresses : [addresses];
+    for (const entry of list) {
+      if (isBlockedAddress(entry.address)) {
+        return { valid: false, error: `Resolved private, internal, or reserved address "${entry.address}" is not allowed` };
+      }
+    }
+  } catch {
+    return { valid: false, error: 'Unable to resolve URL hostname' };
   }
 
   return { valid: true };

@@ -12,6 +12,7 @@
  *   const data = await api.get('/api/files/' + sessionId, { token });
  *   const result = await api.post('/api/session', { apiKey, model, provider });
  */
+import { error as toastError } from '../stores/toast.store.js';
 
 const BASE = '';
 
@@ -31,25 +32,20 @@ class ApiError extends Error {
  */
 function showErrorToast(err) {
   try {
-    // Lazy-import to avoid circular deps at module evaluation time
-    import('../stores/toast.store.js').then(({ error: toastError }) => {
-      const friendlyMessages = {
-        400: '请求参数有误',
-        401: '登录已过期，请刷新页面',
-        403: '没有权限执行此操作',
-        404: '请求的资源不存在',
-        413: '文件过大（最大 500KB）',
-        429: '请求过于频繁，请稍后再试',
-        500: '服务器内部错误',
-        503: '服务暂不可用'
-      };
-      toastError(err.code
-        ? (err.body && err.body.retryAfter ? `请求过于频繁，请 ${err.body.retryAfter} 秒后重试` : err.message)
-        : (friendlyMessages[err.status] || err.message)
-      );
-    }).catch(() => {
-      // toast store not loaded, silently ignore
-    });
+    const friendlyMessages = {
+      400: '请求参数有误',
+      401: '登录已过期，请刷新页面',
+      403: '没有权限执行此操作',
+      404: '请求的资源不存在',
+      413: '文件过大（最大 500KB）',
+      429: '请求过于频繁，请稍后再试',
+      500: '服务器内部错误',
+      503: '服务暂不可用'
+    };
+    toastError(err.code
+      ? (err.body && err.body.retryAfter ? `请求过于频繁，请 ${err.body.retryAfter} 秒后重试` : err.message)
+      : (friendlyMessages[err.status] || err.message)
+    );
   } catch (_) {
     // Ignore toast errors
   }

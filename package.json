@@ -29,7 +29,7 @@
     "sql.js": "^1.14.1",
     "swagger-jsdoc": "^6.3.0",
     "swagger-ui-dist": "^5.32.8",
-    "uuid": "^9.0.0",
+    "uuid": "^14.0.1",
     "ws": "^8.16.0"
   },
   "devDependencies": {

@@ -29,6 +29,17 @@ vi.mock('$lib/i18n.js', () => {
   };
 });
 
+vi.mock('$stores/theme.store.js', () => ({
+  theme: { subscribe: (run) => { run('dark'); return () => {}; } },
+  toggleTheme: vi.fn(),
+  systemTheme: { subscribe: (run) => { run('dark'); return () => {}; } },
+  effectiveTheme: { subscribe: (run) => { run('dark'); return () => {}; } }
+}));
+
+vi.mock('$stores/chatHistory.store.js', () => ({
+  currentSession: { subscribe: (run) => { run(null); return () => {}; } }
+}));
+
 // ========================================================================
 // 浏览器环境 mock — 给 jsdom 补充 localStorage
 // ========================================================================
@@ -104,14 +115,7 @@ describe('Icon.svelte', () => {
 // ========================================================================
 describe('ThemeToggle.svelte', () => {
   it('renders a theme toggle button', async () => {
-    vi.mock('$stores/theme.store.js', () => ({
-      theme: { subscribe: (run) => { run('dark'); return () => {}; } },
-      toggleTheme: vi.fn(),
-      systemTheme: { subscribe: (run) => { run('dark'); return () => {}; } },
-      effectiveTheme: { subscribe: (run) => { run('dark'); return () => {}; } }
-    }));
-
-    // 重新导入以使用新 mock
+    // 重新导入以使用 mock
     const { default: ThemeToggle } = await import('$components/common/ThemeToggle.svelte');
     const { container } = render(ThemeToggle);
     const btn = container.querySelector('button');
@@ -124,12 +128,6 @@ describe('ThemeToggle.svelte', () => {
 // Navbar.svelte
 // ========================================================================
 describe('Navbar.svelte', () => {
-  beforeEach(() => {
-    vi.mock('$stores/chatHistory.store.js', () => ({
-      currentSession: { subscribe: (run) => { run(null); return () => {}; } }
-    }));
-  });
-
   it('renders sidebar toggle button when showSidebarToggle is true', async () => {
     const { default: Navbar } = await import('$components/chat/Navbar.svelte');
     const { container } = render(Navbar, { props: { showSidebarToggle: true } });
@@ -215,6 +213,34 @@ describe('Toast.svelte', () => {
     const { default: Toast } = await import('$components/common/Toast.svelte');
     const { container } = render(Toast);
     expect(container.querySelector('.toast.dismissing')).toBeTruthy();
+  });
+});
+
+// ========================================================================
+// CodeBlock.svelte
+// ========================================================================
+describe('CodeBlock.svelte', () => {
+  beforeEach(() => {
+    cleanup();
+  });
+
+  it('escapes code when syntax highlighting throws', async () => {
+    vi.doMock('highlight.js/lib/core', () => ({
+      default: {
+        registerLanguage: vi.fn(),
+        getLanguage: () => true,
+        highlight: () => { throw new Error('highlight failed'); },
+        highlightAuto: () => { throw new Error('highlight failed'); }
+      }
+    }));
+
+    const { default: CodeBlock } = await import('$components/chat/CodeBlock.svelte');
+    const { container } = render(CodeBlock, {
+      props: { code: '<img src=x onerror=alert(1)>', language: 'javascript' }
+    });
+
+    expect(container.querySelector('img')).toBeFalsy();
+    expect(container.querySelector('code').textContent).toContain('<img src=x onerror=alert(1)>');
   });
 });
 

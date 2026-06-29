@@ -1,6 +1,28 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ========================================================================
+// models.store.js
+// ========================================================================
+describe('models.store.js', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.resetModules();
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('does not persist API keys in savedModels localStorage', async () => {
+    const { addModel, savedModels } = await import('$stores/models.store.js');
+    const { get } = await import('svelte/store');
+
+    addModel({ name: 'Test', provider: 'openai', model: 'gpt-4', apiKey: 'sk-secret' });
+
+    expect(get(savedModels)[0].apiKey).toBe('sk-secret');
+    expect(localStorage.getItem('savedModels')).not.toContain('sk-secret');
+  });
+});
+
+// ========================================================================
 // browser.js
 // ========================================================================
 describe('browser.js', () => {

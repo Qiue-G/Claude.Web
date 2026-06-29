@@ -13,11 +13,17 @@ function loadFromStorage(key, fallback) {
   } catch { return fallback; }
 }
 
-export const savedModels = writable(loadFromStorage(STORAGE_KEY_MODELS, []));
+function stripApiKeys(models) {
+  return Array.isArray(models)
+    ? models.map(({ apiKey, ...model }) => model)
+    : [];
+}
+
+export const savedModels = writable(stripApiKeys(loadFromStorage(STORAGE_KEY_MODELS, [])));
 export const activeModelId = writable(loadFromStorage(STORAGE_KEY_ACTIVE, ''));
 
 savedModels.subscribe(val => {
-  try { localStorage.setItem(STORAGE_KEY_MODELS, JSON.stringify(val)); } catch {}
+  try { localStorage.setItem(STORAGE_KEY_MODELS, JSON.stringify(stripApiKeys(val))); } catch {}
 });
 
 activeModelId.subscribe(val => {

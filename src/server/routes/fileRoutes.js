@@ -18,7 +18,7 @@
  *   DELETE /:sessionId/*                    — delete file
  */
 import { Router } from 'express';
-import { join, resolve as pathResolve, dirname as pathDirname } from 'path';
+import { join, resolve as pathResolve, dirname as pathDirname, relative as pathRelative, isAbsolute as pathIsAbsolute } from 'path';
 import { existsSync } from 'fs';
 import { readFile, writeFile, mkdir, unlink, rm, stat } from 'fs/promises';
 import { createHash, randomUUID } from 'crypto';
@@ -93,13 +93,13 @@ export function createFileRouter(deps) {
 
   // ===== Helper: resolve file path with traversal protection =====
   function resolveFilePath(session, filePath) {
-    const fullPath = join(session.dir, filePath);
-    const resolvedPath = pathResolve(fullPath);
+    const resolvedPath = pathResolve(session.dir, filePath);
     const resolvedSessionDir = pathResolve(session.dir);
-    if (!resolvedPath.startsWith(resolvedSessionDir)) {
+    const relativePath = pathRelative(resolvedSessionDir, resolvedPath);
+    if (relativePath.startsWith('..') || pathIsAbsolute(relativePath)) {
       throw new AppError(403, 'Access denied: path traversal detected');
     }
-    return fullPath;
+    return resolvedPath;
   }
 
   // ===== Helper: get session with validation =====
