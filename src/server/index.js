@@ -392,7 +392,7 @@ app.use('/api/health', createHealthRouter({
 }));
 
 // ===== Config & Tools API ====
-app.use('/api', createConfigRouter({ getToolDefinitions, PROVIDERS, DEFAULTS, VERSION, mcpManager }));
+app.use('/api', createConfigRouter({ getToolDefinitions, PROVIDERS, DEFAULTS, VERSION, mcpManager, agentConfig }));
 
 // ===== Search API ====
 app.use('/api/search', createSearchRouter({ db }));

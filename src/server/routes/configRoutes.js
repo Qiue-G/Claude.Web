@@ -8,7 +8,7 @@ import { Router } from 'express';
 import { asyncHandler } from '../lib/asyncHandler.js';
 
 export function createConfigRouter(deps) {
-  const { getToolDefinitions, PROVIDERS, DEFAULTS, VERSION, mcpManager } = deps;
+  const { getToolDefinitions, PROVIDERS, DEFAULTS, VERSION, mcpManager, agentConfig } = deps;
   const router = Router();
 
   router.get('/tools', asyncHandler(async (req, res) => {
@@ -34,7 +34,7 @@ export function createConfigRouter(deps) {
         aliasCount: Object.keys(cfg.modelAliases || {}).length
       };
     }
-    res.json({ version: VERSION, defaults: DEFAULTS, providers });
+    res.json({ version: VERSION, defaults: DEFAULTS, providers, plugins: agentConfig.plugins || {} });
   });
 
   router.get('/config/mcp', (req, res) => {

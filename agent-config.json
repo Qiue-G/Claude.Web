@@ -58,5 +58,46 @@
         { "id": "o3-mini",       "name": "o3-mini",         "tier": "paid", "context": 200000 }
       ]
     }
+  },
+  "plugins": {
+    "starlight": {
+      "enabled": true,
+      "type": "theme",
+      "manifest": {
+        "name": "星夜主题",
+        "description": "深紫星夜配色方案",
+        "tokens": {
+          "light": {
+            "--ds-accent": "#7a5fd0",
+            "--ds-accent-soft": "rgba(122, 95, 208, 0.15)",
+            "--ds-selection": "rgba(122, 95, 208, 0.2)"
+          },
+          "dark": {
+            "--ds-accent": "#a78ff0",
+            "--ds-accent-soft": "rgba(167, 143, 240, 0.2)",
+            "--ds-selection": "rgba(167, 143, 240, 0.26)"
+          }
+        },
+        "toolbarButtons": [
+          { "slot": "right", "label": "切换星夜", "icon": "star", "command": "starlight:toggle" }
+        ],
+        "commands": [
+          { "id": "starlight:toggle", "name": "切换星夜主题", "description": "启用/禁用星夜主题配色", "shortcut": "" }
+        ]
+      }
+    },
+    "prompt-enhancer": {
+      "enabled": true,
+      "type": "hook",
+      "hooks": {
+        "onUserPrompt": {
+          "instruction": "请用中文回答，如果涉及代码请用英文注释"
+        },
+        "postToolUse": {
+          "matcher": "web_search",
+          "instruction": "用中文总结搜索结果要点"
+        }
+      }
+    }
   }
 }
