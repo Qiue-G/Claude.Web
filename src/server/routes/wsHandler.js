@@ -4,6 +4,34 @@ import { analyzeFilesFromPromptContext, stripFileBlocksFromPrompt } from '../too
 import { buildPrompt } from '../runtime/promptBuilder.js';
 import { getToolInstructions, isBuiltinTool, isMcpTool, parseMcpToolId } from '../tools/registry.js';
 
+/**
+ * 将 RAG 搜索结果格式化为可读文本
+ */
+function formatRagResults(results, query) {
+  if (!results || results.length === 0) {
+    return `知识库搜索 "${query}" 未找到相关结果。`;
+  }
+
+  // 归一化 RRF 分数到 [0, 1] 区间用于显示
+  const maxScore = Math.max(...results.map(r => r.score ?? 0), 1e-8);
+
+  const parts = [`知识库搜索 "${query}" 的结果 (共 ${results.length} 条):`];
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    const headings = r.metadata?.headings?.length > 0
+      ? ` [${r.metadata.headings.join(' > ')}]`
+      : '';
+    const filename = r.metadata?.filename
+      ? ` (来源: ${r.metadata.filename})`
+      : '';
+    const score = r.score !== undefined
+      ? ` [相关性: ${((r.score / maxScore) * 100).toFixed(0)}%]`
+      : '';
+    parts.push(`${i + 1}.${headings}${filename}${score}\n   ${r.text.substring(0, 500)}`);
+  }
+  return parts.join('\n\n');
+}
+
 // 等待用户审批的工具请求（用 approvalId 索引）
 const pendingApprovals = new Map();
 
@@ -31,7 +59,7 @@ export function createWsHandler(deps) {
       getSession, sessions, sessionProcesses, sessionProxies, sessionClients, wsProcCount,
       broadcastToSession, spawnCli, maskSensitive, stripAnsi,
       checkRateLimit, ALLOWED_ORIGINS, RATE_WINDOW, RATE_MAX_INPUT,
-      messageStore, mcpManager
+      messageStore, mcpManager, rag
     } = deps;
 
     // Verify WebSocket origin
@@ -177,6 +205,7 @@ export function createWsHandler(deps) {
                   pendingApprovals.delete(approvalId);
                   resolve(approved);
                 },
+                _timeout: timeout,
                 tools,
                 sessionId
               });
@@ -202,6 +231,39 @@ export function createWsHandler(deps) {
                 const result = await searchWeb(originalPrompt);
                 if (result.content) toolResults.push(result);
                 console.log('[WEB_SEARCH] results length: ' + (result.content ? result.content.length : 0) + ' chars');
+              }
+
+              if (toolId === 'rag_search' && originalPrompt && originalPrompt.trim() && rag) {
+                broadcastToSession(sessionId, { type: 'output', data: '\n[正在搜索知识库...]\n' });
+                const collection = sessionId || 'default';
+                try {
+                  const results = await rag.search(collection, originalPrompt, {
+                    topK: 5,
+                    bm25Weight: 0.3,
+                    enableRerank: false,
+                  });
+                  const content = formatRagResults(results, originalPrompt);
+                  toolResults.push({
+                    tool: 'rag_search',
+                    ok: true,
+                    content,
+                    sources: results.map(r => ({
+                      text: r.text.substring(0, 80),
+                      score: r.score,
+                      metadata: r.metadata,
+                    })),
+                    metadata: { query: originalPrompt, resultCount: results.length },
+                  });
+                  console.log('[RAG_SEARCH] results: ' + results.length + ' chunks');
+                } catch (e) {
+                  console.error('[RAG_SEARCH] Error:', e.message);
+                  toolResults.push({
+                    tool: 'rag_search',
+                    ok: false,
+                    content: '[知识库搜索失败: ' + e.message + ']',
+                    metadata: { query: originalPrompt, error: e.message },
+                  });
+                }
               }
 
               if (toolId === 'file_analysis' && originalPrompt && originalPrompt.trim()) {
@@ -248,9 +310,12 @@ export function createWsHandler(deps) {
 
           prompt = buildPrompt({
             toolInstructions,
+            activeToolIds: approvedTools || [],
             toolResults,
             userMessage: userMessageForPrompt,
-            history: messageStore ? (await messageStore.loadMessages(sessionId)).slice(0, -1) : []
+            history: messageStore ? (await messageStore.loadMessages(sessionId)).slice(0, -1) : [],
+            enableCompaction: true,
+            maxHistoryChars: 8000,
           });
 
           console.log('[INPUT] prompt length: ' + (prompt ? prompt.length : 0) + ', tools: [' + tools.join(',') + ']');
@@ -349,6 +414,14 @@ export function createWsHandler(deps) {
 
     ws.on('close', () => {
       if (sessionId) {
+        // Clean up pending approvals for this session
+        for (const [approvalId, pending] of pendingApprovals) {
+          if (approvalId.startsWith(sessionId + '_')) {
+            clearTimeout(pending._timeout);
+            pendingApprovals.delete(approvalId);
+          }
+        }
+
         const clients = sessionClients.get(sessionId);
         if (clients) {
           clients.delete(ws);

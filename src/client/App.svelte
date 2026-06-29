@@ -14,7 +14,7 @@
 
   import { isConnected } from '$stores/session.store.js';
   import { activeModelId, savedModels } from '$stores/models.store.js';
-  import { fileContents, fileTree, openFile, closeTab } from '$stores/files.store.js';
+  import { fileContents, fileTree, openFile, closeTab, currentFile } from '$stores/files.store.js';
   import { messages, isWaiting, isTyping, addMessage } from '$stores/chat.store.js';
   import { initChatHistory, createSession, switchSession, currentSessionId } from '$stores/chatHistory.store.js';
   import { chatSidebarOpen, fileSidebarOpen, toggleChatSidebar, toggleFileSidebar, openCommandPalette, showToast } from '$stores/ui.store.js';
@@ -23,6 +23,7 @@
   import { enabledTools } from '$stores/tools.store.js';
   import { createSession as apiCreateSession, validateSession } from '$apis/session.api.js';
   import { writeFile, readFile, getFileTree } from '$apis/files.api.js';
+  import FileHistoryPanel from '$components/files/FileHistoryPanel.svelte';
   import { sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
   import { get } from 'svelte/store';
   import { t } from '$lib/i18n.js';
@@ -361,7 +362,12 @@
       <div class="chat-sidebar-container"><ChatSidebar on:newchat={handleNewChat} on:select={handleSelectChatSession} /></div>
     {/if}
     {#if $fileSidebarOpen}
-      <div class="sidebar"><FileTree on:fileSelect={handleFileSelect} /></div>
+      <div class="sidebar">
+        <FileTree on:fileSelect={handleFileSelect} />
+        {#if $currentFile}
+          <FileHistoryPanel filePath={$currentFile} on:rollback={handleFileSelect} />
+        {/if}
+      </div>
     {/if}
     <div class="content-pane-group">
       <div class="chat-pane" style="flex: {chatFlex};"><ChatPanel onsend={handleChatSend} /></div>

@@ -69,6 +69,24 @@ export async function initDb(workspaceDir) {
 
   db.run('CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(sessionId, timestamp)');
 
+  // ── File Versions ──
+  db.run(`
+    CREATE TABLE IF NOT EXISTS file_versions (
+      id TEXT PRIMARY KEY,
+      sessionId TEXT NOT NULL,
+      filePath TEXT NOT NULL,
+      content TEXT NOT NULL,
+      hash TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      createdAt INTEGER NOT NULL,
+      action TEXT NOT NULL DEFAULT 'save',
+      FOREIGN KEY (sessionId) REFERENCES sessions(id) ON DELETE CASCADE
+    )
+  `);
+
+  db.run('CREATE INDEX IF NOT EXISTS idx_file_versions_session ON file_versions(sessionId, filePath, createdAt)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_file_versions_hash ON file_versions(hash)');
+
   console.log('[DB] schema initialized');
 
   /** Persist the database to disk. */

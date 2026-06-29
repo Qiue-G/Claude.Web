@@ -26,6 +26,8 @@ import { createModelRouter } from './routes/modelRoutes.js';
 import { createHealthRouter } from './routes/healthRoutes.js';
 import { createConfigRouter } from './routes/configRoutes.js';
 import { createSearchRouter } from './routes/searchRoutes.js';
+import { createRagRouter } from './routes/ragRoutes.js';
+import { createRagSystem } from '../rag/index.js';
 import { AppError } from './lib/AppError.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -120,6 +122,18 @@ if (mcpConfigs.length > 0) {
 } else {
   console.log('[MCP] no MCP servers configured');
 }
+
+// ===== RAG System =====
+const rag = await createRagSystem({
+  db,
+  apiKey: process.env.OPENAI_API_KEY,
+  baseUrl: process.env.OPENAI_BASE_URL,
+  model: process.env.RAG_EMBEDDING_MODEL || 'text-embedding-3-small',
+  dimensions: parseInt(process.env.RAG_EMBEDDING_DIMENSIONS || '256'),
+  chunkSize: parseInt(process.env.RAG_CHUNK_SIZE || '512'),
+  chunkOverlap: parseInt(process.env.RAG_CHUNK_OVERLAP || '128'),
+});
+console.log('[RAG] system initialized, vector dimensions: ' + rag.embedder.dimensions);
 
 const sessionProcesses = new Map();
 const sessionProxies = new Map(); // proxy processes
@@ -384,7 +398,10 @@ app.use('/api/search', createSearchRouter({ db }));
 
 // ===== File API ====
 // All file CRUD operations are handled by routes/fileRoutes.js
-app.use('/api/files', createFileRouter({ getSession, sessions, checkRateLimit, RATE_WINDOW, RATE_MAX_FILE: 60 }));
+app.use('/api/files', createFileRouter({ getSession, sessions, checkRateLimit, RATE_WINDOW, RATE_MAX_FILE: 60, db }));
+
+// ===== RAG API ====
+app.use('/api/rag', createRagRouter({ rag, sessions }));
 
 // ===== SPA fallback: serve index.html for non-API routes =====
 app.get('*', (req, res) => {
@@ -430,13 +447,46 @@ wss.on('connection', createWsHandler({
   getSession, sessions, sessionProcesses, sessionProxies, sessionClients, wsProcCount,
   broadcastToSession, spawnCli, maskSensitive, stripAnsi,
   checkRateLimit, ALLOWED_ORIGINS, RATE_WINDOW, RATE_MAX_INPUT,
-  messageStore, mcpManager
+  messageStore, mcpManager, rag
 }));
 
-process.on('SIGTERM', () => {
-  console.log('Shutting down...');
-  server.close(() => process.exit(0));
-});
+async function gracefulShutdown(signal) {
+  console.log(`\n[SHUTDOWN] ${signal} received, cleaning up...`);
+
+  // 1. Kill proxy processes
+  for (const [id, proxy] of sessionProxies) {
+    try { proxy.kill('SIGTERM'); } catch (e) { /* already dead */ }
+    console.log(`[SHUTDOWN] killed proxy for session ${id}`);
+  }
+  sessionProxies.clear();
+
+  // 2. Kill CLI processes
+  for (const [id, proc] of sessionProcesses) {
+    try { proc.kill('SIGTERM'); } catch (e) { /* already dead */ }
+    console.log(`[SHUTDOWN] killed process for session ${id}`);
+  }
+  sessionProcesses.clear();
+
+  // 3. Save message store
+  try {
+    await messageStore.save();
+    console.log('[SHUTDOWN] message store saved');
+  } catch (e) {
+    console.error('[SHUTDOWN] save failed:', e.message);
+  }
+
+  // 4. Close HTTP server
+  server.close(() => {
+    console.log('[SHUTDOWN] server closed');
+    process.exit(0);
+  });
+
+  // Safety net: force exit in 5s
+  setTimeout(() => process.exit(0), 5000);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 process.on('uncaughtException', (err) => {
   console.error('[FATAL] Uncaught exception:', err);

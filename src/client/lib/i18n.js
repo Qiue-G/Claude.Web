@@ -69,6 +69,8 @@ const translations = {
     'files.delete': '删除',
     'files.rename': '重命名',
     'files.noFiles': '暂无文件',
+    'files.versionHistory': '版本历史',
+    'files.diffView': '差异对比',
 
     // 编辑器
     'editor.noFile': '未打开文件',
@@ -282,6 +284,8 @@ const translations = {
     'files.delete': 'Delete',
     'files.rename': 'Rename',
     'files.noFiles': 'No files',
+    'files.versionHistory': 'Version History',
+    'files.diffView': 'Diff View',
 
     // Editor
     'editor.noFile': 'No file open',

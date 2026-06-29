@@ -5,7 +5,8 @@ const defaultTools = {
   web_search: false,
   code_interpreter: false,
   image_generation: false,
-  file_analysis: false
+  file_analysis: false,
+  rag_search: false
 };
 
 export const availableTools = writable([]);

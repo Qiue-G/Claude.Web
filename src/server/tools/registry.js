@@ -31,6 +31,15 @@ const TOOL_DEFINITIONS = [
     icon: 'file',
     instruction: 'You can analyze uploaded file contents provided in the current message context and summarize key insights.',
     configured: () => true
+  },
+  {
+    id: 'rag_search',
+    label: 'Knowledge Base',
+    description: '在知识库中搜索相关文档内容',
+    icon: 'database',
+    instruction: 'You can search the knowledge base to find relevant documents and information. Use this when the user asks about previously uploaded documents, project files, or stored knowledge. The search results include the most relevant text chunks with similarity scores.',
+    configured: (env = process.env) => Boolean(env.RAG_ENABLED) || Boolean(env.OPENAI_API_KEY),
+    unavailableReason: 'RAG system not initialized'
   }
 ];
 
