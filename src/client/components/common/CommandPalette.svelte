@@ -1,9 +1,9 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import { isCommandPaletteOpen, commands, closeCommandPalette, executeCommand } from '$stores/keyboard.store.js';
+  import { isCommandPaletteOpen, commands, closeCommandPalette, executeCommand as executeBuiltinCommand } from '$stores/keyboard.store.js';
   import Icon from '$components/common/Icon.svelte';
   import { t } from '$lib/i18n.js';
-  import { registeredCommands } from '$stores/plugins.store.js';
+  import { registeredCommands, executeCommand as executePluginCommand } from '$stores/plugins.store.js';
 
   let searchQuery = '';
   let selectedIndex = 0;
@@ -22,6 +22,15 @@
     setTimeout(() => inputElement?.focus(), 50);
   }
 
+  function runCommand(command) {
+    if (command?.isPlugin) {
+      executePluginCommand(command.id);
+      closeCommandPalette();
+      return;
+    }
+    executeBuiltinCommand(command.id);
+  }
+
   function handleKeydown(e) {
     if (e.key === 'Escape') {
       e.preventDefault();
@@ -35,13 +44,13 @@
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (filteredCommands[selectedIndex]) {
-        executeCommand(filteredCommands[selectedIndex].id);
+        runCommand(filteredCommands[selectedIndex]);
       }
     }
   }
 
-  function handleCommandClick(commandId) {
-    executeCommand(commandId);
+  function handleCommandClick(command) {
+    runCommand(command);
   }
 
   function handleBackdropClick(e) {
@@ -72,7 +81,7 @@
           <button
             class="command-item"
             class:selected={index === selectedIndex}
-            on:click={() => handleCommandClick(command.id)}
+            on:click={() => handleCommandClick(command)}
           >
             <div class="command-info">
               <div class="command-name">{$t(command.nameKey) || command.name}</div>

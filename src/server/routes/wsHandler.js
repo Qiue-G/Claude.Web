@@ -33,6 +33,11 @@ function formatRagResults(results, query) {
   return parts.join('\n\n');
 }
 
+export function applyPreToolUseHook(toolName, args, pluginsConfig = {}) {
+  const hooksCtx = runHooks('preToolUse', { toolName, arguments: args }, pluginsConfig);
+  return hooksCtx.arguments || args;
+}
+
 // 等待用户审批的工具请求（用 approvalId 索引）
 const pendingApprovals = new Map();
 
@@ -281,7 +286,8 @@ export function createWsHandler(deps) {
                 const parsed = parseMcpToolId(toolId);
                 if (parsed) {
                   broadcastToSession(sessionId, { type: 'output', data: `\n[执行 MCP 工具: ${parsed.serverName}/${parsed.toolName}...]\n` });
-                  const result = await mcpManager.callTool(parsed.serverName, parsed.toolName, { query: originalPrompt });
+                  const toolArgs = applyPreToolUseHook(toolId, { query: originalPrompt }, pluginsConfig);
+                  const result = await mcpManager.callTool(parsed.serverName, parsed.toolName, toolArgs);
                   if (result.content) {
                     toolResults.push({
                       type: 'tool_result',

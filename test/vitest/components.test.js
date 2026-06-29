@@ -217,3 +217,35 @@ describe('Toast.svelte', () => {
     expect(container.querySelector('.toast.dismissing')).toBeTruthy();
   });
 });
+
+// ========================================================================
+// CommandPalette.svelte 插件命令
+// ========================================================================
+describe('CommandPalette.svelte plugin commands', () => {
+  beforeEach(async () => {
+    cleanup();
+    const keyboard = await import('$stores/keyboard.store.js');
+    const plugins = await import('$stores/plugins.store.js');
+    keyboard.isCommandPaletteOpen.set(true);
+    plugins.pluginsConfig.set({
+      starlight: {
+        enabled: true,
+        manifest: {
+          commands: [{ id: 'starlight:toggle', name: '切换星夜主题', description: '测试插件命令' }],
+          tokens: { dark: { '--ds-accent': '#a78ff0' } }
+        }
+      }
+    });
+    plugins.activeThemeTokens.set({ starlight: true });
+  });
+
+  it('executes plugin command when clicking a plugin command item', async () => {
+    const plugins = await import('$stores/plugins.store.js');
+    const { default: CommandPalette } = await import('$components/common/CommandPalette.svelte');
+    render(CommandPalette);
+
+    await fireEvent.click(screen.getByText('切换星夜主题'));
+
+    expect(get(plugins.activeThemeTokens).starlight).toBe(false);
+  });
+});

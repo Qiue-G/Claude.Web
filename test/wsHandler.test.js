@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
-import { createWsHandler } from '../src/server/routes/wsHandler.js';
+import { createWsHandler, applyPreToolUseHook } from '../src/server/routes/wsHandler.js';
 
 /** Helper: start a WS server on a random port, return { url, close } */
 function withWsServer(handler) {
@@ -311,4 +311,21 @@ test('wsHandler rate limits excessive input', async () => {
   } finally {
     await close();
   }
+});
+
+test('applyPreToolUseHook adds hook instruction to tool arguments', () => {
+  const pluginsConfig = {
+    'tool-guard': {
+      enabled: true,
+      type: 'hook',
+      hooks: {
+        preToolUse: { matcher: 'mcp_demo_search', instruction: 'hook instruction' }
+      }
+    }
+  };
+
+  const result = applyPreToolUseHook('mcp_demo_search', { query: 'search this' }, pluginsConfig);
+
+  assert.equal(result.query, 'search this');
+  assert.equal(result._instruction, 'hook instruction');
 });
