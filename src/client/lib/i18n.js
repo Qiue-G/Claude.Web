@@ -173,6 +173,7 @@ const translations = {
     'controls.hint': '启用/禁用工具，模型将在对话中使用启用的工具。',
     'controls.warning': '工具状态加载失败，已使用本地默认配置。',
     'controls.unconfigured': '未配置',
+    'controls.filters': '过滤器',
 
     // 工具审批
     'approval.title': '工具调用审批',
@@ -430,6 +431,7 @@ const translations = {
     'controls.hint': 'Enable or disable tools. Enabled tools will be available to the model.',
     'controls.warning': 'Failed to load tool states, using local defaults.',
     'controls.unconfigured': 'Not configured',
+    'controls.filters': 'Filters',
 
     // Tool Approval
     'approval.title': 'Tool Approval',

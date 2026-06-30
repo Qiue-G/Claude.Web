@@ -4,6 +4,7 @@
   import { t } from '$lib/i18n.js';
   import { fetchTools } from '$apis/tools.api.js';
   import { availableTools, setAvailableTools, setToolEnabled, toolStates as toolStatesStore } from '$stores/tools.store.js';
+  import { filterMeta, setFilterEnabled } from '$stores/filters.store.js';
 
   /** @type {boolean} */
   export let open = false;
@@ -129,6 +130,27 @@
             </li>
           {/each}
         </ul>
+
+        <h3 class="filters-title">{$t('controls.filters')}</h3>
+        <div class="filters-section">
+          {#each $filterMeta as filter (filter.id)}
+            <button
+              type="button"
+              class="filter-toggle"
+              class:enabled={filter.enabled}
+              on:click={() => setFilterEnabled(filter.id, !filter.enabled)}
+              aria-pressed={filter.enabled}
+            >
+              <span class="filter-info">
+                <span class="filter-label">{filter.name}</span>
+                <span class="filter-desc">{filter.description}</span>
+              </span>
+              <span class="filter-switch" class:on={filter.enabled} aria-hidden="true">
+                <span class="switch-knob"></span>
+              </span>
+            </button>
+          {/each}
+        </div>
       </div>
     </div>
   </div>
@@ -340,5 +362,84 @@
   @keyframes slideIn {
     from { transform: translateX(20px); opacity: 0; }
     to { transform: translateX(0); opacity: 1; }
+  }
+
+  .filters-title {
+    margin: 20px 0 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .filters-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .filter-toggle {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s;
+    color: var(--text-primary);
+    font-family: inherit;
+  }
+
+  .filter-toggle:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-hover);
+  }
+
+  .filter-toggle.enabled {
+    border-color: var(--green, #22c55e);
+    background: rgba(34, 197, 94, 0.06);
+  }
+
+  .filter-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .filter-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  .filter-desc {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.4;
+  }
+
+  .filter-switch {
+    position: relative;
+    width: 32px;
+    height: 18px;
+    background: var(--border);
+    border-radius: 9px;
+    flex-shrink: 0;
+    transition: background 0.2s;
+  }
+
+  .filter-switch.on {
+    background: var(--green, #22c55e);
+  }
+
+  .filter-switch.on .switch-knob {
+    transform: translateX(14px);
   }
 </style>

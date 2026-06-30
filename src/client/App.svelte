@@ -31,6 +31,7 @@
   import { t } from '$lib/i18n.js';
   import { readFilesForAI } from '$lib/attachments.js';
   import { initPlugins, pluginsConfig, activeThemeTokens, getEnabledTokens, applyThemeTokens } from '$stores/plugins.store.js';
+  import { initFilters } from '$stores/filters.store.js';
   import { effectiveTheme } from '$stores/theme.store.js';
   import { fetchConfig } from '$apis/models.api.js';
 
@@ -323,6 +324,9 @@
         }
         activeThemeTokens.set(initialActive);
         // 初始主题令牌（依赖 $effect 自动注入）
+      }
+      if (config && config.filters) {
+        initFilters(config.filters);
       }
     } catch (e) {
       console.warn('[PLUGINS] failed to load config:', e.message);

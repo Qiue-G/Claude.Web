@@ -4,6 +4,8 @@ import { analyzeFilesFromPromptContext, stripFileBlocksFromPrompt } from '../too
 import { buildPrompt } from '../runtime/promptBuilder.js';
 import { getToolInstructions, isBuiltinTool, isMcpTool, parseMcpToolId } from '../tools/registry.js';
 import { runHooks } from '../runtime/hooksRunner.js';
+import { runFilters } from '../runtime/filterPipeline.js';
+import { buildFilterList } from '../runtime/filters/index.js';
 
 /**
  * 将 RAG 搜索结果格式化为可读文本
@@ -73,6 +75,8 @@ export function createWsHandler(deps) {
       messageStore, mcpManager, rag, agentConfig
     } = deps;
     const pluginsConfig = (agentConfig && agentConfig.plugins) || {};
+    const filtersConfig = (agentConfig && agentConfig.filters) || {};
+    const filterPipeline = buildFilterList(filtersConfig);
 
     // Verify WebSocket origin
     const wsOrigin = req.headers.origin;
@@ -337,6 +341,20 @@ export function createWsHandler(deps) {
             }
           }
 
+          // === Filters: 输入过滤器 (contextInject) ===
+          if (filterPipeline.length > 0) {
+            const inputFilters = filterPipeline.filter((f) => f.type === 'input' || !f.type);
+            if (inputFilters.length > 0) {
+              const filterCtx = await runFilters('input', userMessageForPrompt, {
+                session,
+                context: { rag, filterOptions: filtersConfig.contextInject || {} }
+              }, inputFilters);
+              if (!filterCtx.aborted) {
+                userMessageForPrompt = filterCtx.content;
+              }
+            }
+          }
+
           prompt = buildPrompt({
             toolInstructions,
             activeToolIds: approvedTools || [],
@@ -403,6 +421,23 @@ export function createWsHandler(deps) {
                   if (result.stderr) output += `\n错误:\n${result.stderr}`;
                   if (result.exitCode !== 0) output += `\n退出码: ${result.exitCode}`;
                   broadcastToSession(sessionId, { type: 'output', data: output + '\n' });
+                }
+              }
+            }
+
+            // === Filters: 输出过滤器 (profanity, formatGuard) ===
+            if (filterPipeline.length > 0 && assistantBuffer.trim()) {
+              const outputFilters = filterPipeline.filter((f) => f.type === 'output' || !f.type);
+              if (outputFilters.length > 0) {
+                const outputFilterCtx = await runFilters('output', assistantBuffer, {
+                  session,
+                  context: { filterOptions: filtersConfig }
+                }, outputFilters);
+                if (outputFilterCtx.aborted) {
+                  broadcastToSession(sessionId, { type: 'output', data: '\n[输出已被过滤器阻断: ' + outputFilterCtx.reason + ']\n' });
+                } else if (outputFilterCtx.content !== assistantBuffer) {
+                  broadcastToSession(sessionId, { type: 'output', data: '\n[输出已通过过滤器处理]\n' });
+                  assistantBuffer = outputFilterCtx.content;
                 }
               }
             }
