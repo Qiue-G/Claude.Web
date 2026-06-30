@@ -19,6 +19,10 @@
     dispatch('openConfig');
   }
 
+  function handleOpenRag() {
+    dispatch('openRag');
+  }
+
   function handleModelSelect(e) {
     const model = e.detail;
     dispatch('selectModel', model);
@@ -93,6 +97,9 @@
     {/if}
     <ThemeToggle />
     <LanguageSelector />
+    <button class="toolbar-btn rag-btn" on:click={handleOpenRag} title={$t('rag.button')}>
+      <span class="rag-label">RAG</span>
+    </button>
     <ModelSelector
       on:select={handleModelSelect}
       on:openConfig={handleOpenConfig}
@@ -152,6 +159,17 @@
     font-weight: 700;
     letter-spacing: 0.5px;
     color: var(--accent);
+  }
+
+  .rag-btn:hover .rag-label {
+    color: var(--amber);
+  }
+
+  .rag-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
   }
 
   .toolbar-divider {

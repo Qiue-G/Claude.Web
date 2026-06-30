@@ -133,6 +133,9 @@ const rag = await createRagSystem({
   dimensions: parseInt(process.env.RAG_EMBEDDING_DIMENSIONS || '256'),
   chunkSize: parseInt(process.env.RAG_CHUNK_SIZE || '512'),
   chunkOverlap: parseInt(process.env.RAG_CHUNK_OVERLAP || '128'),
+  vectorStoreType: process.env.VECTOR_STORE_TYPE || 'memory',
+  qdrantUrl: process.env.VECTOR_STORE_QDRANT_URL,
+  qdrantApiKey: process.env.VECTOR_STORE_QDRANT_API_KEY,
 });
 console.log('[RAG] system initialized, vector dimensions: ' + rag.embedder.dimensions);
 

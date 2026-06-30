@@ -18,7 +18,7 @@
  */
 import { RecursiveCharacterTextSplitter } from './chunker.js';
 import { createEmbedder } from './embedder.js';
-import { createVectorStore } from './vectorStore.js';
+import { createVectorStoreAdapter } from './vectorStore/index.js';
 import { hybridSearch } from './retrieval.js';
 import { createDefaultRegistry } from './extractors/index.js';
 import { splitMarkdown } from './extractors/markdownSplitter.js';
@@ -43,7 +43,7 @@ const DEFAULT_COLLECTION = 'default';
  * @property {(collection: string) => void} deleteCollection 删除集合
  * @property {() => number} get totalDocs 所有集合中总文档数
  * @property {() => object} get embedder 底层 embedder 实例
- * @property {() => object} get vectorStore 底层 vectorStore 实例
+ * @property {() => import('./vectorStore/adapter.js').VectorStoreAdapter} get vectorStore 底层 VectorStore 适配器实例
  * @property {() => RecursiveCharacterTextSplitter} get splitter
  * @property {() => import('./extractors/index.js').ExtractorRegistry} get registry 提取器注册表
  * @property {() => import('./metrics.js').RagMetrics} get metrics 可观测性指标收集器
@@ -53,13 +53,16 @@ const DEFAULT_COLLECTION = 'default';
 /**
  * 创建 RAG 系统实例
  * @param {object} options
- * @param {object} [options.db]  - sql.js 数据库实例（用于 FTS5，可选）
+ * @param {object} [options.db]  - sql.js 数据库实例（memory 模式需要）
  * @param {number} [options.dimensions=256] - 嵌入向量维度
  * @param {number} [options.chunkSize=512]  - 分块大小
  * @param {number} [options.chunkOverlap=128] - 分块重叠
  * @param {string} [options.apiKey]  - 嵌入 API Key（默认 process.env.OPENAI_API_KEY）
  * @param {string} [options.baseUrl] - 嵌入 API Base URL
  * @param {string} [options.model]   - 嵌入模型名
+ * @param {string} [options.vectorStoreType] - 向量存储类型（memory|qdrant，默认 process.env.VECTOR_STORE_TYPE）
+ * @param {string} [options.qdrantUrl]  - Qdrant 服务地址
+ * @param {string} [options.qdrantApiKey] - Qdrant API Key
  * @returns {Promise<RagSystem>}
  */
 export async function createRagSystem(options = {}) {
@@ -69,9 +72,12 @@ export async function createRagSystem(options = {}) {
   const metrics = createRagMetrics();
 
   // ── 初始化组件 ──
-  const vectorStore = createVectorStore({
+  const vectorStore = await createVectorStoreAdapter({
     db,
     dimensions: options.dimensions ?? 256,
+    type: options.vectorStoreType,
+    qdrantUrl: options.qdrantUrl,
+    qdrantApiKey: options.qdrantApiKey,
   });
 
   const embedder = createEmbedder({

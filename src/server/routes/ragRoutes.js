@@ -240,16 +240,20 @@ export function createRagRouter(deps) {
   /**
    * GET /api/rag/collections
    * 列出所有集合（需传入 sessionId）
-   *
-   * 注意: 当前向量存储未提供集合列表接口，
-   *       这里预留扩展点。
    */
   router.get('/collections', asyncHandler(async (req, res) => {
     if (!rag) throw new AppError(503, 'RAG system not initialized');
-    // TODO: 当 vectorStore 提供 listCollections 时接入
+
+    let collections = [];
+    try {
+      collections = await rag.vectorStore.listCollections();
+    } catch {
+      // listCollections 失败时返回空数组
+    }
+
     res.json({
       success: true,
-      collections: [],
+      collections,
       totalDocs: rag.totalDocs,
     });
   }));

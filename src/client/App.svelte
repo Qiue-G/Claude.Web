@@ -10,6 +10,8 @@
   import CommandPalette from '$components/common/CommandPalette.svelte';
   import Toast from '$components/common/Toast.svelte';
   import ToolApprovalModal from '$components/chat/ToolApprovalModal.svelte';
+  import RagPanel from '$components/rag/RagPanel.svelte';
+  import Modal from '$components/common/Modal.svelte';
   import { sendToolApproval } from '$lib/websocket.js';
 
   import { isConnected } from '$stores/session.store.js';
@@ -33,6 +35,7 @@
   import { fetchConfig } from '$apis/models.api.js';
 
   let showConfigModal = $state(false);
+  let showRagPanel = $state(false);
 
   // 工具审批弹窗状态
   let pendingApproval = $state(null); // { approvalId, tools }
@@ -91,6 +94,7 @@
   function handleToggleSidebar() { toggleFileSidebar(); }
   function handleToggleChatSidebar() { toggleChatSidebar(); }
   function handleOpenConfig() { showConfigModal = true; }
+  function handleOpenRag() { showRagPanel = true; }
   function handleCloseConfig() { showConfigModal = false; }
 
   function handleSelectModel(e) {
@@ -387,7 +391,7 @@
 </script>
 
 <div class="app">
-  <Toolbar on:toggleSidebar={handleToggleSidebar} on:openConfig={handleOpenConfig} on:selectModel={handleSelectModel} />
+  <Toolbar on:toggleSidebar={handleToggleSidebar} on:openConfig={handleOpenConfig} on:openRag={handleOpenRag} on:selectModel={handleSelectModel} />
 
   <div class="main-layout">
     {#if $chatSidebarOpen}
@@ -409,6 +413,9 @@
   </div>
 
   <ConfigModal bind:open={showConfigModal} on:close={handleCloseConfig} on:connect={handleConnectModel} />
+  <Modal bind:open={showRagPanel} title={$t('rag.title')} width="560px">
+    <RagPanel />
+  </Modal>
   <CommandPalette />
   <Toast />
   {#if pendingApproval}
