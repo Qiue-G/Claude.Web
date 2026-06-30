@@ -10,3 +10,4 @@ workspace/
 screenshots/
 .DS_Store
 *.log
+.reasonix/
