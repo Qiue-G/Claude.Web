@@ -122,7 +122,7 @@ export function searchRag({ query, collection, topK, bm25Weight, enableRerank, e
  * @returns {Promise<object>}
  */
 export function deleteCollection(collectionName, sessionId, token, csrfToken) {
-  return api.delete(`/api/rag/collection/${encodeURIComponent(collectionName)}`, { token, csrfToken });
+  return api.delete(`/api/rag/collection/${encodeURIComponent(collectionName)}`, { token, csrfToken, headers: { 'x-session-id': sessionId } });
 }
 
 /**
