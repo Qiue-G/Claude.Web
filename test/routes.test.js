@@ -312,7 +312,8 @@ test('RAG ingest namespaces custom collections under the current session', async
       headers: {
         'content-type': 'application/json',
         'x-session-id': 'sid-1',
-        'x-session-token': 'tok-1'
+        'x-session-token': 'tok-1',
+        'x-csrf-token': 'csrf-1'
       },
       body: JSON.stringify({ text: 'hello', collection: 'notes' })
     });
