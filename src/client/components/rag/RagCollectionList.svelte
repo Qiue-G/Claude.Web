@@ -7,18 +7,17 @@
   import { listCollections, deleteCollection, getRagStatus } from '$apis/rag.api.js';
   import { sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
   import { get } from 'svelte/store';
-  import { t } from '$lib/i18n.js';
   import Icon from '$components/common/Icon.svelte';
 
-  let { toast = () => {} } = $props();
+  export let toast = () => {};
 
-  let collections = $state([]);
-  let totalDocs = $state(0);
-  let loading = $state(true);
-  let deleting = $state(null);
-  let error = $state('');
-  let ragEnabled = $state(false);
-  let embedderModel = $state('');
+  let collections = [];
+  let totalDocs = 0;
+  let loading = true;
+  let deleting = null;
+  let error = '';
+  let ragEnabled = false;
+  let embedderModel = '';
 
   onMount(() => { loadCollections(); });
 

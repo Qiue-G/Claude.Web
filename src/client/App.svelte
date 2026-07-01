@@ -35,11 +35,11 @@
   import { effectiveTheme } from '$stores/theme.store.js';
   import { fetchConfig } from '$apis/models.api.js';
 
-  let showConfigModal = $state(false);
-  let showRagPanel = $state(false);
+  let showConfigModal = false;
+  let showRagPanel = false;
 
   // 工具审批弹窗状态
-  let pendingApproval = $state(null); // { approvalId, tools }
+  let pendingApproval = null; // { approvalId, tools }
 
   function handleToolApprovalRequest(e) {
     pendingApproval = {
@@ -63,9 +63,9 @@
   }
 
   // 聊天/编辑器面板拖拽分割
-  let chatFlex = $state(7);
-  let editorFlex = $state(3);
-  let isResizing = $state(false);
+  let chatFlex = 7;
+  let editorFlex = 3;
+  let isResizing = false;
 
   function handleResizeStart(e) {
     isResizing = true;
@@ -193,11 +193,11 @@
     }
   }
 
-  let sendTimeout = $state(null);
-  let isApprovalActive = $state(false); // 跟踪审批弹窗状态
+  let sendTimeout = null;
+  let isApprovalActive = false; // 跟踪审批弹窗状态
 
   // 发送超时自动恢复（工具审批等待时不超时）
-  $effect(() => {
+  $: {
     if (isApprovalActive) {
       // 审批期间：不启动任何超时
       if (sendTimeout) {
@@ -222,12 +222,10 @@
         sendTimeout = null;
       }
     }
-  });
+  }
 
   // 监听审批弹窗状态
-  $effect(() => {
-    isApprovalActive = pendingApproval !== null;
-  });
+  $: isApprovalActive = pendingApproval !== null;
 
   async function handleChatSend(data) {
     const text = typeof data === 'string' ? data : data.text;
@@ -342,7 +340,7 @@
   });
 
   // === 响应主题/插件配置变化，更新主题令牌 ===
-  $effect(() => {
+  $: {
     const cfg = $pluginsConfig;
     const theme = $effectiveTheme;
     const active = $activeThemeTokens;
@@ -350,7 +348,7 @@
       const tokens = getEnabledTokens(theme, cfg, active);
       applyThemeTokens(tokens);
     }
-  });
+  }
 
   function handleGlobalKeydown(e) {
     const mod = e.ctrlKey || e.metaKey;

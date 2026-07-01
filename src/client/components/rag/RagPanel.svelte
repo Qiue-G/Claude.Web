@@ -14,7 +14,7 @@
   import { t } from '$lib/i18n.js';
 
   const TABS = ['collections', 'upload', 'search'];
-  let activeTab = $state('collections');
+  let activeTab = 'collections';
 
   function handleToast(text, type) {
     showToast(text, type || 'info');

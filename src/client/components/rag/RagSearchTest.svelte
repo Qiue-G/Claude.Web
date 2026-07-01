@@ -6,18 +6,18 @@
   import { sessionId, sessionToken } from '$stores/session.store.js';
   import { get } from 'svelte/store';
 
-  let { toast = () => {} } = $props();
+  export let toast = () => {};
 
-  let query = $state('');
-  let collection = $state('');
-  let topK = $state(5);
-  let bm25Weight = $state(0.3);
-  let enableRerank = $state(false);
-  let enableCrossEncoder = $state(false);
-  let enableEnrichment = $state(true);
-  let searching = $state(false);
-  let results = $state([]);
-  let error = $state('');
+  let query = '';
+  let collection = '';
+  let topK = 5;
+  let bm25Weight = 0.3;
+  let enableRerank = false;
+  let enableCrossEncoder = false;
+  let enableEnrichment = true;
+  let searching = false;
+  let results = [];
+  let error = '';
 
   async function handleSearch() {
     if (!query.trim()) return;

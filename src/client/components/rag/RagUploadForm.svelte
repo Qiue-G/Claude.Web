@@ -6,33 +6,33 @@
   import { ingestText, ingestFile, ingestUrl, ingestRest } from '$apis/rag.api.js';
   import { sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
   import { get } from 'svelte/store';
-  import { t } from '$lib/i18n.js';
 
-  let { toast = () => {}, ingested = () => {} } = $props();
+  export let toast = () => {};
+  export let ingested = () => {};
 
   // 上传模式
   const MODES = ['text', 'file', 'url', 'rest'];
-  let activeMode = $state('text');
+  let activeMode = 'text';
 
   // 公共
-  let collection = $state('');
-  let uploading = $state(false);
+  let collection = '';
+  let uploading = false;
 
   // 文本模式
-  let textContent = $state('');
+  let textContent = '';
 
   // 文件模式
-  let fileName = $state('');
-  let fileContent = $state('');
-  let fileSize = $state(0);
-  let fileError = $state('');
+  let fileName = '';
+  let fileContent = '';
+  let fileSize = 0;
+  let fileError = '';
 
   // URL 模式
-  let url = $state('');
+  let url = '';
 
   // REST 模式
-  let restUrl = $state('');
-  let dataPath = $state('');
+  let restUrl = '';
+  let dataPath = '';
 
   function handleFileSelect(e) {
     const file = e.target.files?.[0];
