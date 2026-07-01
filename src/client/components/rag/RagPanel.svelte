@@ -11,7 +11,9 @@
   import RagUploadForm from './RagUploadForm.svelte';
   import RagSearchTest from './RagSearchTest.svelte';
   import { showToast } from '$stores/ui.store.js';
+  import { get } from 'svelte/store';
   import { t } from '$lib/i18n.js';
+  $: _t = get(t);
 
   const TABS = ['collections', 'upload', 'search'];
   let activeTab = 'collections';
@@ -33,9 +35,9 @@
         class:active={activeTab === tab}
         onclick={() => activeTab = tab}
       >
-        {tab === 'collections' && t('rag.tab.collections')}
-        {tab === 'upload' && t('rag.tab.upload')}
-        {tab === 'search' && t('rag.tab.search')}
+        {tab === 'collections' && _t('rag.tab.collections')}
+        {tab === 'upload' && _t('rag.tab.upload')}
+        {tab === 'search' && _t('rag.tab.search')}
       </button>
     {/each}
   </div>
