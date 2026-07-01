@@ -411,13 +411,13 @@
     {/if}
     <div class="content-pane-group">
       <div class="chat-pane" style="flex: {chatFlex};"><ChatPanel onsend={handleChatSend} /></div>
-      <button class="resize-handle" class:active={isResizing} onmousedown={handleResizeStart} aria-label={$t('editor.resizeHandle')}></button>
+      <button class="resize-handle" class:active={isResizing} onmousedown={handleResizeStart} aria-label={get(t)('editor.resizeHandle')}></button>
       <div class="editor-pane" style="flex: {editorFlex};"><CodeEditor on:tabClose={handleTabClose} on:change={handleEditorChange} on:save={handleSaveFile} /></div>
     </div>
   </div>
 
   <ConfigModal bind:open={showConfigModal} on:close={handleCloseConfig} on:connect={handleConnectModel} />
-  <Modal bind:open={showRagPanel} title={$t('rag.title')} width="560px">
+  <Modal bind:open={showRagPanel} title={get(t)('rag.title')} width="560px">
     <RagPanel />
   </Modal>
   <CommandPalette />
