@@ -293,7 +293,8 @@ test('RAG search namespaces caller-supplied collection under the current session
       headers: {
         'content-type': 'application/json',
         'x-session-id': 'sid-1',
-        'x-session-token': 'tok-1'
+        'x-session-token': 'tok-1',
+        'x-csrf-token': 'csrf-1'
       },
       body: JSON.stringify({ query: 'hello', collection: 'sid-2' })
     });
