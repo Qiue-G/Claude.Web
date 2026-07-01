@@ -3,7 +3,7 @@
    * RAG 搜索测试面板
    */
   import { searchRag } from '$apis/rag.api.js';
-  import { sessionId, sessionToken } from '$stores/session.store.js';
+  import { sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
   import { get } from 'svelte/store';
 
   export let toast = () => {};
@@ -31,6 +31,7 @@
     searching = true;
     error = '';
     results = [];
+    const csrf = get(csrfToken);
     try {
       const res = await searchRag({
         query: query.trim(),
@@ -42,6 +43,7 @@
         enableEnrichment,
         sessionId: sid,
         token: tok,
+        csrfToken: csrf,
       });
       results = res.results || [];
       if (results.length === 0) {

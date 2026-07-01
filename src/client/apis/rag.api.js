@@ -109,8 +109,8 @@ export function ingestRest({ url, dataPath, collection, metadata, sessionId, tok
  * @param {string} params.token
  * @returns {Promise<object>}
  */
-export function searchRag({ query, collection, topK, bm25Weight, enableRerank, enableCrossEncoder, enableEnrichment, rewriteConfig, rerankConfig, sessionId, token }) {
-  return api.post('/api/rag/search', { sessionId, query, collection, topK, bm25Weight, enableRerank, enableCrossEncoder, enableEnrichment, rewriteConfig, rerankConfig }, { token });
+export function searchRag({ query, collection, topK, bm25Weight, enableRerank, enableCrossEncoder, enableEnrichment, rewriteConfig, rerankConfig, sessionId, token, csrfToken }) {
+  return api.post('/api/rag/search', { sessionId, query, collection, topK, bm25Weight, enableRerank, enableCrossEncoder, enableEnrichment, rewriteConfig, rerankConfig }, { token, csrfToken });
 }
 
 /**
