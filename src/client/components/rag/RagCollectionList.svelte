@@ -3,14 +3,14 @@
    * RAG 集合列表
    * 展示所有集合，支持删除
    */
-  import { createEventDispatcher, onMount } from 'svelte';
+  import { onMount } from 'svelte';
   import { listCollections, deleteCollection, getRagStatus } from '$apis/rag.api.js';
   import { sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
   import { get } from 'svelte/store';
   import { t } from '$lib/i18n.js';
   import Icon from '$components/common/Icon.svelte';
 
-  const dispatch = createEventDispatcher();
+  let { toast = () => {} } = $props();
 
   let collections = $state([]);
   let totalDocs = $state(0);
@@ -59,9 +59,9 @@
       const csrf = get(csrfToken);
       await deleteCollection(name, sid, tok, csrf);
       collections = collections.filter(c => c !== name);
-      dispatch('toast', { text: `集合 "${name}" 已删除`, type: 'success' });
+      toast(`集合 "${name}" 已删除`, 'success');
     } catch (e) {
-      dispatch('toast', { text: `删除失败: ${e.message}`, type: 'error' });
+      toast(`删除失败: ${e.message}`, 'error');
     } finally {
       deleting = null;
     }
@@ -78,7 +78,7 @@
       {#if embedderModel}
         <span class="model-badge">{embedderModel}</span>
       {/if}
-      <button class="refresh-btn" on:click={loadCollections} disabled={loading}>
+      <button class="refresh-btn" onclick={loadCollections} disabled={loading}>
         <Icon name="refresh" size="sm" />
       </button>
     </div>
@@ -108,7 +108,7 @@
           </div>
           <button
             class="delete-btn"
-            on:click={() => handleDelete(name)}
+            onclick={() => handleDelete(name)}
             disabled={deleting === name}
             title="删除集合"
           >

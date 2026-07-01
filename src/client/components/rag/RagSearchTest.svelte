@@ -2,12 +2,11 @@
   /**
    * RAG 搜索测试面板
    */
-  import { createEventDispatcher } from 'svelte';
   import { searchRag } from '$apis/rag.api.js';
   import { sessionId, sessionToken } from '$stores/session.store.js';
   import { get } from 'svelte/store';
 
-  const dispatch = createEventDispatcher();
+  let { toast = () => {} } = $props();
 
   let query = $state('');
   let collection = $state('');
@@ -78,10 +77,10 @@
         type="text"
         class="input search-input"
         bind:value={query}
-        on:keydown={handleKeydown}
+        onkeydown={handleKeydown}
         placeholder="输入搜索关键词..."
       />
-      <button class="search-btn" on:click={handleSearch} disabled={searching || !query.trim()}>
+      <button class="search-btn" onclick={handleSearch} disabled={searching || !query.trim()}>
         {searching ? '搜索中...' : '搜索'}
       </button>
     </div>

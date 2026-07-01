@@ -11,19 +11,16 @@
   import RagUploadForm from './RagUploadForm.svelte';
   import RagSearchTest from './RagSearchTest.svelte';
   import { showToast } from '$stores/ui.store.js';
-  import { get } from 'svelte/store';
   import { t } from '$lib/i18n.js';
 
   const TABS = ['collections', 'upload', 'search'];
   let activeTab = $state('collections');
 
-  function handleToast(e) {
-    const { text, type } = e.detail;
+  function handleToast(text, type) {
     showToast(text, type || 'info');
   }
 
   function handleIngested() {
-    // 切换到集合列表
     activeTab = 'collections';
   }
 </script>
@@ -34,7 +31,7 @@
       <button
         class="panel-tab"
         class:active={activeTab === tab}
-        on:click={() => activeTab = tab}
+        onclick={() => activeTab = tab}
       >
         {tab === 'collections' && t('rag.tab.collections')}
         {tab === 'upload' && t('rag.tab.upload')}
@@ -45,11 +42,11 @@
 
   <div class="panel-content">
     {#if activeTab === 'collections'}
-      <RagCollectionList on:toast={handleToast} />
+      <RagCollectionList toast={handleToast} />
     {:else if activeTab === 'upload'}
-      <RagUploadForm on:toast={handleToast} on:ingested={handleIngested} />
+      <RagUploadForm toast={handleToast} ingested={handleIngested} />
     {:else if activeTab === 'search'}
-      <RagSearchTest on:toast={handleToast} />
+      <RagSearchTest toast={handleToast} />
     {/if}
   </div>
 </div>

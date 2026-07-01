@@ -3,13 +3,12 @@
    * RAG 上传表单
    * 支持：粘贴文本 / 选择文件（自动 base64） / URL / REST API
    */
-  import { createEventDispatcher } from 'svelte';
   import { ingestText, ingestFile, ingestUrl, ingestRest } from '$apis/rag.api.js';
   import { sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
   import { get } from 'svelte/store';
   import { t } from '$lib/i18n.js';
 
-  const dispatch = createEventDispatcher();
+  let { toast = () => {}, ingested = () => {} } = $props();
 
   // 上传模式
   const MODES = ['text', 'file', 'url', 'rest'];
@@ -64,11 +63,11 @@
     const csrf = get(csrfToken);
 
     if (!sid || !tok) {
-      dispatch('toast', { text: '请先连接模型', type: 'error' });
+      toast('请先连接模型', 'error');
       return;
     }
     if (!csrf) {
-      dispatch('toast', { text: '缺少 CSRF Token，请重新连接', type: 'error' });
+      toast('缺少 CSRF Token，请重新连接', 'error');
       return;
     }
 
@@ -100,11 +99,8 @@
         }
       }
 
-      dispatch('toast', {
-        text: `摄入成功! 已添加 ${result.chunksIngested} 个块到集合 "${result.collection}"`,
-        type: 'success',
-      });
-      dispatch('ingested'); // 通知列表刷新
+      toast(`摄入成功! 已添加 ${result.chunksIngested} 个块到集合 "${result.collection}"`, 'success');
+      ingested(); // 通知列表刷新
 
       // 清空表单
       textContent = '';
@@ -113,7 +109,7 @@
       url = '';
       restUrl = '';
     } catch (e) {
-      dispatch('toast', { text: `上传失败: ${e.message}`, type: 'error' });
+      toast(`上传失败: ${e.message}`, 'error');
     } finally {
       uploading = false;
     }
@@ -140,7 +136,7 @@
       <button
         class="mode-tab"
         class:active={activeMode === mode}
-        on:click={() => activeMode = mode}
+        onclick={() => activeMode = mode}
       >
         {mode === 'text' && '文本'}
         {mode === 'file' && '文件'}
@@ -168,7 +164,7 @@
   {#if activeMode === 'file'}
     <div class="field">
       <label class="field-label">选择文件（支持文档/PDF/CSV/代码/图片等）</label>
-      <input type="file" class="file-input" on:change={handleFileSelect} />
+      <input type="file" class="file-input" onchange={handleFileSelect} />
       {#if fileName}
         <div class="file-info">
           <span>{fileName}</span>
@@ -202,7 +198,7 @@
   {/if}
 
   <!-- 提交按钮 -->
-  <button class="submit-btn" on:click={handleSubmit} disabled={uploading || !isFormValid()}>
+  <button class="submit-btn" onclick={handleSubmit} disabled={uploading || !isFormValid()}>
     {uploading ? '上传中...' : '上传到知识库'}
   </button>
 </div>
