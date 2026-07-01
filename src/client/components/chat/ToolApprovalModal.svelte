@@ -4,21 +4,22 @@
    * AI 请求调用工具时，弹窗让用户选择允许或拒绝
    */
   import Icon from '$components/common/Icon.svelte';
+  import { get } from 'svelte/store';
   import { t } from '$lib/i18n.js';
 
-  let {
-    pendingTools = [],
-    approvalId = null,
-    onapprove = null,
-    onreject = null
-  } = $props();
+  $: _t = get(t);
 
-  let selected = $state([]);
+  export let pendingTools = [];
+  export let approvalId = null;
+  export let onapprove = null;
+  export let onreject = null;
+
+  let selected = [];
 
   // 默认全选
-  $effect(() => {
+  $: {
     selected = pendingTools.map(t => t.id);
-  });
+  }
 
   function toggleTool(toolId) {
     if (selected.includes(toolId)) {
@@ -49,8 +50,8 @@
   <div class="approval-backdrop" role="presentation" onclick={handleBackdropClick}>
     <div class="approval-modal" role="dialog" aria-modal="true" aria-labelledby="approval-title">
       <header class="approval-header">
-        <h2 id="approval-title" class="approval-title">{$t('approval.title')}</h2>
-        <p class="approval-subtitle">{$t('approval.subtitle')}</p>
+        <h2 id="approval-title" class="approval-title">{_t('approval.title')}</h2>
+        <p class="approval-subtitle">{_t('approval.subtitle')}</p>
       </header>
 
       <div class="approval-tools">
@@ -72,10 +73,10 @@
 
       <div class="approval-actions">
         <button class="btn btn-secondary" onclick={rejectAll}>
-          {$t('approval.rejectAll')}
+          {_t('approval.rejectAll')}
         </button>
         <button class="btn btn-primary" onclick={approve} disabled={selected.length === 0}>
-          {$t('approval.allow')} {selected.length > 0 ? `(${selected.length})` : ''}
+          {_t('approval.allow')} {selected.length > 0 ? `(${selected.length})` : ''}
         </button>
       </div>
     </div>

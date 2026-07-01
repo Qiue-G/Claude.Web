@@ -2,32 +2,33 @@
   import CodeBlock from './CodeBlock.svelte';
   import Icon from '$components/common/Icon.svelte';
   import { escapeHtml, formatFileSize } from '$lib/utils.js';
+  import { get } from 'svelte/store';
   import { t } from '$lib/i18n.js';
   import { marked } from 'marked';
+
+  $: _t = get(t);
 
   marked.setOptions({
     breaks: true,
     gfm: true
   });
 
-  let {
-    role = 'user',
-    content = '',
-    time = '',
-    streaming = false,
-    messageId = null,
-    rating = null,
-    files = null,
-    onedit = null,
-    onretry = null,
-    onrate = null,
-    ondelete = null
-  } = $props();
+  export let role = 'user';
+  export let content = '';
+  export let time = '';
+  export let streaming = false;
+  export let messageId = null;
+  export let rating = null;
+  export let files = null;
+  export let onedit = null;
+  export let onretry = null;
+  export let onrate = null;
+  export let ondelete = null;
 
-  let copied = $state(false);
+  let copied = false;
 
-  let roleLabel = $derived(role === 'user' ? 'You' : role === 'assistant' ? 'Assistant' : 'System');
-  let parsedParts = $derived(parseContent(content));
+  $: roleLabel = role === 'user' ? 'You' : role === 'assistant' ? 'Assistant' : 'System';
+  $: parsedParts = parseContent(content);
 
   function parseContent(text) {
     const parts = [];
@@ -118,26 +119,26 @@
   </div>
   {#if role !== 'system' && !streaming}
     <div class="chat-msg-actions">
-      <button class="action-btn" onclick={copyMessage} title={$t('common.copy')}>
+      <button class="action-btn" onclick={copyMessage} title={_t('common.copy')}>
         <Icon name={copied ? 'check' : 'copy'} size="sm" />
-        {$t(copied ? 'common.copied' : 'common.copy')}
+        {_t(copied ? 'common.copied' : 'common.copy')}
       </button>
       {#if role === 'user'}
-        <button class="action-btn" onclick={editMessage} title={$t('common.edit')}>
+        <button class="action-btn" onclick={editMessage} title={_t('common.edit')}>
           <Icon name="edit" size="sm" />
-          {$t('common.edit')}
+          {_t('common.edit')}
         </button>
       {/if}
       {#if role === 'assistant'}
-        <button class="action-btn" onclick={retryMessage} title={$t('common.retry')}>
+        <button class="action-btn" onclick={retryMessage} title={_t('common.retry')}>
           <Icon name="refresh" size="sm" />
-          {$t('common.retry')}
+          {_t('common.retry')}
         </button>
         <button
           class="action-btn rating-btn"
           class:active={rating === 'up'}
           onclick={() => rateMessage('up')}
-          title={$t('chat.helpful')}
+          title={_t('chat.helpful')}
         >
           <Icon name="thumbsUp" size="sm" />
         </button>
@@ -145,13 +146,13 @@
           class="action-btn rating-btn"
           class:active={rating === 'down'}
           onclick={() => rateMessage('down')}
-          title={$t('chat.needsImprovement')}
+          title={_t('chat.needsImprovement')}
         >
           <Icon name="thumbsDown" size="sm" />
         </button>
       {/if}
       {#if role !== 'system'}
-        <button class="action-btn delete-btn" onclick={deleteMsg} title={$t('common.delete')}>
+        <button class="action-btn delete-btn" onclick={deleteMsg} title={_t('common.delete')}>
           <Icon name="trash" size="sm" />
         </button>
       {/if}

@@ -13,7 +13,10 @@
     chatSidebarOpen,
     toggleChatSidebar
   } from '$stores/ui.store.js';
+  import { get } from 'svelte/store';
   import { t } from '$lib/i18n.js';
+
+  $: _t = get(t);
 
   import Navbar from './Navbar.svelte';
   import Messages from './Messages.svelte';
@@ -21,20 +24,18 @@
   import ModelParametersPanel from './ModelParametersPanel.svelte';
   import ChatControls from './ChatControls.svelte';
 
-  let {
-    onsend = null
-  } = $props();
+  export let onsend = null;
 
-  let editContent = $state('');
-  let editingMessageId = $state(null);
+  let editContent = '';
+  let editingMessageId = null;
 
-  // 覆盖 suggestions（使用已引入的 $t）
-  let suggestions = $derived([
-    { text: $t('chat.suggestion1'), label: $t('chat.suggestion1'), icon: '⚛' },
-    { text: $t('chat.suggestion2'), label: $t('chat.suggestion2'), icon: '📁' },
-    { text: $t('chat.suggestion3'), label: $t('chat.suggestion3'), icon: '🐛' },
-    { text: '/help', label: $t('chat.suggestion4'), icon: '❓' }
-  ]);
+  // 覆盖 suggestions
+  $: suggestions = [
+    { text: _t('chat.suggestion1'), label: _t('chat.suggestion1'), icon: '⚛' },
+    { text: _t('chat.suggestion2'), label: _t('chat.suggestion2'), icon: '📁' },
+    { text: _t('chat.suggestion3'), label: _t('chat.suggestion3'), icon: '🐛' },
+    { text: '/help', label: _t('chat.suggestion4'), icon: '❓' }
+  ];
 
   function handleSend(e) {
     const detail = e.detail;

@@ -6,26 +6,27 @@
   import { showToast } from '$stores/ui.store.js';
   import { t } from '$lib/i18n.js';
 
+  $: _t = get(t);
+
   const dispatch = createEventDispatcher();
 
-  let { filePath = '' } = $props();
-  let versions = $state([]);
-  let loading = $state(false);
-  let error = $state('');
-  let selectedVersionId = $state(null);
-  let previewContent = $state('');
-  let previewLoading = $state(false);
+  export let filePath = '';
+
+  let versions = [];
+  let loading = false;
+  let error = '';
+  let selectedVersionId = null;
+  let previewContent = '';
+  let previewLoading = false;
 
   // Load versions when filePath changes
-  $effect(() => {
-    if (filePath) {
-      loadVersions();
-    } else {
-      versions = [];
-      selectedVersionId = null;
-      previewContent = '';
-    }
-  });
+  $: if (filePath) {
+    loadVersions();
+  } else {
+    versions = [];
+    selectedVersionId = null;
+    previewContent = '';
+  }
 
   async function loadVersions() {
     if (!filePath) return;
@@ -106,7 +107,7 @@
 
 <div class="history-panel">
   <div class="panel-header">
-    <span>{$t('files.versionHistory')}</span>
+    <span>{_t('files.versionHistory')}</span>
     {#if filePath}
       <span class="file-label" title={filePath}>{filePath.split('/').pop()}</span>
     {/if}
@@ -116,7 +117,7 @@
     {#if !filePath}
       <div class="empty-state">选择文件以查看版本历史</div>
     {:else if loading}
-      <div class="loading-state">{$t('common.loading')}...</div>
+      <div class="loading-state">{_t('common.loading')}...</div>
     {:else if error}
       <div class="error-state">{error}</div>
     {:else if versions.length === 0}
@@ -151,7 +152,7 @@
                 </button>
               </div>
               {#if previewLoading}
-                <div class="preview-loading">{$t('common.loading')}...</div>
+                <div class="preview-loading">{_t('common.loading')}...</div>
               {:else if previewContent !== ''}
                 <pre class="version-preview">{previewContent.substring(0, 1000)}{previewContent.length > 1000 ? '...' : ''}</pre>
               {/if}

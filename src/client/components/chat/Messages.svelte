@@ -3,20 +3,18 @@
   import Placeholder from './Placeholder.svelte';
   import { isWaiting } from '$stores/chat.store.js';
 
-  let {
-    messages = [],
-    emptyTitle = '',
-    emptySubtitle = '',
-    suggestions = [],
-    onsuggestion = null,
-     onedit = null,
-     onretry = null,
-     onrate = null,
-     ondelete = null
-  } = $props();
+  export let messages = [];
+  export let emptyTitle = '';
+  export let emptySubtitle = '';
+  export let suggestions = [];
+  export let onsuggestion = null;
+  export let onedit = null;
+  export let onretry = null;
+  export let onrate = null;
+  export let ondelete = null;
 
   let messagesContainer;
-  let userScrolledUp = $state(false);
+  let userScrolledUp = false;
 
   function handleScroll() {
     const container = messagesContainer;
@@ -25,19 +23,17 @@
     userScrolledUp = scrollHeight - scrollTop - clientHeight > 80;
   }
 
-  $effect(() => {
+  $: {
     const container = messagesContainer;
-    if (!container) return;
-    if (!userScrolledUp) {
+    if (container && !userScrolledUp) {
       queueMicrotask(() => {
         container.scrollTop = container.scrollHeight;
-        // 二次滚动确保 content-visibility 布局完成
         requestAnimationFrame(() => {
           container.scrollTop = container.scrollHeight;
         });
       });
     }
-  });
+  }
 </script>
 
 <div bind:this={messagesContainer} class="messages-container" onscroll={handleScroll}>

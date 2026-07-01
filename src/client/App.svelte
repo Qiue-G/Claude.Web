@@ -411,7 +411,7 @@
     {/if}
     <div class="content-pane-group">
       <div class="chat-pane" style="flex: {chatFlex};"><ChatPanel onsend={handleChatSend} /></div>
-      <button class="resize-handle" class:active={isResizing} onmousedown={handleResizeStart} aria-label={$t('editor.resizeHandle')}></button>
+      <button class="resize-handle" class:active={isResizing} onmousedown={handleResizeStart} aria-label={_t('editor.resizeHandle')}></button>
       <div class="editor-pane" style="flex: {editorFlex};"><CodeEditor on:tabClose={handleTabClose} on:change={handleEditorChange} on:save={handleSaveFile} /></div>
     </div>
   </div>

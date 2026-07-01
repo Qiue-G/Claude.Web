@@ -1,21 +1,25 @@
 <script>
   import { createEventDispatcher, tick } from 'svelte';
+import { get } from 'svelte/store';
   import Icon from '$components/common/Icon.svelte';
   import { isWaiting } from '$stores/chat.store.js';
   import { t } from '$lib/i18n.js';
   import { formatFileSize } from '$lib/utils.js';
 
+  $: _t = get(t);
+
   const dispatch = createEventDispatcher();
 
-  let { paramsOpen = false, editContent = '' } = $props();
+  export let paramsOpen = false;
+  export let editContent = '';
 
-  let inputText = $state('');
-  let textarea = $state(null);
-  let fileInput = $state(null);
-  let attachedFiles = $state([]);
-  let isDragging = $state(false);
-  let dragCounter = $state(0);
-  let pastedImages = $state([]);
+  let inputText = '';
+  let textarea = null;
+  let fileInput = null;
+  let attachedFiles = [];
+  let isDragging = false;
+  let dragCounter = 0;
+  let pastedImages = [];
 
   // 自动调整 textarea 高度
   function autoResize() {
@@ -25,23 +29,19 @@
   }
 
   // inputText 变化时自动调整高度
-  $effect(() => {
-    if (inputText) {
-      tick().then(autoResize);
-    }
-  });
+  $: if (inputText) {
+    tick().then(autoResize);
+  }
 
   // 编辑回填：当 editContent 变化时填充到输入框
-  $effect(() => {
-    if (editContent && editContent !== inputText) {
-      inputText = editContent;
-      tick().then(() => {
-        autoResize();
-        textarea?.focus();
-        textarea?.setSelectionRange(inputText.length, inputText.length);
-      });
-    }
-  });
+  $: if (editContent && editContent !== inputText) {
+    inputText = editContent;
+    tick().then(() => {
+      autoResize();
+      textarea?.focus();
+      textarea?.setSelectionRange(inputText.length, inputText.length);
+    });
+  }
 
   function handleSend() {
     const text = inputText.trim();
@@ -196,13 +196,13 @@
   ondragover={handleDragOver}
   ondrop={handleDrop}
   role="region"
-  aria-label={$t('chat.inputPlaceholder')}
+  aria-label={_t('chat.inputPlaceholder')}
 >
   {#if isDragging}
     <div class="drop-overlay" aria-hidden="true">
       <div class="drop-message">
         <Icon name="upload" size="lg" />
-        <span>{$t('files.dropToUpload')}</span>
+        <span>{_t('files.dropToUpload')}</span>
       </div>
     </div>
   {/if}
@@ -247,8 +247,8 @@
       class="attach-btn"
       onclick={() => fileInput.click()}
       disabled={$isWaiting}
-      title={$t('chat.attachFile')}
-      aria-label={$t('chat.attachFile')}
+      title={_t('chat.attachFile')}
+      aria-label={_t('chat.attachFile')}
     >
       <Icon name="paperclip" size="md" />
     </button>
@@ -259,8 +259,8 @@
       class:active={paramsOpen}
       onclick={() => dispatch('toggleParams')}
       disabled={$isWaiting}
-      title={$t('model.parameters')}
-      aria-label={$t('model.parameters')}
+      title={_t('model.parameters')}
+      aria-label={_t('model.parameters')}
     >
       <Icon name="settings" size="md" />
     </button>
@@ -281,12 +281,12 @@
       onkeydown={handleKeydown}
       onpaste={handlePaste}
       oninput={autoResize}
-      placeholder={$t('chat.placeholder')}
+      placeholder={_t('chat.placeholder')}
       rows="1"
       disabled={$isWaiting}
       id="chat-message-input"
       name="chat-message-input"
-      aria-label={$t('chat.inputPlaceholder')}
+      aria-label={_t('chat.inputPlaceholder')}
     ></textarea>
 
     <button
@@ -295,8 +295,8 @@
       class:loading={$isWaiting}
       onclick={handleSend}
       disabled={$isWaiting || (!inputText.trim() && attachedFiles.length === 0 && pastedImages.length === 0)}
-      aria-label={$isWaiting ? $t('chat.sending') : $t('chat.send')}
-      title={$isWaiting ? $t('chat.sending') : $t('chat.send')}
+      aria-label={$isWaiting ? _t('chat.sending') : _t('chat.send')}
+      title={$isWaiting ? _t('chat.sending') : _t('chat.send')}
     >
       {#if $isWaiting}
         <span class="send-spinner"></span>

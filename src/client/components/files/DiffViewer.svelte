@@ -1,29 +1,32 @@
 <script>
-  import { createEventDispatcher, get } from 'svelte';
+  import { createEventDispatcher } from 'svelte';
+import { get } from 'svelte/store';
   import { sessionId, sessionToken } from '$stores/session.store.js';
   import { getDiff } from '$apis/files.api.js';
   import { t } from '$lib/i18n.js';
 
+  $: _t = get(t);
+
   const dispatch = createEventDispatcher();
 
-  let { fromId = '', toId = '', filePath = '' } = $props();
+  export let fromId = '';
+  export let toId = '';
+  export let filePath = '';
 
-  let changes = $state([]);
-  let loading = $state(false);
-  let error = $state('');
-  let fromTime = $state(null);
-  let toTime = $state(null);
+  let changes = [];
+  let loading = false;
+  let error = '';
+  let fromTime = null;
+  let toTime = null;
 
   // Automatically load diff when both version IDs are set
-  $effect(() => {
-    if (fromId && toId) {
-      loadDiff();
-    } else {
-      changes = [];
-      fromTime = null;
-      toTime = null;
-    }
-  });
+  $: if (fromId && toId) {
+    loadDiff();
+  } else {
+    changes = [];
+    fromTime = null;
+    toTime = null;
+  }
 
   async function loadDiff() {
     if (!fromId || !toId) return;
@@ -57,7 +60,7 @@
 
 <div class="diff-viewer">
   <div class="diff-header">
-    <span class="diff-title">{$t('files.diffView')}</span>
+    <span class="diff-title">{_t('files.diffView')}</span>
     <div class="diff-info">
       {#if filePath}
         <span class="diff-file">{filePath}</span>
@@ -71,7 +74,7 @@
 
   <div class="diff-body">
     {#if loading}
-      <div class="diff-loading">{$t('common.loading')}...</div>
+      <div class="diff-loading">{_t('common.loading')}...</div>
     {:else if error}
       <div class="diff-error">{error}</div>
     {:else if changes.length === 0}
