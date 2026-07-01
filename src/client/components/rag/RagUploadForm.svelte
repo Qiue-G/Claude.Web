@@ -138,10 +138,10 @@
         class:active={activeMode === mode}
         onclick={() => activeMode = mode}
       >
-        {mode === 'text' && '文本'}
-        {mode === 'file' && '文件'}
-        {mode === 'url' && 'URL'}
-        {mode === 'rest' && 'REST API'}
+        {#if mode === 'text'}文本
+        {:else if mode === 'file'}文件
+        {:else if mode === 'url'}URL
+        {:else}REST API{/if}
       </button>
     {/each}
   </div>
