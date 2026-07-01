@@ -5,7 +5,7 @@ dist/
 build/
 public/
 docs/
-test/
+
 workspace/
 screenshots/
 .DS_Store
