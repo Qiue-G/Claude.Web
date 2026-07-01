@@ -27,6 +27,7 @@ import { createHealthRouter } from './routes/healthRoutes.js';
 import { createConfigRouter } from './routes/configRoutes.js';
 import { createSearchRouter } from './routes/searchRoutes.js';
 import { createRagRouter } from './routes/ragRoutes.js';
+import { createAdminRouter } from './routes/adminRoutes.js';
 import { createRagSystem } from '../rag/index.js';
 import { createSwaggerRouter } from './swagger.js';
 import { AppError } from './lib/AppError.js';
@@ -420,6 +421,9 @@ app.use('/api/files', createFileRouter({ getSession, sessions, checkRateLimit, R
 
 // ===== RAG API ====
 app.use('/api/rag', createRagRouter({ rag, sessions }));
+
+// ===== Admin API (protected by ADMIN_TOKEN) ====
+app.use('/api/admin', createAdminRouter({ sessions, sessionProcesses, sessionProxies, modelStats, mcpManager, rag, db }));
 
 // ===== Swagger API Docs ====
 app.use('/api', createSwaggerRouter());
