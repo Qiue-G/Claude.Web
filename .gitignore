@@ -3,7 +3,7 @@ node_modules/
 .env.local
 dist/
 build/
-# public/ — 构建产物需提交以确保 Railway 正确部署
+public/
 docs/
 
 workspace/
