@@ -401,7 +401,11 @@ app.use('/api/models', createModelRouter({ getProviderConfig, DEFAULTS }));
 app.use('/api/health', createHealthRouter({
   sessions, PROVIDERS, DEFAULTS, MAX_SESSIONS, sessionProxies, modelStats,
   rateLimits: { snapshot: rateLimitsSnapshot }, RATE_MAX_CREATE, VERSION,
-  allowDetailedHealth: process.env.ENABLE_DETAILED_HEALTH === 'true'
+  allowDetailedHealth: process.env.ENABLE_DETAILED_HEALTH === 'true',
+  // C3: pass subsystem references for health checks
+  mcpManager,
+  rag,
+  db
 }));
 
 // ===== Config & Tools API ====
@@ -484,7 +488,15 @@ async function gracefulShutdown(signal) {
   }
   sessionProcesses.clear();
 
-  // 3. Save message store
+  // 3. Disconnect MCP servers (C3)
+  try {
+    await mcpManager.disconnectAll();
+    console.log('[SHUTDOWN] MCP servers disconnected');
+  } catch (e) {
+    console.error('[SHUTDOWN] MCP disconnect failed:', e.message);
+  }
+
+  // 4. Save message store
   try {
     await messageStore.save();
     console.log('[SHUTDOWN] message store saved');
@@ -492,7 +504,10 @@ async function gracefulShutdown(signal) {
     console.error('[SHUTDOWN] save failed:', e.message);
   }
 
-  // 4. Close HTTP server
+  // 5. Close WebSocket server
+  try { wss.close(); console.log('[SHUTDOWN] WebSocket server closed'); } catch (e) {}
+
+  // 6. Close HTTP server
   server.close(() => {
     console.log('[SHUTDOWN] server closed');
     process.exit(0);
@@ -515,7 +530,7 @@ process.on('unhandledRejection', (reason) => {
   process.exit(1);
 });
 
-// ===== WebSocket heartbeat =====
+// ===== WebSocket heartbeat + session activity tracking =====
 const HEARTBEAT_INTERVAL = 30000;
 setInterval(() => {
   wss.clients.forEach((ws) => {
@@ -523,6 +538,14 @@ setInterval(() => {
     ws.isAlive = false;
     ws.ping();
   });
+
+  // C1: Update lastActivity for all sessions with active WebSocket connections
+  for (const [sessionId, clients] of sessionClients) {
+    const session = sessions.get(sessionId);
+    if (session && clients.size > 0) {
+      session.lastActivity = Date.now();
+    }
+  }
 }, HEARTBEAT_INTERVAL);
 
 // ===== Session timeout cleanup =====
@@ -543,6 +566,8 @@ setInterval(async () => {
   }
   if (expiredIds.length > 0) {
      for (const id of expiredIds) {
+       // C1: Notify connected clients before deleting session
+       broadcastToSession(id, { type: 'session_expired' });
        await deleteSession(id);
        await messageStore.deleteSessionMessages(id);
      }

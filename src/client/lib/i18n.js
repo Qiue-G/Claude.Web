@@ -35,6 +35,7 @@ const translations = {
     'status.error': '连接错误',
     'status.reconnectingMsg': '连接断开，{seconds}秒后尝试重连 ({attempt}/{max})...',
     'status.reconnected': '连接已恢复',
+    'session.expired': '会话已过期，请创建新对话',
 
     // 聊天
     'chat.new': '新对话',

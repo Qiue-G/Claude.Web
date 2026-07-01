@@ -6,6 +6,7 @@ import { messages, addMessage, appendToLastAssistant, isWaiting, isTyping, setMe
 import { stripAnsi } from '$lib/utils.js';
 import { t } from '$lib/i18n.js';
 import { get } from 'svelte/store';
+import { warning } from '$stores/toast.store.js';
 
 let ws = null;
 let reconnectAttempts = 0;
@@ -13,6 +14,20 @@ let reconnectTimer = null;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAYS = [1000, 2000, 5000, 10000, 30000];
 let autoReconnectEnabled = true;
+
+// C1: BroadcastChannel for cross-tab session sync
+if (typeof BroadcastChannel !== 'undefined') {
+  const sessionChannel = new BroadcastChannel('claude-free-session');
+  sessionChannel.onmessage = (event) => {
+    if (event.data?.type === 'session_expired') {
+      warning(get(t)('session.expired'));
+      sessionId.set(null);
+      sessionToken.set(null);
+      autoReconnectEnabled = false;
+      if (ws) { ws.onclose = null; ws.close(); ws = null; }
+    }
+  };
+}
 
 export function connectWebSocket(sid, token, autoReconnect = true) {
   autoReconnectEnabled = autoReconnect;
@@ -221,6 +236,19 @@ function handleServerMessage(msg) {
       break;
     case 'tool_approval_complete':
       window.dispatchEvent(new CustomEvent('tool-approval-complete'));
+      break;
+    case 'session_expired':
+      // C1: Session expired — notify user and clear session
+      warning(get(t)('session.expired'));
+      sessionId.set(null);
+      sessionToken.set(null);
+      autoReconnectEnabled = false;
+      // Broadcast to other tabs
+      if (typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('claude-free-session');
+        bc.postMessage({ type: 'session_expired' });
+        bc.close();
+      }
       break;
     default:
       break;
