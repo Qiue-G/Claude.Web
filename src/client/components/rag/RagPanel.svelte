@@ -35,9 +35,13 @@
         class:active={activeTab === tab}
         onclick={() => activeTab = tab}
       >
-        {tab === 'collections' && _t('rag.tab.collections')}
-        {tab === 'upload' && _t('rag.tab.upload')}
-        {tab === 'search' && _t('rag.tab.search')}
+        {#if tab === 'collections'}
+          {_t('rag.tab.collections')}
+        {:else if tab === 'upload'}
+          {_t('rag.tab.upload')}
+        {:else}
+          {_t('rag.tab.search')}
+        {/if}
       </button>
     {/each}
   </div>
