@@ -8,19 +8,27 @@ import { api } from '$lib/api.js';
 /**
  * 列出所有 RAG 集合
  * @param {string} sessionToken
+ * @param {string} [sessionId]
  * @returns {Promise<{ collections: string[], totalDocs: number }>}
  */
-export function listCollections(sessionToken) {
-  return api.get('/api/rag/collections', { token: sessionToken });
+export function listCollections(sessionToken, sessionId) {
+  return api.get('/api/rag/collections', {
+    token: sessionToken,
+    headers: sessionId ? { 'x-session-id': sessionId } : undefined,
+  });
 }
 
 /**
  * 获取 RAG 系统状态
  * @param {string} sessionToken
+ * @param {string} [sessionId]
  * @returns {Promise<object>}
  */
-export function getRagStatus(sessionToken) {
-  return api.get('/api/rag/status', { token: sessionToken });
+export function getRagStatus(sessionToken, sessionId) {
+  return api.get('/api/rag/status', {
+    token: sessionToken,
+    headers: sessionId ? { 'x-session-id': sessionId } : undefined,
+  });
 }
 
 /**
@@ -93,12 +101,16 @@ export function ingestRest({ url, dataPath, collection, metadata, sessionId, tok
  * @param {number} [params.topK]
  * @param {number} [params.bm25Weight]
  * @param {boolean} [params.enableRerank]
+ * @param {boolean} [params.enableCrossEncoder]
+ * @param {boolean} [params.enableEnrichment]
+ * @param {object} [params.rewriteConfig]
+ * @param {object} [params.rerankConfig]
  * @param {string} params.sessionId
  * @param {string} params.token
  * @returns {Promise<object>}
  */
-export function searchRag({ query, collection, topK, bm25Weight, enableRerank, sessionId, token }) {
-  return api.post('/api/rag/search', { sessionId, query, collection, topK, bm25Weight, enableRerank }, { token });
+export function searchRag({ query, collection, topK, bm25Weight, enableRerank, enableCrossEncoder, enableEnrichment, rewriteConfig, rerankConfig, sessionId, token }) {
+  return api.post('/api/rag/search', { sessionId, query, collection, topK, bm25Weight, enableRerank, enableCrossEncoder, enableEnrichment, rewriteConfig, rerankConfig }, { token });
 }
 
 /**

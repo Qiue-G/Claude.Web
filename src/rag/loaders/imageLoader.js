@@ -57,6 +57,13 @@ export class ImageLoader {
       };
     }
 
+    if (stat.size === 0) {
+      return {
+        content: '',
+        metadata: { source: filePath, type: 'image', error: 'Empty file' },
+      };
+    }
+
     const ext = path.extname(filePath);
     const mime = getMimeType(ext);
 

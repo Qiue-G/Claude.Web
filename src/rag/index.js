@@ -102,7 +102,7 @@ export async function createRagSystem(options = {}) {
    * 判断文本是否为 Markdown 格式（粗略检测）
    */
   function isMarkdown(text) {
-    return /^#{1,6}\s+|```|\[.*?\]\(.*?\)|^[|].*[|]|^[-*+]\s/m.test(text);
+    return /^#{1,6}\s+|```|\[.*?\]\(.*?\)|^\|.+\|.+\||^[-*+]\s/m.test(text);
   }
 
   /**
@@ -269,6 +269,10 @@ export async function createRagSystem(options = {}) {
    * @param {number} [options.topK=5]
    * @param {number} [options.bm25Weight=0.3]
    * @param {boolean} [options.enableRerank=false]
+   * @param {boolean} [options.enableCrossEncoder=false]
+   * @param {boolean} [options.enableEnrichment=true]
+   * @param {object} [options.rewriteConfig]
+   * @param {object} [options.rerankConfig]
    * @returns {Promise<Array<{ text: string, metadata: object, score: number }>>}
    */
   async function search(collection, query, options = {}) {
@@ -278,9 +282,9 @@ export async function createRagSystem(options = {}) {
   /**
    * 删除集合
    */
-  function deleteCollection(collection) {
+  async function deleteCollection(collection) {
     const count = collectionCounts.get(collection) || 0;
-    vectorStore.deleteCollection(collection);
+    await vectorStore.deleteCollection(collection);
     totalIngested -= count;
     collectionCounts.delete(collection);
   }

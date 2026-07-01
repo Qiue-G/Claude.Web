@@ -16,19 +16,9 @@ export function createMemoryAdapter(options = {}) {
   const store = createVectorStore(options);
   const collections = new Set();
 
-  // 拦截 insert 以追踪集合
+  // 从 store 中提取原始方法（不修改 store 本身）
   const origInsert = store.insert.bind(store);
-  store.insert = async (collection, chunks, embeddings) => {
-    collections.add(collection);
-    return origInsert(collection, chunks, embeddings);
-  };
-
-  // 拦截 deleteCollection 以清理集合追踪
   const origDelete = store.deleteCollection.bind(store);
-  store.deleteCollection = (collection) => {
-    collections.delete(collection);
-    return origDelete(collection);
-  };
 
   return {
     /**

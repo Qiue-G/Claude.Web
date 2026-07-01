@@ -14,6 +14,8 @@
   let topK = $state(5);
   let bm25Weight = $state(0.3);
   let enableRerank = $state(false);
+  let enableCrossEncoder = $state(false);
+  let enableEnrichment = $state(true);
   let searching = $state(false);
   let results = $state([]);
   let error = $state('');
@@ -37,6 +39,8 @@
         topK,
         bm25Weight,
         enableRerank,
+        enableCrossEncoder,
+        enableEnrichment,
         sessionId: sid,
         token: tok,
       });
@@ -100,9 +104,25 @@
       <input type="number" class="input" bind:value={bm25Weight} min="0" max="1" step="0.1" />
     </div>
     <div class="field half">
-      <label class="field-label">Rerank</label>
+      <label class="field-label">余弦 Rerank</label>
       <label class="toggle">
         <input type="checkbox" bind:checked={enableRerank} />
+        <span>启用</span>
+      </label>
+    </div>
+  </div>
+  <div class="field-row">
+    <div class="field half">
+      <label class="field-label">Cross-Encoder Rerank</label>
+      <label class="toggle">
+        <input type="checkbox" bind:checked={enableCrossEncoder} />
+        <span>启用</span>
+      </label>
+    </div>
+    <div class="field half">
+      <label class="field-label">内容富化</label>
+      <label class="toggle">
+        <input type="checkbox" bind:checked={enableEnrichment} />
         <span>启用</span>
       </label>
     </div>

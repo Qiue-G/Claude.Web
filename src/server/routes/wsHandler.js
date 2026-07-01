@@ -6,6 +6,7 @@ import { getToolInstructions, isBuiltinTool, isMcpTool, parseMcpToolId } from '.
 import { runHooks } from '../runtime/hooksRunner.js';
 import { runFilters } from '../runtime/filterPipeline.js';
 import { buildFilterList } from '../runtime/filters/index.js';
+import { loadPipelines, runPipelines } from '../pipelines/index.js';
 
 /**
  * 将 RAG 搜索结果格式化为可读文本
@@ -48,6 +49,9 @@ export function getRagSearchCollection(session) {
 // 等待用户审批的工具请求（用 approvalId 索引）
 const pendingApprovals = new Map();
 
+// 进程序号生成器（用于检测过时进程的 close 事件）
+let processSeqId = 0;
+
 /**
  * Creates a WebSocket connection handler.
  * @param {object} deps - Dependency injection
@@ -77,6 +81,10 @@ export function createWsHandler(deps) {
     const pluginsConfig = (agentConfig && agentConfig.plugins) || {};
     const filtersConfig = (agentConfig && agentConfig.filters) || {};
     const filterPipeline = buildFilterList(filtersConfig);
+
+    // 加载外部管道脚本（非阻塞）
+    let pipelines = [];
+    loadPipelines().then(p => { pipelines = p; }).catch(() => {});
 
     // Verify WebSocket origin
     const wsOrigin = req.headers.origin;
@@ -341,13 +349,24 @@ export function createWsHandler(deps) {
             }
           }
 
+          // === Pipelines: 输入管道 (用户自定义脚本) ===
+          if (pipelines.length > 0) {
+            const pipeResult = await runPipelines('input', userMessageForPrompt, {
+              session,
+              context: { rag, filterOptions: filtersConfig }
+            }, pipelines);
+            if (pipeResult.content !== userMessageForPrompt) {
+              userMessageForPrompt = pipeResult.content;
+            }
+          }
+
           // === Filters: 输入过滤器 (contextInject) ===
           if (filterPipeline.length > 0) {
             const inputFilters = filterPipeline.filter((f) => f.type === 'input' || !f.type);
             if (inputFilters.length > 0) {
               const filterCtx = await runFilters('input', userMessageForPrompt, {
                 session,
-                context: { rag, filterOptions: filtersConfig.contextInject || {} }
+                context: { rag, filterOptions: filtersConfig }
               }, inputFilters);
               if (!filterCtx.aborted) {
                 userMessageForPrompt = filterCtx.content;
@@ -369,6 +388,7 @@ export function createWsHandler(deps) {
 
           wsProcCount.set(sessionId, (wsProcCount.get(sessionId) || 0) + 1);
           const proc = await spawnCli(session, prompt);
+          proc._procSeq = ++processSeqId;
           sessionProcesses.set(sessionId, proc);
 
           // ===== 代码解释器：缓冲完整输出，关闭时检测 Python 代码块 =====
@@ -402,6 +422,13 @@ export function createWsHandler(deps) {
 
           proc.on('close', async (code) => {
             console.log('[DONE] exit code ' + code);
+
+            // 检测是否已被新进程替代：如果是旧进程的 close，跳过所有副作用
+            const currentProc = sessionProcesses.get(sessionId);
+            if (currentProc !== proc) {
+              return;
+            }
+
             sessionProcesses.delete(sessionId);
             wsProcCount.set(sessionId, Math.max(0, (wsProcCount.get(sessionId) || 0) - 1));
 
@@ -425,7 +452,19 @@ export function createWsHandler(deps) {
               }
             }
 
+            // === Pipelines: 输出管道 (用户自定义脚本) ===
+            if (pipelines.length > 0 && assistantBuffer.trim()) {
+              const pipeResult = await runPipelines('output', assistantBuffer, {
+                session,
+                context: { filterOptions: filtersConfig }
+              }, pipelines);
+              if (pipeResult.content !== assistantBuffer) {
+                assistantBuffer = pipeResult.content;
+              }
+            }
+
             // === Filters: 输出过滤器 (profanity, formatGuard) ===
+            let outputFilterAborted = false;
             if (filterPipeline.length > 0 && assistantBuffer.trim()) {
               const outputFilters = filterPipeline.filter((f) => f.type === 'output' || !f.type);
               if (outputFilters.length > 0) {
@@ -434,9 +473,17 @@ export function createWsHandler(deps) {
                   context: { filterOptions: filtersConfig }
                 }, outputFilters);
                 if (outputFilterCtx.aborted) {
-                  broadcastToSession(sessionId, { type: 'output', data: '\n[输出已被过滤器阻断: ' + outputFilterCtx.reason + ']\n' });
+                  outputFilterAborted = true;
+                  // 阻断内容不保存，且告知客户端
+                  broadcastToSession(sessionId, {
+                    type: 'output',
+                    data: '\n[输出已被过滤器阻断: ' + outputFilterCtx.reason + ']\n'
+                  });
                 } else if (outputFilterCtx.content !== assistantBuffer) {
-                  broadcastToSession(sessionId, { type: 'output', data: '\n[输出已通过过滤器处理]\n' });
+                  broadcastToSession(sessionId, {
+                    type: 'output',
+                    data: '\n[输出已通过过滤器处理]\n'
+                  });
                   assistantBuffer = outputFilterCtx.content;
                 }
               }
@@ -445,8 +492,8 @@ export function createWsHandler(deps) {
             broadcastToSession(sessionId, { type: 'exit', code });
             broadcastToSession(sessionId, { type: 'done' });
 
-            // 保存助理消息
-            if (messageStore && assistantBuffer.trim()) {
+            // 保存助理消息（仅在未阻断时保存）
+            if (messageStore && assistantBuffer.trim() && !outputFilterAborted) {
               await messageStore.saveMessage(sessionId, { role: 'assistant', content: assistantBuffer.trim() });
             }
           });

@@ -48,8 +48,8 @@ export function createRagRouter(deps) {
       throw new AppError(403, 'Session token mismatch');
     }
 
-    // CSRF validation for non-GET
-    if (req.method !== 'GET' && !token) {
+    // CSRF validation for mutating requests — 独立于 token 校验，双层防护
+    if (req.method !== 'GET') {
       const csrfToken = req.headers['x-csrf-token'];
       if (!csrfToken || csrfToken !== session.csrfToken) {
         throw new AppError(403, 'CSRF token missing or invalid');
@@ -180,7 +180,7 @@ export function createRagRouter(deps) {
   /**
    * POST /api/rag/search
    * 搜索知识库
-   * Body: { sessionId, query, collection?, topK?, bm25Weight?, enableRerank? }
+   * Body: { sessionId, query, collection?, topK?, bm25Weight?, enableRerank?, enableCrossEncoder?, enableEnrichment?, rewriteConfig?, rerankConfig? }
    */
   router.post('/search', asyncHandler(async (req, res) => {
     if (!rag) throw new AppError(503, 'RAG system not initialized');
@@ -196,6 +196,10 @@ export function createRagRouter(deps) {
       topK: Math.min(req.body.topK ?? 5, 50),
       bm25Weight: req.body.bm25Weight ?? 0.3,
       enableRerank: req.body.enableRerank ?? false,
+      enableCrossEncoder: req.body.enableCrossEncoder ?? false,
+      enableEnrichment: req.body.enableEnrichment ?? true,
+      rewriteConfig: req.body.rewriteConfig,
+      rerankConfig: req.body.rerankConfig,
     });
 
     res.json({
@@ -216,6 +220,16 @@ export function createRagRouter(deps) {
    * 查询 RAG 系统状态
    */
   router.get('/status', asyncHandler(async (req, res) => {
+    // 可选 session 验证：前端带 session 信息时就校验
+    const sessionId = req.headers['x-session-id'] || req.query.sessionId;
+    const token = req.headers['x-session-token'];
+    if (sessionId || token) {
+      const session = sessions.get(sessionId);
+      if (!session || (token && token !== session.token)) {
+        throw new AppError(401, 'Invalid session');
+      }
+    }
+
     const enabled = !!rag;
     const metrics = enabled ? rag.metrics : null;
     res.json({
@@ -243,6 +257,16 @@ export function createRagRouter(deps) {
    */
   router.get('/collections', asyncHandler(async (req, res) => {
     if (!rag) throw new AppError(503, 'RAG system not initialized');
+
+    // 可选 session 验证
+    const sessionId = req.headers['x-session-id'] || req.query.sessionId;
+    const token = req.headers['x-session-token'];
+    if (sessionId || token) {
+      const session = sessions.get(sessionId);
+      if (!session || (token && token !== session.token)) {
+        throw new AppError(401, 'Invalid session');
+      }
+    }
 
     let collections = [];
     try {
@@ -281,7 +305,7 @@ export function createRagRouter(deps) {
     const { name } = req.params;
     if (!name || name === '') throw new AppError(400, 'Collection name required');
 
-    rag.deleteCollection(name);
+    await rag.deleteCollection(name);
     res.json({ success: true, collection: name });
   }));
 

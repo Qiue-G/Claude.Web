@@ -14,6 +14,7 @@ const BASE_URL = baseUrlIdx >= 0 ? args[baseUrlIdx + 1] : 'https://openrouter.ai
 const CHAT_URL = BASE_URL + '/chat/completions';
 const PORT = parseInt(process.env.PROXY_PORT || '0', 10) || 0;
 const KEY = process.env.ANTHROPIC_API_KEY || '';
+const MAX_BODY_SIZE = 5 * 1024 * 1024; // 5MB 请求体上限
 
 // --- Fallback / retry config ---
 const fallbackIdx = args.indexOf('--fallback-model');
@@ -377,7 +378,16 @@ const server = createServer(async (req, res) => {
   if (req.method === 'POST' && (req.url === '/v1/messages' || req.url?.startsWith('/v1/messages'))) {
     try {
       let body = '';
-      for await (const chunk of req) body += chunk;
+      let bodySize = 0;
+      for await (const chunk of req) {
+        bodySize += chunk.length;
+        if (bodySize > MAX_BODY_SIZE) {
+          res.writeHead(413, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: { type: 'payload_too_large', message: 'Request body too large (max 5MB)' } }));
+          return;
+        }
+        body += chunk;
+      }
       const anthropicReq = JSON.parse(body);
       const isStream = anthropicReq.stream === true;
 

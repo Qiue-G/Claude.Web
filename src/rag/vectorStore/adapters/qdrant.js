@@ -133,11 +133,20 @@ export function createQdrantAdapter(options = {}) {
       const terms = tokenize(query);
       if (terms.length === 0) return [];
 
-      // 先 scroll 获取所有文档（限制最大 1000 条避免 OOM）
+      // 使用 Qdrant 的 full_text_match 在服务端预过滤
       const scrollResult = await request('POST', `/collections/${encodeURIComponent(collection)}/points/scroll`, {
         limit: 1000,
         with_payload: true,
         with_vector: false,
+        filter: {
+          must: [
+            {
+              match: {
+                text: terms.join(' '),
+              },
+            },
+          ],
+        },
       });
 
       const points = scrollResult.result?.points || [];

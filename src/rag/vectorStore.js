@@ -50,8 +50,15 @@ export function createVectorStore(options = {}) {
    * @param {number[][]} [embeddings] - 可选的嵌入向量
    */
   async function insert(collection, chunks, embeddings) {
+    const seenHashes = new Set();
+
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
+
+      // 内容去重：同一 hash 只在内存和 DB 中各存一次
+      if (seenHashes.has(chunk.hash)) continue;
+      seenHashes.add(chunk.hash);
+
       const id = `${collection}:${chunk.hash}:${i}`;
 
       // 写入内存向量索引
@@ -89,7 +96,7 @@ export function createVectorStore(options = {}) {
         ]
       );
     } catch (e) {
-      // 静默失败
+      console.warn(`[VECTOR_STORE] Failed to insert doc into DB: ${e.message}`);
     }
   }
 
@@ -116,38 +123,42 @@ export function createVectorStore(options = {}) {
     const totalRows = [];
     const hashTermCount = {}; // hash → 命中的词数
 
+    let stmt;
     try {
+      // 使用 db.prepare 支持参数绑定（db.exec 不支持参数）
+      stmt = db.prepare(
+        `SELECT text, name, source, headings, content_hash
+         FROM ${DOCS_TABLE}
+         WHERE collection = ? AND text LIKE ?
+         LIMIT ?`
+      );
+
       for (const term of terms) {
         const likePattern = `%${term}%`;
-        const rows = db.exec(
-          `SELECT text, name, source, headings, content_hash
-           FROM ${DOCS_TABLE}
-           WHERE collection = ? AND text LIKE ?
-           LIMIT ?`,
-          [collection, likePattern, limit * 2]
-        );
+        stmt.bind([collection, likePattern, limit * 2]);
 
-        if (rows.length > 0 && rows[0].values) {
-          for (const row of rows[0].values) {
-            const hash = row[4];
-            if (seenHashes.has(hash)) {
-              hashTermCount[hash] = (hashTermCount[hash] || 1) + 1;
-            } else {
-              seenHashes.add(hash);
-              hashTermCount[hash] = 1;
-              totalRows.push({
-                text: row[0],
-                metadata: {
-                  filename: row[1] || undefined,
-                  source: row[2] || undefined,
-                  headings: row[3] ? row[3].split(' > ') : undefined,
-                },
-                hash,
-                score: 0,
-              });
-            }
+        while (stmt.step()) {
+          const row = stmt.get();
+          const hash = row[4];
+          if (seenHashes.has(hash)) {
+            hashTermCount[hash] = (hashTermCount[hash] || 1) + 1;
+          } else {
+            seenHashes.add(hash);
+            hashTermCount[hash] = 1;
+            totalRows.push({
+              text: row[0],
+              metadata: {
+                filename: row[1] || undefined,
+                source: row[2] || undefined,
+                headings: row[3] ? row[3].split(' > ') : undefined,
+              },
+              hash,
+              score: 0,
+            });
           }
         }
+
+        stmt.reset(); // 重置以便下次 bind
       }
 
       // 按命中词数排序
@@ -158,7 +169,9 @@ export function createVectorStore(options = {}) {
 
       results.push(...totalRows.slice(0, limit * 2));
     } catch (e) {
-      // 静默失败
+      console.warn(`[VECTOR_STORE] searchBm25 error: ${e.message}`);
+    } finally {
+      if (stmt) stmt.free();
     }
 
     return results;

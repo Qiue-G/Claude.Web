@@ -35,8 +35,8 @@
       }
 
       const [colRes, statusRes] = await Promise.all([
-        listCollections(tok).catch(() => ({ collections: [], totalDocs: 0 })),
-        getRagStatus(tok).catch(() => ({ enabled: false, totalDocs: 0 })),
+        listCollections(tok, sid).catch(() => ({ collections: [], totalDocs: 0 })),
+        getRagStatus(tok, sid).catch(() => ({ enabled: false, totalDocs: 0 })),
       ]);
 
       collections = colRes.collections || [];

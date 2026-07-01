@@ -31,11 +31,18 @@ export async function runFilters(type, content, options = {}, filters = []) {
     if (!filter.enabled) continue;
 
     try {
+      // 为每个 filter 注入其专属配置（从 options.context.filterOptions 中按 id 提取）
+      const allFilterOptions = (options.context && options.context.filterOptions) || {};
+      const specificOptions = allFilterOptions[filter.id] || {};
+
       const result = await filter.handler({
         type,
         content: current,
         session: options.session,
-        context: options.context || {}
+        context: {
+          ...(options.context || {}),
+          filterOptions: specificOptions
+        }
       });
 
       results.push({

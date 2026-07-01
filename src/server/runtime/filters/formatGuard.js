@@ -8,7 +8,7 @@
  *   - maxLength: number (默认 10000) — 最大字符数，超长直接截断
  *   - requireChinese: boolean (默认 false) — 要求输出包含中文
  *   - requireSections: string[] (可选) — 要求包含的章节标题列表
- *   - stripCodeFences: boolean (默认 false) — 是否需要确保代码块闭合
+ *   - stripCodeFences: boolean (默认 true) — 是否需要确保代码块闭合
  *   - action: 'fix' | 'warn' | 'block' (默认 'fix')
  *     fix: 自动修复格式问题
  *     warn: 只加警告不修改
@@ -56,11 +56,17 @@ export const formatGuardFilter = {
       }
     }
 
-    // 3. 章节标题检查
+    // 3. 章节标题检查（按顺序）
     if (options.requireSections && options.requireSections.length > 0) {
+      let lastIndex = -1;
       for (const section of options.requireSections) {
-        if (!content.includes(section)) {
+        const idx = content.indexOf(section);
+        if (idx === -1) {
           issues.push(`缺少章节: "${section}"`);
+        } else if (idx < lastIndex) {
+          issues.push(`章节顺序错误: "${section}" 出现在前面之后`);
+        } else {
+          lastIndex = idx;
         }
       }
     }

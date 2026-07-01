@@ -9,7 +9,12 @@
  * 配置项:
  *   - topK: number (默认 3) — 检索文档数
  *   - bm25Weight: number (默认 0.3) — BM25 权重
- *   - enableRerank: boolean (默认 false) — 是否启用 rerank
+ *   - enableRerank: boolean (默认 false) — 是否启用余弦重排
+ *   - enableCrossEncoder: boolean (默认 false) — 是否启用 Cross-Encoder Rerank（优先于 enableRerank）
+ *   - enableEnrichment: boolean (默认 true) — 是否启用内容富化（文件名/章节标题注入）
+ *   - enableRewrite: boolean (默认 false) — 是否启用 Query 重写（需配置 rewriteConfig）
+ *   - rewriteConfig: object — Query 重写配置（{ enabled, url, apiKey, model }）
+ *   - rerankConfig: object — Cross-Encoder Rerank 配置（{ url, apiKey, model }）
  *   - minScore: number (默认 0.0) — 最低分数阈值
  *   - autoInject: boolean (默认 true) — 是否自动注入（设为 false 可关闭自动注入，
  *     但仍保留手动触发能力）
@@ -57,13 +62,26 @@ export const contextInjectFilter = {
       const topK = options.topK || 3;
       const bm25Weight = options.bm25Weight ?? 0.3;
       const enableRerank = options.enableRerank ?? false;
+      const enableCrossEncoder = options.enableCrossEncoder ?? false;
+      const enableEnrichment = options.enableEnrichment ?? true;
       const minScore = options.minScore ?? 0.0;
       const maxContextLength = options.maxContextLength || 2000;
+
+      // 构造 rewriteConfig: 如果启用了全局 enableRewrite，注入 filter 级别的配置
+      const enableRewrite = options.enableRewrite ?? false;
+      let rewriteConfig = options.rewriteConfig;
+      if (enableRewrite && !rewriteConfig?.enabled) {
+        rewriteConfig = { ...rewriteConfig, enabled: true };
+      }
 
       const results = await rag.search(sessionId, trimmed, {
         topK,
         bm25Weight,
-        enableRerank
+        enableRerank,
+        enableCrossEncoder,
+        enableEnrichment,
+        rewriteConfig: rewriteConfig?.enabled ? rewriteConfig : undefined,
+        rerankConfig: options.rerankConfig,
       });
 
       if (!results || results.length === 0) {

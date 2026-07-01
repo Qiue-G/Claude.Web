@@ -36,9 +36,9 @@
         class:active={activeTab === tab}
         on:click={() => activeTab = tab}
       >
-        {tab === 'collections' && '集合'}
-        {tab === 'upload' && '上传'}
-        {tab === 'search' && '搜索测试'}
+        {tab === 'collections' && t('rag.tab.collections')}
+        {tab === 'upload' && t('rag.tab.upload')}
+        {tab === 'search' && t('rag.tab.search')}
       </button>
     {/each}
   </div>

@@ -1,8 +1,10 @@
 import { spawn } from 'child_process';
 
+const PYTHON_CMD = process.platform === 'win32' ? 'python' : 'python3';
+
 export function executePython(code) {
   return new Promise((resolve) => {
-    const proc = spawn('python3', ['-c', code], { timeout: 15000 });
+    const proc = spawn(PYTHON_CMD, ['-c', code], { timeout: 15000 });
     const timeout = setTimeout(() => {
       proc.kill();
       resolve({ stdout: '', stderr: '[超时] 执行超过 15 秒', exitCode: -1 });
