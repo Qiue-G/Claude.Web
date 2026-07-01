@@ -19,7 +19,8 @@
   import { fileContents, fileTree, openFile, closeTab, currentFile } from '$stores/files.store.js';
   import { messages, isWaiting, isTyping, addMessage } from '$stores/chat.store.js';
   import { initChatHistory, createSession, switchSession, currentSessionId } from '$stores/chatHistory.store.js';
-  import { chatSidebarOpen, fileSidebarOpen, toggleChatSidebar, toggleFileSidebar, openCommandPalette, showToast } from '$stores/ui.store.js';
+  import { chatSidebarOpen, fileSidebarOpen, toggleChatSidebar, toggleFileSidebar, showToast } from '$stores/ui.store.js';
+  import { openCommandPalette } from '$stores/keyboard.store.js';
   import { toggleTheme } from '$stores/theme.store.js';
   import { connectWebSocket, sendInput } from '$lib/websocket.js';
   import { enabledTools } from '$stores/tools.store.js';
