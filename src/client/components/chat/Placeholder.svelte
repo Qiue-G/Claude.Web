@@ -1,12 +1,10 @@
 <script>
   import { createEventDispatcher } from 'svelte';
 
-  let {
-    title = '',
-    subtitle = '',
-    icon = '\u2699',
-    suggestions = []
-  } = $props();
+  export let title = '';
+  export let subtitle = '';
+  export let icon = '\u2699';
+  export let suggestions = [];
 
   const dispatch = createEventDispatcher();
 
