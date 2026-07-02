@@ -63,6 +63,12 @@ export function addModel(model) {
   savedModels.update(models => [...models, { ...model, id }]);
 }
 
+export function updateModel(modelId, updates) {
+  removeSessionApiKey(modelId);
+  setSessionApiKey(modelId, updates.apiKey);
+  savedModels.update(models => models.map(m => m.id === modelId ? { ...m, ...updates, id: modelId } : m));
+}
+
 export function removeModel(modelId) {
   removeSessionApiKey(modelId);
   savedModels.update(models => models.filter(m => m.id !== modelId));

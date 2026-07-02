@@ -2,7 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import Modal from '$components/common/Modal.svelte';
   import ModelList from './ModelList.svelte';
-  import { savedModels, addModel, removeModel, switchModel } from '$stores/models.store.js';
+  import { savedModels, addModel, updateModel, removeModel, switchModel } from '$stores/models.store.js';
   import { fetchModels } from '$apis/models.api.js';
   import { t } from '$lib/i18n.js';
 
@@ -11,6 +11,7 @@
   const dispatch = createEventDispatcher();
 
   let activeTab = 'add';
+  let editingModelId = null;
   let formData = {
     name: '',
     provider: 'openrouter',
@@ -58,14 +59,26 @@
       return;
     }
 
-    addModel({
-      name: formData.name,
-      provider: formData.provider,
-      model: formData.model,
-      apiKey: formData.apiKey
-    });
+    if (editingModelId) {
+      // Update existing model
+      updateModel(editingModelId, {
+        name: formData.name,
+        provider: formData.provider,
+        model: formData.model,
+        apiKey: formData.apiKey
+      });
+    } else {
+      // Add new model
+      addModel({
+        name: formData.name,
+        provider: formData.provider,
+        model: formData.model,
+        apiKey: formData.apiKey
+      });
+    }
 
     formData = { name: '', provider: 'openrouter', model: '', apiKey: '' };
+    editingModelId = null;
     activeTab = 'manage';
   }
 
@@ -85,12 +98,14 @@
   function handleEditModel(e) {
     const model = e.detail;
     formData = { ...model };
+    editingModelId = model.id;
     activeTab = 'add';
   }
 
   function handleClose() {
     open = false;
     formData = { name: '', provider: 'openrouter', model: '', apiKey: '' };
+    editingModelId = null;
     dispatch('close');
   }
 </script>
@@ -101,14 +116,14 @@
       <button
         class="tab"
         class:active={activeTab === 'add'}
-        on:click={() => activeTab = 'add'}
+        on:click={() => { activeTab = 'add'; editingModelId = null; formData = { name: '', provider: 'openrouter', model: '', apiKey: '' }; }}
       >
         {$t('model.addModel')}
       </button>
       <button
         class="tab"
         class:active={activeTab === 'manage'}
-        on:click={() => activeTab = 'manage'}
+        on:click={() => { activeTab = 'manage'; editingModelId = null; }}
       >
         {$t('model.manage')}
       </button>
@@ -184,7 +199,7 @@
             class="submit-btn"
             disabled={!formData.name || !formData.model || !formData.apiKey}
           >
-            {$t('model.addModel')}
+            {editingModelId ? $t('model.updateModel') : $t('model.addModel')}
           </button>
         </form>
       {:else}
