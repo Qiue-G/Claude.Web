@@ -5,6 +5,7 @@
   import { sessionId, sessionToken } from '$stores/session.store.js';
   import { t } from '$lib/i18n.js';
   import { onMount } from 'svelte';
+  import { get } from 'svelte/store';
 
   $: _t = $t;
 
@@ -14,8 +15,8 @@
   async function fetchMetrics() {
     loading = true;
     try {
-      const sid = sessionId.get();
-      const tok = sessionToken.get();
+      const sid = get(sessionId);
+      const tok = get(sessionToken);
       const res = await fetch('/api/rag/metrics', {
         headers: { 'X-Session-Id': sid, 'X-Session-Token': tok }
       });
