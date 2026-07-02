@@ -68,6 +68,7 @@ export async function initDb(workspaceDir) {
   `);
 
   db.run('CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(sessionId, timestamp)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_messages_session_role ON messages(sessionId, role, timestamp)');
 
   // ── File Versions ──
   db.run(`
@@ -89,8 +90,39 @@ export async function initDb(workspaceDir) {
 
   console.log('[DB] schema initialized');
 
-  /** Persist the database to disk. */
+  // ── Throttled save: debounce disk writes to avoid excessive I/O ──
+  let saveTimer = null;
+  let pendingSave = false;
+  const SAVE_DEBOUNCE_MS = 2000;
+
+  /** Persist the database to disk (throttled). */
   async function saveDb() {
+    if (saveTimer) {
+      pendingSave = true;
+      return;
+    }
+    try {
+      const data = db.export();
+      await writeFile(filePath, Buffer.from(data));
+    } catch (e) {
+      console.error('[DB] save failed:', e.message);
+    }
+    // Schedule next save after debounce window
+    saveTimer = setTimeout(() => {
+      saveTimer = null;
+      if (pendingSave) {
+        pendingSave = false;
+        saveDb();
+      }
+    }, SAVE_DEBOUNCE_MS);
+  }
+
+  /** Force immediate save (e.g., on shutdown). */
+  async function saveDbImmediate() {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
     try {
       const data = db.export();
       await writeFile(filePath, Buffer.from(data));

@@ -23,6 +23,10 @@
     dispatch('openRag');
   }
 
+  function handleOpenAdmin() {
+    dispatch('openAdmin');
+  }
+
   function handleModelSelect(e) {
     const model = e.detail;
     dispatch('selectModel', model);
@@ -100,6 +104,9 @@
     <button class="toolbar-btn rag-btn" on:click={handleOpenRag} title={$t('rag.button')}>
       <span class="rag-label">RAG</span>
     </button>
+    <button class="toolbar-btn admin-btn" on:click={handleOpenAdmin} title={$t('admin.button')}>
+      <Icon name="shield" size="md" />
+    </button>
     <ModelSelector
       on:select={handleModelSelect}
       on:openConfig={handleOpenConfig}
@@ -170,6 +177,10 @@
     font-weight: 700;
     letter-spacing: 0.5px;
     color: var(--text-muted);
+  }
+
+  .admin-btn:hover {
+    color: var(--amber);
   }
 
   .toolbar-divider {

@@ -112,6 +112,12 @@ export function createWsHandler(deps) {
           return;
         }
 
+        // ===== 心跳 ping/pong =====
+        if (message.type === 'ping') {
+          ws.send(JSON.stringify({ type: 'pong' }));
+          return;
+        }
+
         // ===== 加载更早的历史消息 =====
         if (message.type === 'load_more') {
           const page = message.page || 0;

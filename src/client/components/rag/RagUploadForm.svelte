@@ -26,6 +26,9 @@
   let fileContent = '';
   let fileSize = 0;
   let fileError = '';
+  let uploadProgress = 0;
+  let uploadChunks = 0;
+  let uploadTotalChunks = 0;
 
   // URL 模式
   let url = '';
@@ -41,9 +44,9 @@
     fileName = file.name;
     fileSize = file.size;
 
-    const maxSize = 20 * 1024 * 1024; // 20MB
+    const maxSize = 100 * 1024 * 1024; // 100MB
     if (file.size > maxSize) {
-      fileError = `文件过大 (${(file.size / 1024 / 1024).toFixed(1)}MB)，最大 20MB`;
+      fileError = `文件过大 (${(file.size / 1024 / 1024).toFixed(1)}MB)，最大 100MB`;
       return;
     }
 
@@ -84,7 +87,52 @@
         }
         case 'file': {
           if (!fileName || !fileContent) throw new Error('请选择一个文件');
-          result = await ingestFile({ filename: fileName, content: fileContent, collection: collection || undefined, metadata: meta, sessionId: sid, token: tok, csrfToken: csrf });
+
+          // 分片上传：每片 5MB
+          const CHUNK_SIZE = 5 * 1024 * 1024;
+          const totalChunks = Math.ceil(fileContent.length / CHUNK_SIZE);
+          uploadTotalChunks = totalChunks;
+          uploadChunks = 0;
+          uploadProgress = 0;
+
+          // 先发送第一片（包含文件元信息）
+          const firstChunk = fileContent.slice(0, CHUNK_SIZE);
+          result = await ingestFile({
+            filename: fileName,
+            content: firstChunk,
+            chunkIndex: 0,
+            totalChunks: totalChunks,
+            collection: collection || undefined,
+            metadata: meta,
+            sessionId: sid,
+            token: tok,
+            csrfToken: csrf
+          });
+          uploadChunks = 1;
+          uploadProgress = Math.round((uploadChunks / uploadTotalChunks) * 100);
+
+          // 发送剩余分片
+          for (let i = 1; i < totalChunks; i++) {
+            const start = i * CHUNK_SIZE;
+            const end = Math.min(start + CHUNK_SIZE, fileContent.length);
+            const chunk = fileContent.slice(start, end);
+
+            await ingestFile({
+              filename: fileName,
+              content: chunk,
+              chunkIndex: i,
+              totalChunks: totalChunks,
+              collection: collection || undefined,
+              metadata: meta,
+              sessionId: sid,
+              token: tok,
+              csrfToken: csrf
+            });
+
+            uploadChunks = i + 1;
+            uploadProgress = Math.round((uploadChunks / uploadTotalChunks) * 100);
+          }
+
           break;
         }
         case 'url': {
@@ -173,6 +221,12 @@
       {/if}
       {#if fileError}
         <div class="field-error">{fileError}</div>
+      {/if}
+      {#if uploading && uploadTotalChunks > 0}
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: {uploadProgress}%"></div>
+          <span class="progress-text">{uploadProgress}% ({uploadChunks}/{uploadTotalChunks})</span>
+        </div>
       {/if}
     </div>
   {/if}

@@ -113,5 +113,9 @@ export function createMessageStore({ db, saveDb }) {
     }
   }
 
-  return { loadMessages, loadMessagesPaginated, saveMessage, appendToLastMessage, deleteSessionMessages };
+  async function save() {
+    await saveDb();
+  }
+
+  return { loadMessages, loadMessagesPaginated, saveMessage, appendToLastMessage, deleteSessionMessages, save };
 }

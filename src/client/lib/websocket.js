@@ -1,5 +1,11 @@
 /**
  * WebSocket Manager - handles real-time communication with server
+ *
+ * Features:
+ * - Exponential backoff reconnection (1s → 30s, max 5 attempts)
+ * - Message queue: buffers messages during disconnection, replays on reconnect
+ * - Network status listener: pauses reconnect when offline, resumes on online
+ * - Ping/pong heartbeat: detects dead connections every 30s
  */
 import { isConnected, connectionStatus, sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
 import { messages, addMessage, appendToLastAssistant, isWaiting, isTyping, setMessages, prependMessages } from '$stores/chat.store.js';
@@ -11,9 +17,78 @@ import { warning } from '$stores/toast.store.js';
 let ws = null;
 let reconnectAttempts = 0;
 let reconnectTimer = null;
-const MAX_RECONNECT_ATTEMPTS = 5;
-const RECONNECT_DELAYS = [1000, 2000, 5000, 10000, 30000];
+const MAX_RECONNECT_ATTEMPTS = 10;
+const RECONNECT_DELAYS = [1000, 2000, 5000, 10000, 30000, 60000, 60000, 60000, 60000, 60000];
 let autoReconnectEnabled = true;
+let isOffline = false;
+
+// ── Message Queue: buffer messages during disconnection ──
+const pendingMessages = [];
+const MAX_PENDING = 50;
+
+function queueMessage(payload) {
+  if (pendingMessages.length >= MAX_PENDING) {
+    pendingMessages.shift(); // Drop oldest
+  }
+  pendingMessages.push(payload);
+}
+
+function flushPendingMessages() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  while (pendingMessages.length > 0) {
+    const msg = pendingMessages.shift();
+    try {
+      ws.send(JSON.stringify(msg));
+    } catch (e) {
+      pendingMessages.unshift(msg); // Put back on failure
+      break;
+    }
+  }
+}
+
+// ─ Ping/Pong Heartbeat ──
+let heartbeatTimer = null;
+const HEARTBEAT_INTERVAL = 30000;
+
+function startHeartbeat() {
+  stopHeartbeat();
+  heartbeatTimer = setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({ type: 'ping' }));
+      } catch (_) { /* ignore */ }
+    }
+  }, HEARTBEAT_INTERVAL);
+}
+
+function stopHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+}
+
+// ─ Network Status Listener ──
+if (typeof window !== 'undefined') {
+  window.addEventListener('offline', () => {
+    isOffline = true;
+    connectionStatus.set('disconnected');
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+  });
+
+  window.addEventListener('online', () => {
+    isOffline = false;
+    const sid = get(sessionId);
+    const token = get(sessionToken);
+    if (sid && token && autoReconnectEnabled) {
+      reconnectAttempts = 0;
+      connectWebSocket(sid, token, autoReconnectEnabled);
+    }
+  });
+}
 
 // C1: BroadcastChannel for cross-tab session sync
 if (typeof BroadcastChannel !== 'undefined') {
@@ -45,6 +120,7 @@ export function connectWebSocket(sid, token, autoReconnect = true) {
 
   ws.onopen = () => {
     ws.send(JSON.stringify({ type: 'init', sessionId: sid, token: token }));
+    startHeartbeat();
   };
 
   ws.onmessage = (event) => {
@@ -64,20 +140,22 @@ export function connectWebSocket(sid, token, autoReconnect = true) {
     isConnected.set(false);
     connectionStatus.set('disconnected');
     isTyping.set(false);
+    stopHeartbeat();
 
-    if (autoReconnectEnabled && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-      const currentSid = get(sessionId);
-      const currentToken = get(sessionToken);
-      if (!currentSid || !currentToken) return;
+    // Don't reconnect if offline or max attempts reached
+    if (isOffline || !autoReconnectEnabled || reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) return;
 
-      const delay = RECONNECT_DELAYS[reconnectAttempts] || RECONNECT_DELAYS[RECONNECT_DELAYS.length - 1];
-      reconnectAttempts++;
-      connectionStatus.set('reconnecting');
-      addMessage('system', get(t)('status.reconnectingMsg', { seconds: delay / 1000, attempt: reconnectAttempts, max: MAX_RECONNECT_ATTEMPTS }));
-      reconnectTimer = setTimeout(() => {
-        connectWebSocket(currentSid, currentToken, autoReconnectEnabled);
-      }, delay);
-    }
+    const currentSid = get(sessionId);
+    const currentToken = get(sessionToken);
+    if (!currentSid || !currentToken) return;
+
+    const delay = RECONNECT_DELAYS[reconnectAttempts] || RECONNECT_DELAYS[RECONNECT_DELAYS.length - 1];
+    reconnectAttempts++;
+    connectionStatus.set('reconnecting');
+    addMessage('system', get(t)('status.reconnectingMsg', { seconds: delay / 1000, attempt: reconnectAttempts, max: MAX_RECONNECT_ATTEMPTS }));
+    reconnectTimer = setTimeout(() => {
+      connectWebSocket(currentSid, currentToken, autoReconnectEnabled);
+    }, delay);
   };
 
   ws.onerror = () => {
@@ -111,36 +189,40 @@ export async function sendInput(data) {
     : { type: 'input', data };
 
   // 先尝试现有 WebSocket
-  if (ws) {
-    if (ws.readyState === WebSocket.OPEN) {
-      try {
-        ws.send(JSON.stringify(payload));
-        return;
-      } catch (e) {
-        console.error('sendInput: ws.send failed', e);
-      }
-    } else {
-      console.warn('sendInput: ws state=' + ws.readyState + ' (0=CONNECTING,1=OPEN,2=CLOSING,3=CLOSED)');
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      ws.send(JSON.stringify(payload));
+      return;
+    } catch (e) {
+      console.error('sendInput: ws.send failed', e);
     }
   }
 
-  // WebSocket 不可用，尝试恢复连接并等待就绪
+  // 断线时入队，等待重连后补发
+  if (ws && ws.readyState !== WebSocket.OPEN) {
+    queueMessage(payload);
+    const sid = get(sessionId);
+    const token = get(sessionToken);
+    if (sid && token && !isOffline) {
+      connectWebSocket(sid, token, true);
+    }
+    return;
+  }
+
+  // WebSocket 不存在，尝试恢复连接并等待就绪
   const sid = get(sessionId);
   const token = get(sessionToken);
   if (sid && token) {
+    queueMessage(payload);
     connectWebSocket(sid, token, true);
     try {
       await waitForWsOpen(5000);
       if (ws && ws.readyState === WebSocket.OPEN) {
-        try {
-          ws.send(JSON.stringify(payload));
-          return;
-        } catch (e) {
-          console.error('sendInput: reconnect ws.send failed', e);
-        }
+        flushPendingMessages();
+        return;
       }
     } catch (_) {
-      // 等待超时，继续到错误处理
+      // 等待超时
     }
   }
 
@@ -155,6 +237,7 @@ export function disconnectWebSocket() {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
+  stopHeartbeat();
   reconnectAttempts = MAX_RECONNECT_ATTEMPTS; // Prevent reconnect
 
   if (ws) {
@@ -173,11 +256,15 @@ function handleServerMessage(msg) {
       isConnected.set(true);
       connectionStatus.set('connected');
       reconnectAttempts = 0;
+      flushPendingMessages();
       if (get(isWaiting)) {
         isWaiting.set(false);
         isTyping.set(false);
         addMessage('system', get(t)('status.reconnected'));
       }
+      break;
+    case 'pong':
+      // Heartbeat response — connection alive
       break;
     case 'history':
       if (Array.isArray(msg.messages) && msg.messages.length > 0) {

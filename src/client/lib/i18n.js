@@ -231,6 +231,9 @@ const translations = {
     'rag.metrics.chunks': '文档块',
     'rag.metrics.noData': '暂无数据',
 
+    // Admin
+    'admin.button': '管理面板',
+
     // Audit Log
     'audit.title': '审计日志',
     'audit.refresh': '刷新',
@@ -513,6 +516,9 @@ const translations = {
     'rag.metrics.ingestCalls': 'Ingest Calls',
     'rag.metrics.chunks': 'Chunks',
     'rag.metrics.noData': 'No data',
+
+    // Admin
+    'admin.button': 'Admin',
 
     // Audit Log
     'audit.title': 'Audit Log',

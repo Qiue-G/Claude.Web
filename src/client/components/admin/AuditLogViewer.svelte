@@ -51,7 +51,7 @@
 <div class="audit-panel">
   <div class="audit-header">
     <h4 class="audit-title">{_t('audit.title')}</h4>
-    <button class="refresh-btn" onclick={fetchLogs} disabled={loading}>
+    <button class="refresh-btn" on:click={fetchLogs} disabled={loading}>
       {loading ? _t('common.loading') : _t('audit.refresh')}
     </button>
   </div>
