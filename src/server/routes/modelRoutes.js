@@ -27,6 +27,29 @@ export function createModelRouter(deps) {
     });
   });
 
+  // POST /api/models/recommend — 智能模型推荐
+  router.post('/recommend', async (req, res) => {
+    try {
+      const { ModelRouter } = await import('../lib/modelRouter.js');
+      const router = new ModelRouter(req.app.locals.agentConfig);
+      const { prompt, preferFree, provider } = req.body || {};
+
+      if (!prompt) {
+        return res.status(400).json({ error: 'Prompt is required' });
+      }
+
+      const task = router.classifyTask(prompt);
+      const recommendations = router.recommend(task, {
+        preferFree: !!preferFree,
+        provider: provider || null,
+      });
+
+      res.json({ task, recommendations });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   router.get('/:provider', (req, res) => {
     const cfg = getProviderConfig(req.params.provider);
     if (!cfg.models || cfg.models.length === 0)

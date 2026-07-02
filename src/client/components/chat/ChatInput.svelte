@@ -4,6 +4,7 @@
   import { isWaiting } from '$stores/chat.store.js';
   import { t } from '$lib/i18n.js';
   import { formatFileSize } from '$lib/utils.js';
+  import TemplateSelector from './TemplateSelector.svelte';
 
   $: _t = $t;
 
@@ -264,6 +265,10 @@
       <Icon name="settings" size="md" />
     </button>
 
+    <div class="template-wrapper">
+      <TemplateSelector onSelect={(prompt) => { inputText = prompt; autoResize(); }} />
+    </div>
+
     <input
       type="file"
       id="chat-file-input"
@@ -439,6 +444,11 @@
     border-color: var(--border-hover);
   }
 
+  .template-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
   .attach-btn,
   .params-btn {
     background: none;

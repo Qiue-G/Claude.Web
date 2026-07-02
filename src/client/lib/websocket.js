@@ -337,6 +337,24 @@ function handleServerMessage(msg) {
         bc.close();
       }
       break;
+
+    // ===== Parallel model comparison messages =====
+    case 'parallel_started':
+      window.dispatchEvent(new CustomEvent('parallel-started', { detail: msg }));
+      break;
+    case 'parallel_chunk':
+      window.dispatchEvent(new CustomEvent('parallel-chunk', { detail: msg }));
+      break;
+    case 'parallel_model_done':
+      window.dispatchEvent(new CustomEvent('parallel-model-done', { detail: msg }));
+      break;
+    case 'parallel_all_done':
+      window.dispatchEvent(new CustomEvent('parallel-all-done', { detail: msg }));
+      break;
+    case 'parallel_error':
+      window.dispatchEvent(new CustomEvent('parallel-error', { detail: msg }));
+      break;
+
     default:
       break;
   }
@@ -353,6 +371,21 @@ export function sendToolApproval(approvalId, approved) {
       type: 'tool_approval_response',
       approvalId,
       approved
+    }));
+  }
+}
+
+/**
+ * 发送并行模型调用请求
+ * @param {string} prompt - 要发送的提示
+ * @param {string[]} modelIds - 要对比的模型 ID 列表
+ */
+export function sendParallel(prompt, modelIds) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      type: 'parallel_start',
+      prompt,
+      modelIds
     }));
   }
 }

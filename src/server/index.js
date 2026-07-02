@@ -98,6 +98,10 @@ const { check: checkRateLimit, remaining: getRateRemaining, snapshot: rateLimits
 // ===== Database (SQLite) =====
 const { db, saveDb } = await initDb(WORKSPACE_DIR);
 
+// ===== Performance Metrics ====
+const { PerfMetrics } = await import('./lib/perfMetrics.js');
+const perfMetrics = new PerfMetrics();
+
 // ===== Audit Log (D3) =====
 const auditLog = createAuditLog(db);
 
@@ -394,6 +398,14 @@ app.use(express.static(join(__dirname, '../../public'), {
   }
 }));
 
+// ===== Performance Metrics Middleware (auto-record API latency) =====
+app.use(perfMetrics.middleware());
+
+// ===== Performance Metrics API =====
+app.get('/api/perf', (req, res) => {
+  res.json(perfMetrics.snapshot());
+});
+
 // ===== Session API ====
 app.use('/api/session', createSessionRouter({
   createSession, getSession, deleteSession, sessions, sessionProcesses, sessionProxies, messageStore,
@@ -401,7 +413,8 @@ app.use('/api/session', createSessionRouter({
 }));
 
 // ===== Model Discovery API ====
-app.use('/api/models', createModelRouter({ getProviderConfig, DEFAULTS }));
+app.locals.agentConfig = agentConfig;
+app.use('/api/models', createModelRouter({ getProviderConfig, DEFAULTS, agentConfig }));
 
 // ===== Health API ====
 app.use('/api/health', createHealthRouter({
@@ -429,6 +442,10 @@ app.use('/api/rag', createRagRouter({ rag, sessions }));
 
 // ===== Admin API (protected by ADMIN_TOKEN) ====
 app.use('/api/admin', createAdminRouter({ sessions, sessionProcesses, sessionProxies, modelStats, mcpManager, rag, db, auditLog }));
+
+// ===== Prompt Template API ====
+const { createTemplateRouter } = await import('./routes/templateRoutes.js');
+app.use('/api/templates', createTemplateRouter());
 
 // ===== Swagger API Docs ====
 app.use('/api', createSwaggerRouter());

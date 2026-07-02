@@ -12,8 +12,16 @@
   import ToolApprovalModal from '$components/chat/ToolApprovalModal.svelte';
   import RagPanel from '$components/rag/RagPanel.svelte';
   import AuditLogViewer from '$components/admin/AuditLogViewer.svelte';
+  import PerfDashboard from '$components/admin/PerfDashboard.svelte';
   import Modal from '$components/common/Modal.svelte';
   import { sendToolApproval } from '$lib/websocket.js';
+
+  // Parallel comparison
+  import { parallelMode, selectedModels, parallelResults, parallelRunning, parallelSummary, resetParallel, addParallelChunk, markModelDone } from '$stores/parallel.store.js';
+  import ParallelToggle from '$components/parallel/ParallelToggle.svelte';
+  import ModelMultiSelect from '$components/parallel/ModelMultiSelect.svelte';
+  import ComparisonView from '$components/parallel/ComparisonView.svelte';
+  import { sendParallel } from '$lib/websocket.js';
 
   import { isConnected } from '$stores/session.store.js';
   import { activeModelId, savedModels, switchModel } from '$stores/models.store.js';
@@ -41,6 +49,7 @@
   let showConfigModal = false;
   let showRagPanel = false;
   let showAdminPanel = false;
+  let adminTab = 'audit'; // 'audit' | 'perf'
 
   // 工具审批弹窗状态
   let pendingApproval = null; // { approvalId, tools }
@@ -119,6 +128,51 @@
     if (detail && detail.sessionId) {
       switchSession(detail.sessionId);
     }
+  }
+
+  // ===== Parallel comparison handlers =====
+  function handleParallelStart() {
+    const models = get(selectedModels);
+    const prompt = ''; // Will be set from active input
+    parallelRunning.set(true);
+    resetParallel();
+    // Request user to confirm which prompt to use for comparison
+    // The actual prompt will be captured from the input
+    window.dispatchEvent(new CustomEvent('parallel-request-prompt'));
+  }
+
+  function handleParallelChunk(e) {
+    const { modelId, text, done } = e.detail;
+    addParallelChunk(modelId, text);
+  }
+
+  function handleParallelModelDone(e) {
+    const { modelId, status, latency, tokens, error } = e.detail;
+    markModelDone(modelId, status, latency, tokens, error);
+  }
+
+  function handleParallelAllDone(e) {
+    const { results, summary } = e.detail;
+    parallelResults.set(results || {});
+    parallelSummary.set(summary);
+    parallelRunning.set(false);
+  }
+
+  function handleParallelError(e) {
+    parallelRunning.set(false);
+    addMessage('system', 'Parallel comparison failed: ' + (e.detail?.message || 'Unknown error'));
+  }
+
+  function handleSendParallel(prompt) {
+    const models = get(selectedModels);
+    if (models.length < 2) {
+      addMessage('system', get(t)('Please select at least 2 models'));
+      return;
+    }
+    parallelRunning.set(true);
+    resetParallel();
+    addMessage('user', prompt);
+    sendParallel(prompt, models);
   }
 
   // ===== File loading =====
@@ -315,6 +369,13 @@
     window.addEventListener('tool-approval-request', handleToolApprovalRequest);
     window.addEventListener('tool-approval-complete', handleToolApprovalComplete);
 
+    // Parallel comparison events
+    window.addEventListener('parallel-start-request', handleParallelStart);
+    window.addEventListener('parallel-chunk', handleParallelChunk);
+    window.addEventListener('parallel-model-done', handleParallelModelDone);
+    window.addEventListener('parallel-all-done', handleParallelAllDone);
+    window.addEventListener('parallel-error', handleParallelError);
+
     // === 加载插件配置 ===
     try {
       const config = await fetchConfig();
@@ -342,6 +403,11 @@
     window.removeEventListener('mouseup', handleResizeEnd);
     window.removeEventListener('tool-approval-request', handleToolApprovalRequest);
     window.removeEventListener('tool-approval-complete', handleToolApprovalComplete);
+    window.removeEventListener('parallel-start-request', handleParallelStart);
+    window.removeEventListener('parallel-chunk', handleParallelChunk);
+    window.removeEventListener('parallel-model-done', handleParallelModelDone);
+    window.removeEventListener('parallel-all-done', handleParallelAllDone);
+    window.removeEventListener('parallel-error', handleParallelError);
   });
 
   // === 响应主题/插件配置变化，更新主题令牌 ===
@@ -400,6 +466,11 @@
 <div class="app">
   <Toolbar on:toggleSidebar={handleToggleSidebar} on:openConfig={handleOpenConfig} on:openRag={handleOpenRag} on:openAdmin={handleOpenAdmin} on:selectModel={handleSelectModel} />
 
+  <div class="parallel-bar">
+    <ParallelToggle models={$savedModels} />
+    <ModelMultiSelect models={$savedModels} disabled={$parallelRunning} />
+  </div>
+
   <div class="main-layout">
     {#if $chatSidebarOpen}
       <div class="chat-sidebar-container"><ChatSidebar on:newchat={handleNewChat} on:select={handleSelectChatSession} /></div>
@@ -413,7 +484,12 @@
       </div>
     {/if}
     <div class="content-pane-group">
-      <div class="chat-pane" style="flex: {chatFlex};"><ChatPanel onsend={handleChatSend} /></div>
+      <div class="chat-pane" style="flex: {chatFlex};">
+        <ChatPanel onsend={handleChatSend} />
+        {#if $parallelMode}
+          <ComparisonView />
+        {/if}
+      </div>
       <button class="resize-handle" class:active={isResizing} onmousedown={handleResizeStart} aria-label={_t('editor.resizeHandle')}></button>
       <div class="editor-pane" style="flex: {editorFlex};"><CodeEditor on:tabClose={handleTabClose} on:change={handleEditorChange} on:save={handleSaveFile} /></div>
     </div>
@@ -424,7 +500,23 @@
     <RagPanel />
   </Modal>
   <Modal bind:open={showAdminPanel} title={_t('admin.button')} width="800px">
-    <AuditLogViewer />
+    <div class="admin-tabs">
+        <button
+          class="admin-tab"
+          class:active={adminTab === 'audit'}
+          onclick={() => adminTab = 'audit'}
+        >{_t('admin.tabAudit')}</button>
+        <button
+          class="admin-tab"
+          class:active={adminTab === 'perf'}
+          onclick={() => adminTab = 'perf'}
+        >{_t('admin.tabPerf')}</button>
+      </div>
+    {#if adminTab === 'audit'}
+      <AuditLogViewer />
+    {:else}
+      <PerfDashboard />
+    {/if}
   </Modal>
   <CommandPalette />
   <Toast />
@@ -461,4 +553,38 @@
   .content-pane-group { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
   .chat-pane { overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
   .editor-pane { overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+  .parallel-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    background: var(--bg-raised, #111);
+    border-bottom: 1px solid var(--border, #333);
+    flex-wrap: wrap;
+  }
+  .admin-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border, #333);
+    margin-bottom: 16px;
+  }
+  .admin-tab {
+    padding: 8px 20px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary, #888);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  .admin-tab:hover {
+    color: var(--text-primary, #ccc);
+    background: var(--bg-hover, #1a1a2e);
+  }
+  .admin-tab.active {
+    color: var(--accent, #4f8ff7);
+    border-bottom-color: var(--accent, #4f8ff7);
+  }
 </style>

@@ -511,6 +511,62 @@ export function createWsHandler(deps) {
               ws.send(JSON.stringify({ type: 'error', message: 'Failed to start CLI' }));
             }
           });
+        } else if (message.type === 'parallel_start') {
+          // ===== 并行模型调用 =====
+          const session = getSession(sessionId);
+          if (!session) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Invalid session' }));
+            return;
+          }
+
+          const { modelIds, prompt: parallelPrompt } = message;
+          if (!Array.isArray(modelIds) || modelIds.length < 2 || modelIds.length > 4) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Select 2-4 models for parallel comparison' }));
+            return;
+          }
+          if (!parallelPrompt || !parallelPrompt.trim()) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Prompt is required' }));
+            return;
+          }
+
+          // 异步启动并行引擎（不阻塞 WebSocket 消息循环）
+          (async () => {
+            const { ParallelEngine } = await import('../parallel/index.js');
+            const engine = new ParallelEngine(session, agentConfig);
+
+            ws.send(JSON.stringify({
+              type: 'parallel_started',
+              modelIds,
+              timestamp: Date.now()
+            }));
+
+            engine
+              .onChunk(({ modelId, text, done }) => {
+                if (ws.readyState === ws.OPEN) {
+                  ws.send(JSON.stringify({ type: 'parallel_chunk', modelId, text, done }));
+                }
+              })
+              .onModelDone(({ modelId, status, latency, tokens, error }) => {
+                if (ws.readyState === ws.OPEN) {
+                  ws.send(JSON.stringify({ type: 'parallel_model_done', modelId, status, latency, tokens, error }));
+                }
+              })
+              .onAllDone(({ results, summary }) => {
+                if (ws.readyState === ws.OPEN) {
+                  ws.send(JSON.stringify({ type: 'parallel_all_done', results, summary }));
+                }
+              });
+
+            try {
+              await engine.start(parallelPrompt, modelIds);
+            } catch (e) {
+              if (ws.readyState === ws.OPEN) {
+                ws.send(JSON.stringify({ type: 'parallel_error', message: e.message }));
+              }
+            } finally {
+              engine.dispose();
+            }
+          })();
         }
 
       } catch (error) {

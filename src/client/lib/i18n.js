@@ -233,6 +233,24 @@ const translations = {
 
     // Admin
     'admin.button': '管理面板',
+    'admin.tabAudit': '审计日志',
+    'admin.tabPerf': '性能监控',
+
+    // Performance Dashboard
+    'perf.title': '性能监控',
+    'perf.autoRefresh': '自动刷新',
+    'perf.apiLatency': 'API 响应延迟',
+    'perf.route': '路由',
+    'perf.count': '请求数',
+    'perf.p50': 'P50',
+    'perf.p95': 'P95',
+    'perf.p99': 'P99',
+    'perf.avg': '平均',
+    'perf.dbQuery': '数据库查询',
+    'perf.customMetrics': '自定义指标',
+    'perf.metric': '指标名',
+    'perf.noData': '暂无性能数据',
+    'perf.refreshNow': '立即刷新',
 
     // Audit Log
     'audit.title': '审计日志',
@@ -292,6 +310,26 @@ const translations = {
     'config.selectModelId': '选择或输入模型 ID',
     'config.enterModelId': '输入模型 ID',
     'config.enterApiKey': '输入 API Key',
+
+    // 并行对比
+    'parallel_mode': '并行对比',
+    'select_models_for_comparison': '选择要对比的模型',
+    'start_comparison': '开始对比',
+    'parallel_comparison': '并行对比',
+    'running': '运行中',
+    'completed': '已完成',
+    'done': '完成',
+    'waiting_for_output': '等待输出...',
+    'close': '关闭',
+    'clear': '清空',
+    'difference_analysis': '差异分析',
+    'common_lines': '共同行',
+    'unique_lines': '独有行',
+    'total_tokens': '总 Token',
+    'avg_latency': '平均延迟',
+    'success_count': '成功数',
+    'selected_count': '已选 {count} 个模型',
+    'select_result': '采纳此结果',
   },
 
   en: {
@@ -568,6 +606,22 @@ const translations = {
     'rag.dataPathHint': 'Leave empty to use full response',
     'rag.fileTooLarge': 'File too large ({size}MB), max 20MB',
 
+    // Performance Dashboard
+    'perf.title': 'Performance',
+    'perf.autoRefresh': 'Auto Refresh',
+    'perf.apiLatency': 'API Latency',
+    'perf.route': 'Route',
+    'perf.count': 'Count',
+    'perf.p50': 'P50',
+    'perf.p95': 'P95',
+    'perf.p99': 'P99',
+    'perf.avg': 'Avg',
+    'perf.dbQuery': 'Database Queries',
+    'perf.customMetrics': 'Custom Metrics',
+    'perf.metric': 'Metric',
+    'perf.noData': 'No performance data yet',
+    'perf.refreshNow': 'Refresh Now',
+
     // System messages
     'system.connectFirst': 'Please connect a model first',
     'system.filesAttached': '[Files attached]',
@@ -578,6 +632,26 @@ const translations = {
     'config.selectModelId': 'Select or enter model ID',
     'config.enterModelId': 'Enter model ID',
     'config.enterApiKey': 'Enter API Key',
+
+    // Parallel comparison
+    'parallel_mode': 'Parallel Compare',
+    'select_models_for_comparison': 'Select models to compare',
+    'start_comparison': 'Start Compare',
+    'parallel_comparison': 'Parallel Comparison',
+    'running': 'Running',
+    'completed': 'Completed',
+    'done': 'Done',
+    'waiting_for_output': 'Waiting for output...',
+    'close': 'Close',
+    'clear': 'Clear',
+    'difference_analysis': 'Difference Analysis',
+    'common_lines': 'Common lines',
+    'unique_lines': 'Unique lines',
+    'total_tokens': 'Total Tokens',
+    'avg_latency': 'Avg Latency',
+    'success_count': 'Success',
+    'selected_count': '{count} selected',
+    'select_result': 'Use this result',
   }
 };
 
