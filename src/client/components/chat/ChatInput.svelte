@@ -1,12 +1,11 @@
 <script>
   import { createEventDispatcher, tick } from 'svelte';
-import { get } from 'svelte/store';
   import Icon from '$components/common/Icon.svelte';
   import { isWaiting } from '$stores/chat.store.js';
   import { t } from '$lib/i18n.js';
   import { formatFileSize } from '$lib/utils.js';
 
-  $: _t = get(t);
+  $: _t = $t;
 
   const dispatch = createEventDispatcher();
 

@@ -13,10 +13,9 @@
     chatSidebarOpen,
     toggleChatSidebar
   } from '$stores/ui.store.js';
-  import { get } from 'svelte/store';
   import { t } from '$lib/i18n.js';
 
-  $: _t = get(t);
+  $: _t = $t;
 
   import Navbar from './Navbar.svelte';
   import Messages from './Messages.svelte';

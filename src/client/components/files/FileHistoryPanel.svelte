@@ -6,7 +6,7 @@
   import { showToast } from '$stores/ui.store.js';
   import { t } from '$lib/i18n.js';
 
-  $: _t = get(t);
+  $: _t = $t;
 
   const dispatch = createEventDispatcher();
 

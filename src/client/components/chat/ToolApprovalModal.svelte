@@ -4,10 +4,9 @@
    * AI 请求调用工具时，弹窗让用户选择允许或拒绝
    */
   import Icon from '$components/common/Icon.svelte';
-  import { get } from 'svelte/store';
   import { t } from '$lib/i18n.js';
 
-  $: _t = get(t);
+  $: _t = $t;
 
   export let pendingTools = [];
   export let approvalId = null;

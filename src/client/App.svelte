@@ -30,7 +30,7 @@
   import { sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
   import { get } from 'svelte/store';
   import { t } from '$lib/i18n.js';
-  $: _t = get(t);
+  $: _t = $t;
   import { readFilesForAI } from '$lib/attachments.js';
   import { initPlugins, pluginsConfig, activeThemeTokens, getEnabledTokens, applyThemeTokens } from '$stores/plugins.store.js';
   import { initFilters } from '$stores/filters.store.js';

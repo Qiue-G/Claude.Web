@@ -5,7 +5,7 @@ import { get } from 'svelte/store';
   import { getDiff } from '$apis/files.api.js';
   import { t } from '$lib/i18n.js';
 
-  $: _t = get(t);
+  $: _t = $t;
 
   const dispatch = createEventDispatcher();
 

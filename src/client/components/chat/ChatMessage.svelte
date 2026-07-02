@@ -2,11 +2,10 @@
   import CodeBlock from './CodeBlock.svelte';
   import Icon from '$components/common/Icon.svelte';
   import { escapeHtml, formatFileSize } from '$lib/utils.js';
-  import { get } from 'svelte/store';
   import { t } from '$lib/i18n.js';
   import { marked } from 'marked';
 
-  $: _t = get(t);
+  $: _t = $t;
 
   marked.setOptions({
     breaks: true,
