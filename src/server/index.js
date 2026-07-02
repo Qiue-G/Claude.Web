@@ -28,9 +28,11 @@ import { createConfigRouter } from './routes/configRoutes.js';
 import { createSearchRouter } from './routes/searchRoutes.js';
 import { createRagRouter } from './routes/ragRoutes.js';
 import { createAdminRouter } from './routes/adminRoutes.js';
+import { createAuditLog } from './lib/auditLog.js';
 import { createRagSystem } from '../rag/index.js';
 import { createSwaggerRouter } from './swagger.js';
 import { AppError } from './lib/AppError.js';
+import { logger } from './lib/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = pathDirname(__filename);
@@ -66,9 +68,9 @@ let agentConfig = { defaults: { provider: 'openrouter', model: '' }, providers: 
 try {
   const raw = await readFile(CONFIG_PATH, 'utf-8');
   agentConfig = JSON.parse(raw);
-  console.log('[CONFIG] loaded ' + Object.keys(agentConfig.providers || {}).length + ' providers');
+  logger.info('Config loaded', { providers: Object.keys(agentConfig.providers || {}).length });
 } catch (e) {
-  console.log('[CONFIG] using built-in defaults (' + e.message + ')');
+  logger.warn('Using built-in defaults', { error: e.message });
 }
 
 const DEFAULTS = agentConfig.defaults || { provider: 'openrouter', model: '' };
@@ -96,8 +98,11 @@ const { check: checkRateLimit, remaining: getRateRemaining, snapshot: rateLimits
 // ===== Database (SQLite) =====
 const { db, saveDb } = await initDb(WORKSPACE_DIR);
 
+// ===== Audit Log (D3) =====
+const auditLog = createAuditLog(db);
+
 // ===== Session Manager (persisted to SQLite) =====
-const { sessions, createSession, getSession, deleteSession, loadSessions } = createSessionManager({ db, saveDb, workspaceDir: WORKSPACE_DIR });
+const { sessions, createSession, getSession, deleteSession, loadSessions } = createSessionManager({ db, saveDb, workspaceDir: WORKSPACE_DIR, auditLog });
 
 // ===== Message Store (persisted to SQLite) =====
 const messageStore = createMessageStore({ db, saveDb });
@@ -114,15 +119,15 @@ try {
     if (Array.isArray(envServers)) mcpConfigs.push(...envServers);
   }
 } catch (e) {
-  console.warn('[MCP] failed to parse MCP_SERVERS env:', e.message);
+  logger.warn('Failed to parse MCP_SERVERS env', { error: e.message });
 }
 const mcpManager = createMcpManager();
 if (mcpConfigs.length > 0) {
   mcpManager.connectServers(mcpConfigs).then(() => {
-    console.log('[MCP] connected ' + mcpManager.getServerNames().length + ' servers');
+    logger.info('MCP servers connected', { count: mcpManager.getServerNames().length });
   });
 } else {
-  console.log('[MCP] no MCP servers configured');
+  logger.info('No MCP servers configured');
 }
 
 // ===== RAG System =====
@@ -138,7 +143,7 @@ const rag = await createRagSystem({
   qdrantUrl: process.env.VECTOR_STORE_QDRANT_URL,
   qdrantApiKey: process.env.VECTOR_STORE_QDRANT_API_KEY,
 });
-console.log('[RAG] system initialized, vector dimensions: ' + rag.embedder.dimensions);
+logger.info('RAG system initialized', { dimensions: rag.embedder.dimensions });
 
 const sessionProcesses = new Map();
 const sessionProxies = new Map(); // proxy processes
@@ -206,7 +211,7 @@ async function startProxy(session) {
     ? resolveOpenRouterModel(session.model || DEFAULTS.model)
     : (session.model || DEFAULTS.model || 'deepseek-chat');
   const fallback = getFallbackModel(session.provider);
-  console.log('[PROXY] starting or_proxy.mjs --model ' + model + (fallback ? ' --fallback-model ' + fallback : ''));
+  logger.info('Starting proxy', { model, fallback });
 
   const proxyArgs = [proxyPath, '--model', model];
   if (session.provider === 'deepseek') {
@@ -235,7 +240,7 @@ async function startProxy(session) {
     });
     proxy.stderr.on('data', (chunk) => {
       const text = chunk.toString().trim();
-      console.error('[PROXY stderr] ' + text);
+      logger.error('Proxy stderr', { text });
 
       // Parse model health events from proxy v5
       // "→ modelX" / "→ modelX [retry 1/2]" → retrying
@@ -265,7 +270,7 @@ async function startProxy(session) {
   });
 
   const port = await portPromise;
-  console.log('[PROXY] listening on port ' + port);
+  logger.info('Proxy listening', { port });
   return { process: proxy, port };
 }
 
@@ -298,7 +303,7 @@ async function spawnCli(session, prompt) {
       const { process: proxy, port } = await startProxy(session);
       sessionProxies.set(session.id, proxy);
       env.ANTHROPIC_BASE_URL = 'http://127.0.0.1:' + port;
-      console.log('[CLI] ANTHROPIC_BASE_URL=' + env.ANTHROPIC_BASE_URL);
+      logger.info('CLI ANTHROPIC_BASE_URL', { url: env.ANTHROPIC_BASE_URL });
     }
 
     const proc = spawn(cliPath, cliArgs, {
@@ -311,7 +316,7 @@ async function spawnCli(session, prompt) {
     const processTimeout = setTimeout(() => {
       try {
         proc.kill('SIGKILL');
-        console.log('[PROC] Process timed out after ' + (PROCESS_TIMEOUT / 1000) + 's, killed');
+        logger.warn('Process timed out', { timeout: PROCESS_TIMEOUT / 1000 });
       } catch (e) {
         // 进程可能已结束
       }
@@ -423,7 +428,7 @@ app.use('/api/files', createFileRouter({ getSession, sessions, checkRateLimit, R
 app.use('/api/rag', createRagRouter({ rag, sessions }));
 
 // ===== Admin API (protected by ADMIN_TOKEN) ====
-app.use('/api/admin', createAdminRouter({ sessions, sessionProcesses, sessionProxies, modelStats, mcpManager, rag, db }));
+app.use('/api/admin', createAdminRouter({ sessions, sessionProcesses, sessionProxies, modelStats, mcpManager, rag, db, auditLog }));
 
 // ===== Swagger API Docs ====
 app.use('/api', createSwaggerRouter());
@@ -442,7 +447,7 @@ app.get('*', (req, res) => {
 app.use((err, req, res, next) => {
   // AppError — structured errors from route handlers
   if (err instanceof AppError) {
-    console.error('[ERROR]', err.status, err.message, err.extra?.code || '');
+    logger.error('AppError', { status: err.status, message: err.message, code: err.extra?.code || '' });
     return res.status(err.status).json(err.toJSON());
   }
 
@@ -452,8 +457,7 @@ app.use((err, req, res, next) => {
   }
 
   // Unknown errors
-  console.error('[ERROR] unhandled:', err.message);
-  if (err.stack) console.error(err.stack);
+  logger.error('Unhandled error', { message: err.message, stack: err.stack || undefined });
   res.status(500).json({ error: 'Internal server error', code: 'internal_error' });
 });
 
@@ -462,7 +466,7 @@ await loadSessions();
 
 const server = app.listen(
 PORT, HOST, () => {
-  console.log('Free-code Web Server v' + VERSION + ' on ' + HOST + ':' + PORT);
+  logger.info('Server started', { version: VERSION, host: HOST, port: PORT });
 });
 
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024 });
@@ -476,44 +480,44 @@ wss.on('connection', createWsHandler({
 }));
 
 async function gracefulShutdown(signal) {
-  console.log(`\n[SHUTDOWN] ${signal} received, cleaning up...`);
+  logger.info('Shutdown signal received', { signal });
 
   // 1. Kill proxy processes
   for (const [id, proxy] of sessionProxies) {
     try { proxy.kill('SIGTERM'); } catch (e) { /* already dead */ }
-    console.log(`[SHUTDOWN] killed proxy for session ${id}`);
+    logger.info('Killed proxy', { sessionId: id });
   }
   sessionProxies.clear();
 
   // 2. Kill CLI processes
   for (const [id, proc] of sessionProcesses) {
     try { proc.kill('SIGTERM'); } catch (e) { /* already dead */ }
-    console.log(`[SHUTDOWN] killed process for session ${id}`);
+    logger.info('Killed process', { sessionId: id });
   }
   sessionProcesses.clear();
 
   // 3. Disconnect MCP servers (C3)
   try {
     await mcpManager.disconnectAll();
-    console.log('[SHUTDOWN] MCP servers disconnected');
+    logger.info('MCP servers disconnected');
   } catch (e) {
-    console.error('[SHUTDOWN] MCP disconnect failed:', e.message);
+    logger.error('MCP disconnect failed', { error: e.message });
   }
 
   // 4. Save message store
   try {
     await messageStore.save();
-    console.log('[SHUTDOWN] message store saved');
+    logger.info('Message store saved');
   } catch (e) {
-    console.error('[SHUTDOWN] save failed:', e.message);
+    logger.error('Message store save failed', { error: e.message });
   }
 
   // 5. Close WebSocket server
-  try { wss.close(); console.log('[SHUTDOWN] WebSocket server closed'); } catch (e) {}
+  try { wss.close(); logger.info('WebSocket server closed'); } catch (e) {}
 
   // 6. Close HTTP server
   server.close(() => {
-    console.log('[SHUTDOWN] server closed');
+    logger.info('Server closed');
     process.exit(0);
   });
 
@@ -525,12 +529,12 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 process.on('uncaughtException', (err) => {
-  console.error('[FATAL] Uncaught exception:', err);
+  logger.error('Uncaught exception', { error: err.message, stack: err.stack });
   process.exit(1);
 });
 
 process.on('unhandledRejection', (reason) => {
-  console.error('[FATAL] Unhandled rejection:', reason);
+  logger.error('Unhandled rejection', { reason: String(reason) });
   process.exit(1);
 });
 
@@ -575,6 +579,6 @@ setInterval(async () => {
        await deleteSession(id);
        await messageStore.deleteSessionMessages(id);
      }
-     console.log('[SESSION] Expired ' + expiredIds.length + ' sessions');
+     logger.info('Sessions expired', { count: expiredIds.length });
    }
 }, 60000);

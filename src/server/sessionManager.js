@@ -10,9 +10,10 @@ import { v4 as uuidv4 } from 'uuid';
  * @param {import('sql.js').Database} deps.db - SQLite database handle
  * @param {Function} deps.saveDb - Callback to persist the DB to disk
  * @param {string} deps.workspaceDir - Directory for session workspace folders
+ * @param {object} [deps.auditLog] - Audit log instance for recording operations
  * @returns {{ sessions: Map, createSession: Function, getSession: Function, deleteSession: Function, saveSessions: Function, loadSessions: Function }}
  */
-export function createSessionManager({ db, saveDb, workspaceDir }) {
+export function createSessionManager({ db, saveDb, workspaceDir, auditLog }) {
   // Keep an in-memory Map mirror for O(1) lookups and runtime state
   const sessions = new Map();
 
@@ -114,6 +115,7 @@ export function createSessionManager({ db, saveDb, workspaceDir }) {
         [sessionId, sessionToken, csrfToken, apiKey, model, provider, sessionDir, now, now, model, 'connecting']
       );
       await saveDb();
+      if (auditLog) auditLog.log('session.create', { resource: 'session', resourceId: sessionId, details: { model, provider } });
     } catch (e) {
       console.error('[SESSION] create failed:', e.message);
     }
@@ -144,6 +146,7 @@ export function createSessionManager({ db, saveDb, workspaceDir }) {
       db.run('DELETE FROM messages WHERE sessionId = ?', [sessionId]);
       db.run('DELETE FROM sessions WHERE id = ?', [sessionId]);
       await saveDb();
+      if (existed && auditLog) auditLog.log('session.delete', { resource: 'session', resourceId: sessionId });
     } catch (e) {
       console.error('[SESSION] delete failed:', e.message);
     }

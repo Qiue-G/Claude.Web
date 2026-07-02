@@ -3,12 +3,13 @@
  *
  * GET  /api/admin/sessions     — list all sessions (admin only)
  * GET  /api/admin/health       — detailed health (admin only)
+ * GET  /api/admin/audit-logs   — audit log query (admin only)
  */
 import { Router } from 'express';
 import { requireAdmin } from '../auth/middleware.js';
 
 export function createAdminRouter(deps) {
-  const { sessions, sessionProcesses, sessionProxies, modelStats, mcpManager, rag, db } = deps;
+  const { sessions, sessionProcesses, sessionProxies, modelStats, mcpManager, rag, db, auditLog } = deps;
   const router = Router();
 
   // All admin routes require admin token
@@ -74,6 +75,33 @@ export function createAdminRouter(deps) {
         }
       }
     });
+  });
+
+  // Audit logs query (admin only)
+  router.get('/audit-logs', (req, res) => {
+    if (!auditLog) {
+      return res.status(501).json({ error: 'Audit log not initialized', code: 'audit_disabled' });
+    }
+
+    const { limit = 100, offset = 0, action, sessionId, startDate, endDate } = req.query;
+
+    try {
+      const logs = auditLog.getLogs({
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        action,
+        sessionId,
+        startDate,
+        endDate
+      });
+
+      res.json({
+        total: logs.length,
+        logs
+      });
+    } catch (e) {
+      res.status(500).json({ error: 'Failed to query audit logs', code: 'audit_query_error' });
+    }
   });
 
   return router;

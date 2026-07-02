@@ -10,11 +10,12 @@
   import RagCollectionList from './RagCollectionList.svelte';
   import RagUploadForm from './RagUploadForm.svelte';
   import RagSearchTest from './RagSearchTest.svelte';
+  import RagMetrics from './RagMetrics.svelte';
   import { showToast } from '$stores/ui.store.js';
   import { t } from '$lib/i18n.js';
   $: _t = $t;
 
-  const TABS = ['collections', 'upload', 'search'];
+  const TABS = ['collections', 'upload', 'search', 'metrics'];
   let activeTab = 'collections';
 
   function handleToast(text, type) {
@@ -38,8 +39,10 @@
           {_t('rag.tab.collections')}
         {:else if tab === 'upload'}
           {_t('rag.tab.upload')}
-        {:else}
+        {:else if tab === 'search'}
           {_t('rag.tab.search')}
+        {:else}
+          {_t('rag.tab.metrics')}
         {/if}
       </button>
     {/each}
@@ -52,6 +55,8 @@
       <RagUploadForm toast={handleToast} ingested={handleIngested} />
     {:else if activeTab === 'search'}
       <RagSearchTest toast={handleToast} />
+    {:else if activeTab === 'metrics'}
+      <RagMetrics />
     {/if}
   </div>
 </div>
