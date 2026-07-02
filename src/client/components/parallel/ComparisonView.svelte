@@ -2,8 +2,19 @@
   import { t } from '$lib/i18n.js';
   import { parallelResults, parallelRunning, parallelSummary, selectedModels, resetParallel } from '../../stores/parallel.store.js';
   import ComparisonPane from './ComparisonPane.svelte';
+  import { get } from 'svelte/store';
 
   let { ws = null } = $props();
+
+  /** 收集所有模型的文本用于差异比较 */
+  function getAllTexts() {
+    const results = $parallelResults;
+    const texts = {};
+    for (const [id, r] of Object.entries(results)) {
+      texts[id] = r?.text || '';
+    }
+    return texts;
+  }
 
   /** 根据模型结果统计差异 */
   function getDifferences() {
@@ -11,7 +22,6 @@
     const models = Object.keys(results).filter(id => results[id]?.status === 'done');
     if (models.length < 2) return null;
 
-    // 简单行级比较
     const linesMap = {};
     for (const modelId of models) {
       const text = results[modelId].text || '';
@@ -22,7 +32,7 @@
       }
     }
 
-    const commonLines = Object.entries(linesMap).filter(([_, models]) => models.length === models.length).length;
+    const commonCount = Object.values(linesMap).filter(arr => arr.length === models.length).length;
     const uniqueLines = {};
     for (const modelId of models) {
       const text = results[modelId].text || '';
@@ -34,18 +44,29 @@
       uniqueLines[modelId] = uniqueCount;
     }
 
-    return { commonLines, uniqueLines, modelCount: models.length };
+    return { commonLines: commonCount, uniqueLines, modelCount: models.length };
   }
 
-  $effect(() => {
-    // 当 WS 收到 parallel_all_done 时显示完成状态
-  });
+  /** 处理采纳结果事件 */
+  function handleSelectResult(e) {
+    const { modelId, text } = e.detail;
+    if (!text) return;
 
+    // 将结果插入到聊天
+    const event = new CustomEvent('parallel-result-selected', {
+      bubbles: true,
+      detail: { modelId, text }
+    });
+    window.dispatchEvent(event);
+  }
+
+  let allTexts = $derived(getAllTexts());
   let diffs = $derived(getDifferences());
 </script>
 
 {#if $parallelRunning || Object.keys($parallelResults).length > 0}
-  <div class="comparison-view">
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="comparison-view" onselect-result={handleSelectResult}>
     <div class="view-header">
       <span class="view-title">
         {$t('parallel_comparison')}
@@ -80,7 +101,7 @@
     {/if}
 
     <!-- 模型列 -->
-    <div class="columns" class:single={Object.keys($parallelResults).length <= 1}>
+    <div class="columns">
       {#each $selectedModels as modelId}
         {#if $parallelResults[modelId]}
           <ComparisonPane
@@ -90,6 +111,7 @@
             latency={$parallelResults[modelId].latency}
             tokens={$parallelResults[modelId].tokens}
             error={$parallelResults[modelId].error}
+            allTexts={allTexts}
           />
         {/if}
       {/each}
@@ -194,9 +216,6 @@
     gap: 8px;
     padding: 8px;
     min-height: 200px;
-  }
-  .columns.single {
-    grid-template-columns: 1fr;
   }
   .summary-bar {
     display: flex;

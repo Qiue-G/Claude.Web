@@ -178,9 +178,8 @@ export function createRagRouter(deps) {
   }));
 
   /**
-   * POST /api/rag/search
-   * 搜索知识库
-   * Body: { sessionId, query, collection?, topK?, bm25Weight?, enableRerank?, enableCrossEncoder?, enableEnrichment?, rewriteConfig?, rerankConfig? }
+   * POST /api/rag/search — 混合搜索（B3/B4/B5: + 实体匹配 + HyDE + 重排）
+   * Body: { sessionId, query, collection?, topK?, bm25Weight?, enableRerank?, enableCrossEncoder?, enableEnrichment?, enableHyDE?, rewriteConfig?, rerankConfig?, hydeConfig?, metadataFilter? }
    */
   router.post('/search', asyncHandler(async (req, res) => {
     if (!rag) throw new AppError(503, 'RAG system not initialized');
@@ -195,11 +194,14 @@ export function createRagRouter(deps) {
     const results = await rag.search(collection, query.trim(), {
       topK: Math.min(req.body.topK ?? 5, 50),
       bm25Weight: req.body.bm25Weight ?? 0.3,
-      enableRerank: req.body.enableRerank ?? false,
+      enableRerank: req.body.enableRerank ?? true,
       enableCrossEncoder: req.body.enableCrossEncoder ?? false,
+      enableHyDE: req.body.enableHyDE ?? false,
       enableEnrichment: req.body.enableEnrichment ?? true,
       rewriteConfig: req.body.rewriteConfig,
       rerankConfig: req.body.rerankConfig,
+      hydeConfig: req.body.hydeConfig,
+      metadataFilter: req.body.metadataFilter,
     });
 
     res.json({

@@ -10,18 +10,42 @@
   import CommandPalette from '$components/common/CommandPalette.svelte';
   import Toast from '$components/common/Toast.svelte';
   import ToolApprovalModal from '$components/chat/ToolApprovalModal.svelte';
-  import RagPanel from '$components/rag/RagPanel.svelte';
-  import AuditLogViewer from '$components/admin/AuditLogViewer.svelte';
-  import PerfDashboard from '$components/admin/PerfDashboard.svelte';
   import Modal from '$components/common/Modal.svelte';
   import { sendToolApproval } from '$lib/websocket.js';
 
-  // Parallel comparison
+  // Parallel comparison store (keep store small)
   import { parallelMode, selectedModels, parallelResults, parallelRunning, parallelSummary, resetParallel, addParallelChunk, markModelDone } from '$stores/parallel.store.js';
   import ParallelToggle from '$components/parallel/ParallelToggle.svelte';
   import ModelMultiSelect from '$components/parallel/ModelMultiSelect.svelte';
-  import ComparisonView from '$components/parallel/ComparisonView.svelte';
   import { sendParallel } from '$lib/websocket.js';
+
+  // Lazy loaded components (code-split at build time)
+  let RagPanelComponent = $state(null);
+  let AuditLogComponent = $state(null);
+  let PerfDashboardComponent = $state(null);
+  let ComparisonViewComponent = $state(null);
+
+  // Trigger lazy loading when components are first needed
+  $effect(() => {
+    if (showRagPanel && !RagPanelComponent) {
+      import('$components/rag/RagPanel.svelte').then(m => { RagPanelComponent = m.default; });
+    }
+  });
+  $effect(() => {
+    if (showAdminPanel && !AuditLogComponent && adminTab === 'audit') {
+      import('$components/admin/AuditLogViewer.svelte').then(m => { AuditLogComponent = m.default; });
+    }
+  });
+  $effect(() => {
+    if (showAdminPanel && adminTab === 'perf' && !PerfDashboardComponent) {
+      import('$components/admin/PerfDashboard.svelte').then(m => { PerfDashboardComponent = m.default; });
+    }
+  });
+  $effect(() => {
+    if ($parallelMode && !ComparisonViewComponent) {
+      import('$components/parallel/ComparisonView.svelte').then(m => { ComparisonViewComponent = m.default; });
+    }
+  });
 
   import { isConnected } from '$stores/session.store.js';
   import { activeModelId, savedModels, switchModel } from '$stores/models.store.js';
@@ -39,20 +63,20 @@
   import { sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
   import { get } from 'svelte/store';
   import { t } from '$lib/i18n.js';
-  $: _t = $t;
+  let _t = $derived($t);
   import { readFilesForAI } from '$lib/attachments.js';
   import { initPlugins, pluginsConfig, activeThemeTokens, getEnabledTokens, applyThemeTokens } from '$stores/plugins.store.js';
   import { initFilters } from '$stores/filters.store.js';
   import { effectiveTheme } from '$stores/theme.store.js';
   import { fetchConfig } from '$apis/models.api.js';
 
-  let showConfigModal = false;
-  let showRagPanel = false;
-  let showAdminPanel = false;
-  let adminTab = 'audit'; // 'audit' | 'perf'
+  let showConfigModal = $state(false);
+  let showRagPanel = $state(false);
+  let showAdminPanel = $state(false);
+  let adminTab = $state('audit'); // 'audit' | 'perf'
 
   // 工具审批弹窗状态
-  let pendingApproval = null; // { approvalId, tools }
+  let pendingApproval = $state(null); // { approvalId, tools }
 
   function handleToolApprovalRequest(e) {
     pendingApproval = {
@@ -76,9 +100,9 @@
   }
 
   // 聊天/编辑器面板拖拽分割
-  let chatFlex = 7;
-  let editorFlex = 3;
-  let isResizing = false;
+  let chatFlex = $state(7);
+  let editorFlex = $state(3);
+  let isResizing = $state(false);
 
   function handleResizeStart(e) {
     isResizing = true;
@@ -161,6 +185,16 @@
   function handleParallelError(e) {
     parallelRunning.set(false);
     addMessage('system', 'Parallel comparison failed: ' + (e.detail?.message || 'Unknown error'));
+  }
+
+  function handleParallelResultSelected(e) {
+    const { modelId, text } = e.detail;
+    if (!text) return;
+    // 将采纳的结果作为用户消息添加到会话，触发发送
+    addMessage('user', `[${modelId}] 结果:\n\n${text}`);
+    // 同时将文本放入剪贴板
+    navigator.clipboard?.writeText(text);
+    addMessage('system', `已采纳 ${modelId} 的结果`);
   }
 
   function handleSendParallel(prompt) {
@@ -253,10 +287,11 @@
   }
 
   let sendTimeout = null;
-  let isApprovalActive = false; // 跟踪审批弹窗状态
+  // 监听审批弹窗状态（derived in runes mode）
+  let isApprovalActive = $derived(pendingApproval !== null);
 
   // 发送超时自动恢复（工具审批等待时不超时）
-  $: {
+  $effect(() => {
     if (isApprovalActive) {
       // 审批期间：不启动任何超时
       if (sendTimeout) {
@@ -266,7 +301,7 @@
     } else if ($isWaiting) {
       // 非审批期间的等待：启动超时
       if (!sendTimeout) {
-        const timeoutMs = 90000; // 审批后的等待给 90s
+        const timeoutMs = 90000;
         sendTimeout = setTimeout(() => {
           isWaiting.set(false);
           isTyping.set(false);
@@ -281,10 +316,7 @@
         sendTimeout = null;
       }
     }
-  }
-
-  // 监听审批弹窗状态
-  $: isApprovalActive = pendingApproval !== null;
+  });
 
   async function handleChatSend(data) {
     const text = typeof data === 'string' ? data : data.text;
@@ -375,6 +407,7 @@
     window.addEventListener('parallel-model-done', handleParallelModelDone);
     window.addEventListener('parallel-all-done', handleParallelAllDone);
     window.addEventListener('parallel-error', handleParallelError);
+    window.addEventListener('parallel-result-selected', handleParallelResultSelected);
 
     // === 加载插件配置 ===
     try {
@@ -408,10 +441,11 @@
     window.removeEventListener('parallel-model-done', handleParallelModelDone);
     window.removeEventListener('parallel-all-done', handleParallelAllDone);
     window.removeEventListener('parallel-error', handleParallelError);
+    window.removeEventListener('parallel-result-selected', handleParallelResultSelected);
   });
 
   // === 响应主题/插件配置变化，更新主题令牌 ===
-  $: {
+  $effect(() => {
     const cfg = $pluginsConfig;
     const theme = $effectiveTheme;
     const active = $activeThemeTokens;
@@ -419,7 +453,7 @@
       const tokens = getEnabledTokens(theme, cfg, active);
       applyThemeTokens(tokens);
     }
-  }
+  });
 
   function handleGlobalKeydown(e) {
     const mod = e.ctrlKey || e.metaKey;
@@ -487,7 +521,9 @@
       <div class="chat-pane" style="flex: {chatFlex};">
         <ChatPanel onsend={handleChatSend} />
         {#if $parallelMode}
-          <ComparisonView />
+          {#if ComparisonViewComponent}
+            <ComparisonViewComponent />
+          {/if}
         {/if}
       </div>
       <button class="resize-handle" class:active={isResizing} onmousedown={handleResizeStart} aria-label={_t('editor.resizeHandle')}></button>
@@ -497,7 +533,13 @@
 
   <ConfigModal bind:open={showConfigModal} on:close={handleCloseConfig} on:connect={handleConnectModel} />
   <Modal bind:open={showRagPanel} title={_t('rag.title')} width="560px">
-    <RagPanel />
+    {#if showRagPanel}
+      {#if RagPanelComponent}
+        <RagPanelComponent />
+      {:else}
+        <div class="lazy-loading"><span class="dot-pulse"></span></div>
+      {/if}
+    {/if}
   </Modal>
   <Modal bind:open={showAdminPanel} title={_t('admin.button')} width="800px">
     <div class="admin-tabs">
@@ -513,9 +555,17 @@
         >{_t('admin.tabPerf')}</button>
       </div>
     {#if adminTab === 'audit'}
-      <AuditLogViewer />
+      {#if AuditLogComponent}
+        <AuditLogComponent />
+      {:else}
+        <div class="lazy-loading"><span class="dot-pulse"></span></div>
+      {/if}
     {:else}
-      <PerfDashboard />
+      {#if PerfDashboardComponent}
+        <PerfDashboardComponent />
+      {:else}
+        <div class="lazy-loading"><span class="dot-pulse"></span></div>
+      {/if}
     {/if}
   </Modal>
   <CommandPalette />
@@ -586,5 +636,22 @@
   .admin-tab.active {
     color: var(--accent, #4f8ff7);
     border-bottom-color: var(--accent, #4f8ff7);
+  }
+  .lazy-loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 60px 20px;
+  }
+  .dot-pulse {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-color, #6c5ce7);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.3; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1.2); }
   }
 </style>

@@ -262,17 +262,19 @@ export async function createRagSystem(options = {}) {
   }
 
   /**
-   * 混合搜索
+   * 混合搜索（B4/B5: + HyDE + 本地重排默认启用）
    * @param {string} collection - 集合名
    * @param {string} query - 搜索查询
    * @param {object} [options]
    * @param {number} [options.topK=5]
    * @param {number} [options.bm25Weight=0.3]
-   * @param {boolean} [options.enableRerank=false]
+   * @param {boolean} [options.enableRerank=true]
    * @param {boolean} [options.enableCrossEncoder=false]
    * @param {boolean} [options.enableEnrichment=true]
+   * @param {boolean} [options.enableHyDE=false]
    * @param {object} [options.rewriteConfig]
    * @param {object} [options.rerankConfig]
+   * @param {object} [options.hydeConfig]
    * @returns {Promise<Array<{ text: string, metadata: object, score: number }>>}
    */
   async function search(collection, query, options = {}) {

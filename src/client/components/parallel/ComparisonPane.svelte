@@ -1,14 +1,9 @@
 <script>
   import { t } from '$lib/i18n.js';
+  import DiffHighlight from './DiffHighlight.svelte';
+  import ResultSelector from './ResultSelector.svelte';
 
-  let { modelId = '', text = '', status = 'running', latency = null, tokens = null, error = null } = $props();
-
-  /** 高亮文本（根据关键词突出显示） */
-  function highlightText(content) {
-    if (!content) return '';
-    // 代码块保持原样（使用 markdown 渲染）
-    return content;
-  }
+  let { modelId = '', text = '', status = 'running', latency = null, tokens = null, error = null, allTexts = {} } = $props();
 </script>
 
 <div class="comparison-pane" class:done={status === 'done'} class:error={status === 'error'}>
@@ -20,7 +15,7 @@
       {:else if status === 'done'}
         <span class="status-badge done">{$t('done')}</span>
         {#if latency}<span class="stat">⏱ {latency}ms</span>{/if}
-        {#if tokens}<span class="stat">🔤 {tokens.output || '?'}</span>{/if}
+        {#if tokens}<span class="stat">🔤 {tokens?.output || tokens || '?'}</span>{/if}
       {:else if status === 'error'}
         <span class="status-badge error">{$t('error')}</span>
       {/if}
@@ -29,7 +24,7 @@
 
   <div class="pane-content">
     {#if text}
-      <pre class="output-text">{text}</pre>
+      <DiffHighlight {text} {modelId} {allTexts} />
     {:else if status === 'running'}
       <div class="loading-indicator">
         <span class="dot-pulse"></span>
@@ -40,6 +35,8 @@
       <div class="placeholder">{$t('waiting_for_output')}</div>
     {/if}
   </div>
+
+  <ResultSelector {modelId} {text} {status} {latency} {tokens} />
 </div>
 
 <style>
@@ -97,15 +94,6 @@
     padding: 12px;
     overflow-y: auto;
     max-height: 400px;
-  }
-  .output-text {
-    white-space: pre-wrap;
-    word-break: break-word;
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    font-size: 12px;
-    line-height: 1.6;
-    color: var(--text-primary, #ddd);
-    margin: 0;
   }
   .loading-indicator {
     display: flex;

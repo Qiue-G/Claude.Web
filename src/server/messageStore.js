@@ -4,13 +4,20 @@
  * Messages are stored in the `messages` table with a sessionId foreign key.
  * Interface matches the original JSON file store for drop-in replacement.
  *
+ * E4: + 分页使用 SQL LIMIT/OFFSET, + saveMessagesBatch() 批量写入
+ *
  * @param {object} deps
  * @param {import('sql.js').Database} deps.db
+ * @param {object} deps.monitor     — createSlowQueryMonitor 返回的 { run, exec }
  * @param {Function} deps.saveDb
- * @returns {{ loadMessages: Function, loadMessagesPaginated: Function, saveMessage: Function, appendToLastMessage: Function, deleteSessionMessages: Function }}
+ * @returns {{ loadMessages: Function, loadMessagesPaginated: Function, saveMessage: Function, saveMessagesBatch: Function, appendToLastMessage: Function, deleteSessionMessages: Function, save: Function }}
  */
-export function createMessageStore({ db, saveDb }) {
+export function createMessageStore({ db, monitor, saveDb }) {
   const PAGE_SIZE = 20;
+
+  // 使用 monitor 包装的 run/exec（如果提供了 monitor）
+  const run = monitor?.run || ((sql, p) => db.run(sql, p));
+  const exec = monitor?.exec || ((sql, p) => db.exec(sql, p));
 
   function rowToMessage(row) {
     return {
@@ -37,7 +44,7 @@ export function createMessageStore({ db, saveDb }) {
    */
   async function loadMessages(sessionId) {
     try {
-      const rows = db.exec(
+      const rows = exec(
         'SELECT id, role, content, timestamp, files FROM messages WHERE sessionId = ? ORDER BY timestamp ASC',
         [sessionId]
       );
@@ -50,18 +57,44 @@ export function createMessageStore({ db, saveDb }) {
 
   /**
    * Load messages with pagination (newest last).
+   * E4: 使用 SQL LIMIT/OFFSET 代替加载全部后切片
    */
   async function loadMessagesPaginated(sessionId, page = 0) {
-    const all = await loadMessages(sessionId);
-    const totalPages = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
-    const startIdx = Math.max(0, all.length - (page + 1) * PAGE_SIZE);
-    const endIdx = all.length - page * PAGE_SIZE;
-    const messages = all.slice(Math.max(0, startIdx), Math.max(0, endIdx));
-    return { messages, page, totalPages, hasMore: page + 1 < totalPages };
+    try {
+      // 先查总数（用于计算总页数）
+      const countRows = exec(
+        'SELECT COUNT(*) as cnt FROM messages WHERE sessionId = ?',
+        [sessionId]
+      );
+      const total = countRows?.[0]?.values?.[0]?.[0] || 0;
+      const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+      // 分页查询：取第 page 页（0-indexed），最新消息在最后
+      const offset = Math.max(0, total - (page + 1) * PAGE_SIZE);
+      const limit = PAGE_SIZE;
+      // 当 offset < 0（第一页不满时），需要调整
+      const adjustedOffset = Math.max(0, offset);
+      const adjustedLimit = offset < 0 ? PAGE_SIZE + offset : limit;
+
+      if (adjustedLimit <= 0) {
+        return { messages: [], page, totalPages, hasMore: page + 1 < totalPages };
+      }
+
+      const rows = exec(
+        'SELECT id, role, content, timestamp, files FROM messages WHERE sessionId = ? ORDER BY timestamp ASC LIMIT ? OFFSET ?',
+        [sessionId, adjustedLimit, adjustedOffset]
+      );
+      const messages = rowsToMessages(rows);
+      return { messages, page, totalPages, hasMore: page + 1 < totalPages };
+    } catch (e) {
+      console.error('[MESSAGE] loadMessagesPaginated failed: ' + e.message);
+      return { messages: [], page: 0, totalPages: 1, hasMore: false };
+    }
   }
 
   /**
    * Save a single message.
+   * E4: 不再每次都 await saveDb() — 由 save() 或批写入统一持久化
    */
   async function saveMessage(sessionId, msg) {
     const id = msg.id || (Date.now() + '_' + Math.random().toString(36).slice(2, 8));
@@ -69,12 +102,11 @@ export function createMessageStore({ db, saveDb }) {
     const files = msg.files ? JSON.stringify(msg.files) : null;
 
     try {
-      db.run(
+      run(
         `INSERT INTO messages (id, sessionId, role, content, timestamp, files)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [id, sessionId, msg.role || 'user', msg.content || '', timestamp, files]
       );
-      await saveDb();
     } catch (e) {
       console.error('[MESSAGE] save failed:', e.message);
     }
@@ -83,19 +115,51 @@ export function createMessageStore({ db, saveDb }) {
   }
 
   /**
+   * E4: 批量保存多条消息（事务内执行）
+   * @param {string} sessionId
+   * @param {Array<{ role: string, content: string, files?: object, id?: string }>} messages
+   * @returns {Promise<Array>}
+   */
+  async function saveMessagesBatch(sessionId, messages) {
+    if (!messages || messages.length === 0) return [];
+
+    const timestamp = Date.now();
+    const saved = [];
+
+    try {
+      run('BEGIN TRANSACTION');
+      for (const msg of messages) {
+        const id = msg.id || (Date.now() + '_' + Math.random().toString(36).slice(2, 8));
+        const files = msg.files ? JSON.stringify(msg.files) : null;
+        run(
+          `INSERT INTO messages (id, sessionId, role, content, timestamp, files)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [id, sessionId, msg.role || 'user', msg.content || '', timestamp, files]
+        );
+        saved.push({ id, role: msg.role || 'user', content: msg.content || '', timestamp, files: msg.files || null });
+      }
+      run('COMMIT');
+    } catch (e) {
+      run('ROLLBACK');
+      console.error('[MESSAGE] batch save failed:', e.message);
+    }
+
+    return saved;
+  }
+
+  /**
    * Append text to the last assistant message (for streaming).
    */
   async function appendToLastMessage(sessionId, text) {
     try {
-      const rows = db.exec(
+      const rows = exec(
         'SELECT id, content FROM messages WHERE sessionId = ? AND role = ? ORDER BY timestamp DESC LIMIT 1',
         [sessionId, 'assistant']
       );
       if (rows.length === 0 || !rows[0].values || rows[0].values.length === 0) return;
       const lastId = rows[0].values[0][0];
       const lastContent = rows[0].values[0][1];
-      db.run('UPDATE messages SET content = ? WHERE id = ?', [lastContent + text, lastId]);
-      await saveDb();
+      run('UPDATE messages SET content = ? WHERE id = ?', [lastContent + text, lastId]);
     } catch (e) {
       console.error('[MESSAGE] append failed:', e.message);
     }
@@ -106,7 +170,7 @@ export function createMessageStore({ db, saveDb }) {
    */
   async function deleteSessionMessages(sessionId) {
     try {
-      db.run('DELETE FROM messages WHERE sessionId = ?', [sessionId]);
+      run('DELETE FROM messages WHERE sessionId = ?', [sessionId]);
       await saveDb();
     } catch (e) {
       console.error('[MESSAGE] delete failed:', e.message);
@@ -117,5 +181,5 @@ export function createMessageStore({ db, saveDb }) {
     await saveDb();
   }
 
-  return { loadMessages, loadMessagesPaginated, saveMessage, appendToLastMessage, deleteSessionMessages, save };
+  return { loadMessages, loadMessagesPaginated, saveMessage, saveMessagesBatch, appendToLastMessage, deleteSessionMessages, save };
 }

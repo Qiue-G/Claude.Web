@@ -14,8 +14,9 @@
 import { isValidAdapter, getMissingMethods } from './adapter.js';
 import { createMemoryAdapter } from './adapters/memory.js';
 import { createQdrantAdapter } from './adapters/qdrant.js';
+import { createPgVectorAdapter } from './adapters/pgvector.js';
 
-const ADAPTER_TYPES = ['memory', 'qdrant'];
+const ADAPTER_TYPES = ['memory', 'qdrant', 'pgvector'];
 
 /**
  * 创建 VectorStore 适配器实例
@@ -26,6 +27,7 @@ const ADAPTER_TYPES = ['memory', 'qdrant'];
  * @param {string} [options.type] - 适配器类型，默认从 VECTOR_STORE_TYPE 环境变量读取
  * @param {string} [options.qdrantUrl] - Qdrant 服务地址
  * @param {string} [options.qdrantApiKey] - Qdrant API Key
+ * @param {string} [options.pgConnectionString] - PostgreSQL 连接字符串
  * @returns {Promise<import('./adapter.js').VectorStoreAdapter>}
  */
 export async function createVectorStoreAdapter(options = {}) {
@@ -44,6 +46,13 @@ export async function createVectorStoreAdapter(options = {}) {
       adapter = createQdrantAdapter({
         url: options.qdrantUrl,
         apiKey: options.qdrantApiKey,
+        dimensions,
+      });
+      break;
+
+    case 'pgvector':
+      adapter = createPgVectorAdapter({
+        connectionString: options.pgConnectionString,
         dimensions,
       });
       break;

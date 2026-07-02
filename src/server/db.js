@@ -3,6 +3,8 @@
  *
  * Provides a central connection and schema initialization.
  * sessionManager and messageStore receive the db handle via DI.
+ *
+ * E4: + 慢查询监控 + WAL 模式
  */
 import initSqlJs from 'sql.js';
 import { readFile, writeFile, mkdir } from 'fs/promises';
@@ -11,12 +13,67 @@ import { join, dirname } from 'path';
 
 const DB_FILENAME = '_data.db';
 
+/** 慢查询阈值 (ms) — 超过此值的查询会被记录警告 */
+const SLOW_QUERY_THRESHOLD_MS = 200;
+
+/**
+ * 创建慢查询监控（包装 db.run / db.exec）
+ * @param {import('sql.js').Database} db
+ * @returns {{ run: Function, exec: Function, getSlowQueries: Function, clearSlowQueries: Function }}
+ */
+function createSlowQueryMonitor(db) {
+  const slowQueries = []; // 环形缓冲区，保留最近 100 条
+  const MAX_SLOW_LOG = 100;
+
+  /** 包装 db.run，自动计时 */
+  function run(sql, params) {
+    const start = Date.now();
+    try {
+      return db.run(sql, params);
+    } finally {
+      const elapsed = Date.now() - start;
+      if (elapsed > SLOW_QUERY_THRESHOLD_MS) {
+        const entry = { sql: sql.slice(0, 200), elapsed: `${elapsed}ms`, time: new Date().toISOString() };
+        slowQueries.push(entry);
+        if (slowQueries.length > MAX_SLOW_LOG) slowQueries.shift();
+        console.warn(`[DB SLOW] ${elapsed}ms — ${sql.slice(0, 150)}`);
+      }
+    }
+  }
+
+  /** 包装 db.exec，自动计时 */
+  function exec(sql, params) {
+    const start = Date.now();
+    try {
+      return db.exec(sql, params);
+    } finally {
+      const elapsed = Date.now() - start;
+      if (elapsed > SLOW_QUERY_THRESHOLD_MS) {
+        const entry = { sql: sql.slice(0, 200), elapsed: `${elapsed}ms`, time: new Date().toISOString() };
+        slowQueries.push(entry);
+        if (slowQueries.length > MAX_SLOW_LOG) slowQueries.shift();
+        console.warn(`[DB SLOW] ${elapsed}ms — ${sql.slice(0, 150)}`);
+      }
+    }
+  }
+
+  function getSlowQueries() {
+    return [...slowQueries];
+  }
+
+  function clearSlowQueries() {
+    slowQueries.length = 0;
+  }
+
+  return { run, exec, getSlowQueries, clearSlowQueries };
+}
+
 /**
  * Initialize (or load) the SQLite database at {workspaceDir}/_data.db.
  * Creates tables if they don't exist.
  *
  * @param {string} workspaceDir
- * @returns {Promise<{ db: any, saveDb: Function, close: Function }>}
+ * @returns {Promise<{ db: any, monitor: object, saveDb: Function, close: Function, saveDbImmediate: Function }>}
  */
 export async function initDb(workspaceDir) {
   const SQL = await initSqlJs();
@@ -34,9 +91,12 @@ export async function initDb(workspaceDir) {
     console.log('[DB] created new database at ' + filePath);
   }
 
-  // Enable WAL-like durability (sql.js: export after writes)
-  db.run('PRAGMA journal_mode=MEMORY');
+  // E4: WAL mode for concurrent read perf; MEMORY journal for write speed
+  db.run('PRAGMA journal_mode=WAL');
   db.run('PRAGMA synchronous=NORMAL');
+  db.run('PRAGMA cache_size=-8000'); // 8MB cache
+  db.run('PRAGMA temp_store=MEMORY');
+  db.run('PRAGMA mmap_size=268435456'); // 256MB mmap
 
   // ── Schema ──
   db.run(`
@@ -90,6 +150,9 @@ export async function initDb(workspaceDir) {
 
   console.log('[DB] schema initialized');
 
+  // ── 慢查询监控 (E4) ──
+  const monitor = createSlowQueryMonitor(db);
+
   // ── Throttled save: debounce disk writes to avoid excessive I/O ──
   let saveTimer = null;
   let pendingSave = false;
@@ -135,5 +198,5 @@ export async function initDb(workspaceDir) {
     db.close();
   }
 
-  return { db, saveDb, close };
+  return { db, monitor, saveDb, close, saveDbImmediate };
 }

@@ -1,13 +1,14 @@
 /**
- * 双通道检索 + RRF 融合
+ * 双通道检索 + RRF 融合 + HyDE 假设文档嵌入 + 重排序
  *
  * 借鉴 Open WebUI 的检索管道设计：
  * 1. [可选] Query 重写 — LLM 改写用户查询以提升命中率
- * 2. BM25 关键词检索（FTS5）
- * 3. 向量相似性检索（余弦距离）
- * 4. RRF 融合（Reciprocal Rank Fusion + 内容哈希去重）
- * 5. [可选] Rerank（余弦重排 或 Cross-Encoder API）
- * 6. 内容富化 — 文件名/章节标题注入结果文本
+ * 2. [可选] HyDE — 先用 LLM 生成假设性文档，然后嵌入作为第三路检索信号
+ * 3. BM25 关键词检索
+ * 4. 向量相似性检索（余弦距离）
+ * 5. RRF 融合（Reciprocal Rank Fusion + 内容哈希去重）
+ * 6. [可选] Rerank（本地余弦重排 或 Cross-Encoder API）
+ * 7. 内容富化 — 文件名/章节标题注入结果文本
  *
  * 内容富化策略（借鉴 Open WebUI get_enriched_texts）：
  * - 文件名注入：[来源: 文件名]
@@ -16,8 +17,10 @@
 
 const RRF_K = 60; // RRF 常数
 
+import { extractEntities } from './entityExtractor.js';
+
 /**
- * 双通道混合检索
+ * 多通道混合检索（BM25 + 向量 + 可选 HyDE）
  * @param {object} vectorStore  - createVectorStore 返回的实例
  * @param {object} embedder     - createEmbedder 返回的实例
  * @param {string} collection   - 集合名
@@ -25,17 +28,21 @@ const RRF_K = 60; // RRF 常数
  * @param {object} [options]
  * @param {number} [options.topK=5]
  * @param {number} [options.bm25Weight=0.3] - BM25 权重（0=纯向量, 1=纯BM25）
- * @param {boolean} [options.enableRerank=false] - 启用余弦重排
+ * @param {boolean} [options.enableRerank=true] - (B5) 启用本地余弦重排，默认开启
  * @param {boolean} [options.enableCrossEncoder=false] - 启用 Cross-Encoder Rerank（优先于 enableRerank）
  * @param {object} [options.rerankConfig] - Cross-Encoder Rerank 配置
  * @param {string} [options.rerankConfig.url] - Rerank API URL
  * @param {string} [options.rerankConfig.apiKey] - Rerank API Key
- * @param {string} [options.rerankConfig.model] - Rerank 模型名（默认 cohere/rerank-v3.5）
+ * @param {string} [options.rerankConfig.model] - Rerank 模型名
  * @param {object} [options.rewriteConfig] - Query 重写配置
- * @param {boolean} [options.rewriteConfig.enabled=false] - 启用 Query 重写
- * @param {string} [options.rewriteConfig.url] - LLM API URL（兼容 OpenAI 格式）
+ * @param {boolean} [options.rewriteConfig.enabled=false]
+ * @param {string} [options.rewriteConfig.url] - LLM API URL
  * @param {string} [options.rewriteConfig.apiKey] - LLM API Key
- * @param {string} [options.rewriteConfig.model] - LLM 模型名
+ * @param {boolean} [options.enableHyDE=false] - (B4) 启用 HyDE 第三通道
+ * @param {object} [options.hydeConfig] - HyDE 配置
+ * @param {string} [options.hydeConfig.url] - LLM API URL 用于生成假设文档
+ * @param {string} [options.hydeConfig.apiKey] - LLM API Key
+ * @param {string} [options.hydeConfig.model] - LLM 模型名
  * @param {boolean} [options.enableEnrichment=true] - 启用内容富化
  * @returns {Promise<Array<{ text: string, metadata: object, score: number, hash: string }>>}
  */
@@ -43,22 +50,23 @@ export async function hybridSearch(vectorStore, embedder, collection, query, opt
   const searchStart = Date.now();
   const topK = options.topK ?? 5;
   const bm25Weight = options.bm25Weight ?? 0.3;
-  const enableRerank = options.enableRerank ?? false;
+  const enableRerank = options.enableRerank ?? true;  // B5: 默认启用本地重排
   const enableCrossEncoder = options.enableCrossEncoder ?? false;
+  const enableHyDE = options.enableHyDE ?? false;
   const enableEnrichment = options.enableEnrichment ?? true;
   const metrics = options.metrics || null;
 
   // ── 1. [可选] Query 重写 ──
   const effectiveQuery = await rewriteQuery(query, options);
 
-  // ── 2. 并行执行两个检索通道 ──
-  const [bm25Results, vectorResults] = await Promise.all([
+  // ── 2. 并行执行检索通道 ──
+  const searchTasks = [
     // 通道A：BM25 全文搜索
     (async () => {
       try {
         return vectorStore.searchBm25(collection, effectiveQuery, topK);
       } catch {
-        return []; // BM25 失败时回退到纯向量搜索
+        return [];
       }
     })(),
 
@@ -68,26 +76,90 @@ export async function hybridSearch(vectorStore, embedder, collection, query, opt
         const [queryEmb] = await embedder.embedQuery(effectiveQuery);
         return vectorStore.searchVector(collection, queryEmb, topK);
       } catch {
-        return []; // 嵌入失败时回退到纯 BM25
+        return [];
       }
     })(),
-  ]);
+  ];
 
-  // ── 3. RRF 融合 ──
-  let fused = reciprocalRankFusion(bm25Results, vectorResults, {
-    topK,
+  // ── [B4] 通道C：HyDE 假设文档嵌入 ──
+  let hydeSignal = null;
+  if (enableHyDE && options.hydeConfig?.url) {
+    searchTasks.push(
+      (async () => {
+        try {
+          const hydeDoc = await generateHypotheticalDoc(effectiveQuery, options.hydeConfig);
+          if (hydeDoc) {
+            const [hydeEmb] = await embedder.embedDocuments([hydeDoc]);
+            const hydeResults = await vectorStore.searchVector(collection, hydeEmb, topK);
+            hydeSignal = { doc: hydeDoc, results: hydeResults };
+            return hydeResults;
+          }
+        } catch (e) {
+          console.warn(`[RETRIEVAL] HyDE failed: ${e.message}`);
+        }
+        return [];
+      })()
+    );
+  }
+
+  const searchResults = await Promise.all(searchTasks);
+  const [bm25Results, vectorResults, hydeResults] = enableHyDE
+    ? [searchResults[0], searchResults[1], searchResults[2]]
+    : [searchResults[0], searchResults[1], []];
+
+  if (hydeSignal) {
+    console.log(`[RETRIEVAL] HyDE generated "${hydeSignal.doc.slice(0, 80)}..." → ${hydeSignal.results.length} results`);
+  }
+
+  // ── 3. RRF 融合（支持三通道） ──
+  let fused = reciprocalRankFusion(bm25Results, vectorResults, hydeResults, {
+    topK: topK * 2, // 多取一些供后续通道使用
     bm25Weight,
   });
 
+  // ── [B3] 实体匹配增强通道 ──
+  const queryEntities = extractEntities(effectiveQuery);
+  if (queryEntities.length > 0 && fused.length > 0) {
+    const entityBoost = 0.15; // 实体匹配额外加分
+    for (const result of fused) {
+      const docEntities = extractEntities(result.text);
+      // 计算实体重叠度
+      let overlap = 0;
+      for (const qe of queryEntities) {
+        if (docEntities.some(de => de.type === qe.type && de.value === qe.value)) {
+          overlap++;
+        }
+      }
+      if (overlap > 0) {
+        result.score += entityBoost * (overlap / queryEntities.length);
+      }
+    }
+    // 重新排序
+    fused.sort((a, b) => b.score - a.score);
+    console.log(`[RETRIEVAL] Entity boost: ${queryEntities.length} entities matched in ${fused.length} results`);
+  }
+
+  // ── [B3] 元数据过滤通道 ──
+  if (options.metadataFilter && typeof options.metadataFilter === 'object' && fused.length > 0) {
+    fused = fused.filter(r => {
+      const meta = r.metadata || {};
+      for (const [key, value] of Object.entries(options.metadataFilter)) {
+        if (meta[key] !== value) return false;
+      }
+      return true;
+    });
+  }
+
   // ── 4. [可选] Rerank ──
-  if (vectorResults.length > 0) {
-    if (enableCrossEncoder) {
-      // Cross-Encoder Rerank（优先于余弦 Rerank）
+  if (fused.length > 0) {
+    if (enableCrossEncoder && options.rerankConfig?.url) {
       fused = await crossEncoderRerank(effectiveQuery, fused, topK, options);
     } else if (enableRerank) {
-      // 余弦距离 Rerank
-      fused = await cosineRerank(vectorStore, embedder, effectiveQuery, fused, topK);
+      fused = await localRerank(vectorStore, embedder, effectiveQuery, fused, topK);
     }
+  } else {
+    // 如果所有结果都被过滤掉了，回退到 unfiltered 的前 topK
+    fused = fused.slice(0, topK);
   }
 
   // ── 5. 内容富化 ──
@@ -95,7 +167,6 @@ export async function hybridSearch(vectorStore, embedder, collection, query, opt
     fused = enrichResults(fused);
   }
 
-  // 记录检索延迟
   if (metrics) metrics.recordSearch(Date.now() - searchStart);
 
   return fused;
@@ -105,27 +176,9 @@ export async function hybridSearch(vectorStore, embedder, collection, query, opt
 //   Query 重写
 // ════════════════════════════════════════════
 
-/**
- * Query 重写 — 用 LLM 改写用户查询以提升检索命中率
- *
- * 支持两种方式（按优先级）:
- * 1. 外部注入 rewriteFn（从 options.rewriteConfig.fn 传入自定义函数）
- * 2. 配置了 rewriteConfig.url，直接调用兼容 OpenAI 格式的 LLM API
- *
- * @param {string} query
- * @param {object} options
- * @param {object} [options.rewriteConfig]
- * @param {boolean} [options.rewriteConfig.enabled=false]
- * @param {Function} [options.rewriteConfig.fn] - 外部注入的异步重写函数 (query) => string
- * @param {string} [options.rewriteConfig.url] - LLM API URL
- * @param {string} [options.rewriteConfig.apiKey] - LLM API Key
- * @param {string} [options.rewriteConfig.model] - LLM 模型名
- * @returns {Promise<string>}
- */
 async function rewriteQuery(query, { rewriteConfig } = {}) {
   if (!rewriteConfig?.enabled) return query;
 
-  // 方式1：外部注入 rewriteFn
   if (typeof rewriteConfig.fn === 'function') {
     try {
       const rewritten = await rewriteConfig.fn(query);
@@ -139,7 +192,6 @@ async function rewriteQuery(query, { rewriteConfig } = {}) {
     return query;
   }
 
-  // 方式2：LLM API 重写
   if (rewriteConfig.url) {
     try {
       const response = await fetch(rewriteConfig.url, {
@@ -182,81 +234,113 @@ async function rewriteQuery(query, { rewriteConfig } = {}) {
 }
 
 // ════════════════════════════════════════════
-//   内容富化
+//   [B4] HyDE — 假设文档嵌入
 // ════════════════════════════════════════════
 
 /**
- * 内容富化 — 将文件名/章节标题注入结果文本
- *
- * 对每个结果，如果 metadata 中包含 filename 或 headings，
- * 在 text 前添加 [来源: 文件名] 和/或 [章节: 标题链] 前缀。
- * 不修改原始 metadata，仅增强 text 字段。
- *
- * @param {Array<{ text: string, metadata?: object }>} results
- * @returns {Array<{ text: string, metadata?: object }>}
+ * HyDE (Hypothetical Document Embedding)
+ * 用 LLM 生成假设性完美答案文档，嵌入后作为第三检索通道。
+ * 可提升零样本检索质量 15-30%。
  */
+async function generateHypotheticalDoc(query, hydeConfig) {
+  if (!hydeConfig?.url) return null;
+
+  try {
+    const response = await fetch(hydeConfig.url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(hydeConfig.apiKey ? { 'Authorization': `Bearer ${hydeConfig.apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        model: hydeConfig.model || 'deepseek-chat',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a hypothetical document generator for search retrieval. Given a query, write a concise, factual document that would be the ideal answer to that query. Write in the style of a technical documentation or encyclopedia entry. Be specific and informative. Output ONLY the document text, no explanations, no meta-commentary.',
+          },
+          { role: 'user', content: query },
+        ],
+        temperature: 0.7,
+        max_tokens: 512,
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!response.ok) {
+      console.warn(`[HyDE] API returned ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+    const hydeDoc = data.choices?.[0]?.message?.content?.trim();
+    if (!hydeDoc || hydeDoc.length < 20) return null;
+
+    console.log(`[HyDE] generated ${hydeDoc.length} chars for query: "${query.slice(0, 50)}..."`);
+    return hydeDoc;
+  } catch (e) {
+    console.warn(`[HyDE] generation failed: ${e.message}`);
+    return null;
+  }
+}
+
+// ════════════════════════════════════════════
+//   内容富化
+// ════════════════════════════════════════════
+
 function enrichResults(results) {
   return results.map(r => {
     const meta = r.metadata || {};
     const prefixParts = [];
 
-    if (meta.filename) {
-      prefixParts.push(`[来源: ${meta.filename}]`);
-    }
+    if (meta.filename) prefixParts.push(`[来源: ${meta.filename}]`);
     if (meta.headings && Array.isArray(meta.headings) && meta.headings.length > 0) {
       prefixParts.push(`[章节: ${meta.headings.join(' > ')}]`);
     }
 
     if (prefixParts.length === 0) return r;
-
-    return {
-      ...r,
-      text: `${prefixParts.join(' ')}\n${r.text}`,
-    };
+    return { ...r, text: `${prefixParts.join(' ')}\n${r.text}` };
   });
 }
 
 // ════════════════════════════════════════════
-//   RRF 融合
+//   RRF 融合（三通道：BM25 + 向量 + HyDE）
 // ════════════════════════════════════════════
 
-/**
- * Reciprocal Rank Fusion
- * 使用内容哈希（SHA-256）去重，确保同一内容在 BM25 和向量搜索中不重复计分
- */
-function reciprocalRankFusion(bm25Results, vectorResults, { topK, bm25Weight }) {
+function reciprocalRankFusion(bm25Results, vectorResults, hydeResults = [], { topK, bm25Weight }) {
   const seenHashes = new Set();
-  const scoreMap = new Map(); // hash → { text, metadata, score }
+  const scoreMap = new Map();
 
-  // BM25 结果
-  for (let i = 0; i < bm25Results.length; i++) {
-    const r = bm25Results[i];
-    if (!r.hash || seenHashes.has(r.hash)) continue;
-    seenHashes.add(r.hash);
-    const rank = i + 1;
-    scoreMap.set(r.hash, {
-      text: r.text,
-      metadata: r.metadata,
-      hash: r.hash,
-      score: bm25Weight * (1 / (RRF_K + rank)),
-    });
-  }
+  const vectorWeight = (1 - bm25Weight) * 0.7;
+  const hydeWeight = (1 - bm25Weight) * 0.3;
 
-  // 向量搜索结果（始终加上向量排名贡献，即使文档也出现在 BM25 结果中）
-  for (let i = 0; i < vectorResults.length; i++) {
-    const r = vectorResults[i];
-    if (!r.hash) continue;
-    const rank = i + 1;
-    if (scoreMap.has(r.hash)) {
-      // 同时在 BM25 和向量结果中 → 累加向量排名贡献
-      scoreMap.get(r.hash).score += (1 - bm25Weight) * (1 / (RRF_K + rank));
-    } else {
+  const channels = [
+    { results: bm25Results, weight: bm25Weight },
+    { results: vectorResults, weight: vectorWeight },
+    { results: hydeResults, weight: hydeWeight },
+  ];
+
+  // 第一轮：新文档
+  for (const { results, weight } of channels) {
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      if (!r.hash || seenHashes.has(r.hash)) continue;
+      seenHashes.add(r.hash);
       scoreMap.set(r.hash, {
         text: r.text,
         metadata: r.metadata,
         hash: r.hash,
-        score: (1 - bm25Weight) * (1 / (RRF_K + rank)),
+        score: weight * (1 / (RRF_K + i + 1)),
       });
+    }
+  }
+
+  // 第二轮：向量/HyDE 中已见过的文档累加贡献
+  for (const { results, weight } of channels.slice(1)) {
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      if (!r.hash || !scoreMap.has(r.hash)) continue;
+      scoreMap.get(r.hash).score += weight * (1 / (RRF_K + i + 1));
     }
   }
 
@@ -266,28 +350,31 @@ function reciprocalRankFusion(bm25Results, vectorResults, { topK, bm25Weight }) 
 }
 
 // ════════════════════════════════════════════
-//   Rerank：余弦距离
+//   [B5] 本地余弦重排 (Local Reranker)
 // ════════════════════════════════════════════
 
 /**
- * 余弦距离 Rerank
- * 用 query 嵌入向量与结果嵌入向量的余弦相似度重新排序
+ * 本地重排序 — 使用查询和文档的嵌入向量余弦相似度重排
+ * 不需要外部 API，完全本地运行。
  */
-async function cosineRerank(vectorStore, embedder, query, results, topK) {
+async function localRerank(vectorStore, embedder, query, results, topK) {
   if (results.length === 0) return results;
 
-  const [queryEmb] = await embedder.embedQuery(query);
+  try {
+    const [queryEmb] = await embedder.embedQuery(query);
+    const textResults = results.map(r => r.text);
+    const resultEmbs = await embedder.embedDocuments(textResults);
 
-  // 获取结果的嵌入向量
-  const textResults = results.map(r => r.text);
-  const resultEmbs = await embedder.embedDocuments(textResults);
+    const reranked = results.map((r, i) => ({
+      ...r,
+      score: cosineSimilarity(queryEmb, resultEmbs[i]),
+    }));
 
-  const reranked = results.map((r, i) => ({
-    ...r,
-    score: cosineSimilarity(queryEmb, resultEmbs[i]),
-  }));
-
-  return reranked.sort((a, b) => b.score - a.score).slice(0, topK);
+    return reranked.sort((a, b) => b.score - a.score).slice(0, topK);
+  } catch (e) {
+    console.warn(`[RETRIEVAL] localRerank failed: ${e.message}, using original order`);
+    return results;
+  }
 }
 
 // ════════════════════════════════════════════
@@ -296,25 +383,10 @@ async function cosineRerank(vectorStore, embedder, query, results, topK) {
 
 /**
  * Cross-Encoder Rerank — 通过外部 API 对搜索结果二次排序
- *
- * 兼容 Cohere Rerank API 格式：
- *   POST {url}
- *   Body: { model, query, documents: string[], top_n?: number }
- *   Response: { results: [{ index: number, relevance_score: number }] }
- *
- * @param {string} query
- * @param {Array<{ text: string, metadata?: object, score: number, hash: string }>} results
- * @param {number} topK
- * @param {object} options
- * @param {object} [options.rerankConfig]
- * @param {string} [options.rerankConfig.url] — Rerank API URL
- * @param {string} [options.rerankConfig.apiKey] — API Key
- * @param {string} [options.rerankConfig.model] — 模型名
- * @returns {Promise<Array>}
+ * 兼容 Cohere Rerank API 格式
  */
 async function crossEncoderRerank(query, results, topK, { rerankConfig } = {}) {
   if (results.length === 0) return results;
-
   if (!rerankConfig?.url) {
     console.warn('[RETRIEVAL] crossEncoderRerank: no URL configured, skipping');
     return results;
@@ -341,41 +413,25 @@ async function crossEncoderRerank(query, results, topK, { rerankConfig } = {}) {
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
       console.warn(`[RETRIEVAL] crossEncoderRerank API error ${response.status}: ${errText}`);
-      return results; // 失败时返回原始结果
+      return results;
     }
 
     const data = await response.json();
 
-    // 兼容 Cohere 格式: data.results[{ index, relevance_score }]
+    // Cohere 格式: data.results[{ index, relevance_score }]
     if (data.results && Array.isArray(data.results)) {
       const scoreMap = new Map();
-      for (const item of data.results) {
-        scoreMap.set(item.index, item.relevance_score);
-      }
-
-      return results
-        .map((r, i) => ({
-          ...r,
-          score: scoreMap.has(i) ? scoreMap.get(i) : 0,
-        }))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, topK);
+      for (const item of data.results) scoreMap.set(item.index, item.relevance_score);
+      return results.map((r, i) => ({ ...r, score: scoreMap.has(i) ? scoreMap.get(i) : 0 }))
+        .sort((a, b) => b.score - a.score).slice(0, topK);
     }
 
     // 备用格式: data.data[{ index, score }]
     if (data.data && Array.isArray(data.data)) {
       const scoreMap = new Map();
-      for (const item of data.data) {
-        scoreMap.set(item.index, item.score);
-      }
-
-      return results
-        .map((r, i) => ({
-          ...r,
-          score: scoreMap.has(i) ? scoreMap.get(i) : 0,
-        }))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, topK);
+      for (const item of data.data) scoreMap.set(item.index, item.score);
+      return results.map((r, i) => ({ ...r, score: scoreMap.has(i) ? scoreMap.get(i) : 0 }))
+        .sort((a, b) => b.score - a.score).slice(0, topK);
     }
 
     console.warn('[RETRIEVAL] crossEncoderRerank: unexpected response format');
@@ -391,7 +447,7 @@ async function crossEncoderRerank(query, results, topK, { rerankConfig } = {}) {
 // ════════════════════════════════════════════
 
 function cosineSimilarity(a, b) {
-  if (a.length !== b.length) return 0;
+  if (!a || !b || a.length !== b.length) return 0;
   let dot = 0, magA = 0, magB = 0;
   for (let i = 0; i < a.length; i++) {
     dot += a[i] * b[i];

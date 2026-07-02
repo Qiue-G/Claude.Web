@@ -9,7 +9,7 @@ import { Router } from 'express';
 import { requireAdmin } from '../auth/middleware.js';
 
 export function createAdminRouter(deps) {
-  const { sessions, sessionProcesses, sessionProxies, modelStats, mcpManager, rag, db, auditLog } = deps;
+  const { sessions, sessionProcesses, sessionProxies, modelStats, mcpManager, rag, db, auditLog, processPool, monitor } = deps;
   const router = Router();
 
   // All admin routes require admin token
@@ -63,6 +63,7 @@ export function createAdminRouter(deps) {
       },
       sessions: sessions.size,
       modelStats: modelStats.getAll(),
+      processPool: processPool ? processPool.stats() : null,
       subsystems: {
         database: dbOk ? 'ok' : (db ? 'error' : 'n/a'),
         mcp: {
@@ -102,6 +103,16 @@ export function createAdminRouter(deps) {
     } catch (e) {
       res.status(500).json({ error: 'Failed to query audit logs', code: 'audit_query_error' });
     }
+  });
+
+  /**
+   * GET /api/admin/slow-queries — SQLite 慢查询记录 (E4)
+   */
+  router.get('/slow-queries', (req, res) => {
+    if (!monitor) {
+      return res.json({ slowQueries: [] });
+    }
+    res.json({ slowQueries: monitor.getSlowQueries() });
   });
 
   return router;

@@ -2,6 +2,7 @@ import express from 'express';
 import { WebSocketServer } from 'ws';
 import cors from 'cors';
 import helmet from 'helmet';
+import compression from 'compression';
 import { readFile, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, resolve as pathResolve } from 'path';
@@ -96,11 +97,15 @@ const RATE_MAX_INPUT = 20;      // max WebSocket inputs per window per session
 const { check: checkRateLimit, remaining: getRateRemaining, snapshot: rateLimitsSnapshot } = createRateLimiter(RATE_WINDOW);
 
 // ===== Database (SQLite) =====
-const { db, saveDb } = await initDb(WORKSPACE_DIR);
+const { db, monitor, saveDb } = await initDb(WORKSPACE_DIR);
 
 // ===== Performance Metrics ====
 const { PerfMetrics } = await import('./lib/perfMetrics.js');
 const perfMetrics = new PerfMetrics();
+
+// ===== Process Pool (E3) =====
+const { ProcessPool } = await import('./lib/processPool.js');
+const processPool = new ProcessPool({ maxSize: 8, idleTimeout: 300000, maxPerSession: 2 });
 
 // ===== Audit Log (D3) =====
 const auditLog = createAuditLog(db);
@@ -109,7 +114,7 @@ const auditLog = createAuditLog(db);
 const { sessions, createSession, getSession, deleteSession, loadSessions } = createSessionManager({ db, saveDb, workspaceDir: WORKSPACE_DIR, auditLog });
 
 // ===== Message Store (persisted to SQLite) =====
-const messageStore = createMessageStore({ db, saveDb });
+const messageStore = createMessageStore({ db, monitor, saveDb });
 
 // ===== MCP Manager =====
 const mcpConfigs = [];
@@ -383,11 +388,27 @@ app.use(cors({
   maxAge: 86400,
 }));
 
+// Response compression (gzip + brotli via Node.js zlib)
+app.use(compression({
+  level: 6,          // default compression level
+  threshold: 1024,   // only compress responses > 1KB
+  filter: (req, res) => {
+    // Don't compress server-sent events
+    if (req.headers.accept === 'text/event-stream') return false;
+    return compression.filter(req, res);
+  }
+}));
+
 app.use(express.json({ limit: '500kb' }));
 
 app.use(express.static(join(__dirname, '../../public'), {
-  setHeaders: (res) => {
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  setHeaders: (res, path) => {
+    // Hash-named assets (e.g., index-CauHM6Nt.js) can be cached indefinitely
+    if (path.match(/[a-f0-9]{8,}\.(js|css|png|jpg|svg|woff2?)$/i)) {
+      res.setHeader('Cache-Control', 'public, immutable, max-age=31536000');
+    } else {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -404,6 +425,17 @@ app.use(perfMetrics.middleware());
 // ===== Performance Metrics API =====
 app.get('/api/perf', (req, res) => {
   res.json(perfMetrics.snapshot());
+});
+
+// ===== Cache headers for stable API endpoints =====
+app.use(['/api/tools', '/api/config', '/api/models'], (req, res, next) => {
+  if (req.method === 'GET') {
+    const maxAge = req.path.startsWith('/tools') ? 300
+      : req.path.startsWith('/config') ? 60
+      : 120;
+    res.setHeader('Cache-Control', `public, max-age=${maxAge}`);
+  }
+  next();
 });
 
 // ===== Session API ====
@@ -441,7 +473,7 @@ app.use('/api/files', createFileRouter({ getSession, sessions, checkRateLimit, R
 app.use('/api/rag', createRagRouter({ rag, sessions }));
 
 // ===== Admin API (protected by ADMIN_TOKEN) ====
-app.use('/api/admin', createAdminRouter({ sessions, sessionProcesses, sessionProxies, modelStats, mcpManager, rag, db, auditLog }));
+app.use('/api/admin', createAdminRouter({ sessions, sessionProcesses, sessionProxies, modelStats, mcpManager, rag, db, auditLog, processPool, monitor }));
 
 // ===== Prompt Template API ====
 const { createTemplateRouter } = await import('./routes/templateRoutes.js');
@@ -493,7 +525,7 @@ wss.on('connection', createWsHandler({
   getSession, sessions, sessionProcesses, sessionProxies, sessionClients, wsProcCount,
   broadcastToSession, spawnCli, maskSensitive, stripAnsi,
   checkRateLimit, ALLOWED_ORIGINS, RATE_WINDOW, RATE_MAX_INPUT,
-  messageStore, mcpManager, rag, agentConfig
+  messageStore, mcpManager, rag, agentConfig, processPool
 }));
 
 async function gracefulShutdown(signal) {
@@ -512,6 +544,10 @@ async function gracefulShutdown(signal) {
     logger.info('Killed process', { sessionId: id });
   }
   sessionProcesses.clear();
+
+  // 2b. Destroy process pool
+  await processPool.destroy();
+  logger.info('Process pool destroyed');
 
   // 3. Disconnect MCP servers (C3)
   try {
