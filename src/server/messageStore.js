@@ -69,20 +69,21 @@ export function createMessageStore({ db, monitor, saveDb }) {
       const total = countRows?.[0]?.values?.[0]?.[0] || 0;
       const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-      // 分页查询：取第 page 页（0-indexed），最新消息在最后
-      const offset = Math.max(0, total - (page + 1) * PAGE_SIZE);
-      const limit = PAGE_SIZE;
-      // 当 offset < 0（第一页不满时），需要调整
-      const adjustedOffset = Math.max(0, offset);
-      const adjustedLimit = offset < 0 ? PAGE_SIZE + offset : limit;
-
-      if (adjustedLimit <= 0) {
-        return { messages: [], page, totalPages, hasMore: page + 1 < totalPages };
+      // 超出页数范围，返回空
+      if (page >= totalPages) {
+        return { messages: [], page, totalPages, hasMore: false };
       }
+
+      // 分页查询：0-indexed，最新消息在最后（ASC 排序）
+      // 复制旧版 JS 切片逻辑的等价 SQL：all.slice(startIdx, endIdx)
+      const startIdx = Math.max(0, total - (page + 1) * PAGE_SIZE);
+      const endIdx = Math.max(0, total - page * PAGE_SIZE);
+      const limit = endIdx - startIdx;
+      const offset = startIdx;
 
       const rows = exec(
         'SELECT id, role, content, timestamp, files FROM messages WHERE sessionId = ? ORDER BY timestamp ASC LIMIT ? OFFSET ?',
-        [sessionId, adjustedLimit, adjustedOffset]
+        [sessionId, limit, offset]
       );
       const messages = rowsToMessages(rows);
       return { messages, page, totalPages, hasMore: page + 1 < totalPages };
