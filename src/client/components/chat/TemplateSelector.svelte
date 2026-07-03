@@ -80,9 +80,10 @@
 
         {#each $selectedTemplate.variables as v}
             <div class="field">
-              <label>{v}</label>
+              <label for="template-var-{v}">{v}</label>
             {#if v === 'code' || v === 'text' || v === 'error'}
               <textarea
+                id="template-var-{v}"
                 class="input textarea"
                 value={varValues[v] || ''}
                 oninput={(e) => { varValues[v] = e.target.value; }}
@@ -91,6 +92,7 @@
               ></textarea>
             {:else}
               <input
+                id="template-var-{v}"
                 class="input"
                 value={varValues[v] || ''}
                 oninput={(e) => { varValues[v] = e.target.value; }}

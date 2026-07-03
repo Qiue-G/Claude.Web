@@ -196,23 +196,23 @@
 
   <!-- 集合选择 -->
   <div class="field">
-    <label class="field-label">集合名称（可选，留空使用默认）</label>
-    <input type="text" class="input" bind:value={collection} placeholder="留空自动使用 Session ID" />
+    <label class="field-label" for="rag-upload-collection">集合名称（可选，留空使用默认）</label>
+    <input id="rag-upload-collection" type="text" class="input" bind:value={collection} placeholder="留空自动使用 Session ID" />
   </div>
 
   <!-- 文本模式 -->
   {#if activeMode === 'text'}
     <div class="field">
-      <label class="field-label">文本内容</label>
-      <textarea class="textarea" bind:value={textContent} rows="6" placeholder="粘贴文本内容..."></textarea>
+      <label class="field-label" for="rag-upload-text">文本内容</label>
+      <textarea id="rag-upload-text" class="textarea" bind:value={textContent} rows="6" placeholder="粘贴文本内容..."></textarea>
     </div>
   {/if}
 
   <!-- 文件模式 -->
   {#if activeMode === 'file'}
     <div class="field">
-      <label class="field-label">选择文件（支持文档/PDF/CSV/代码/图片等）</label>
-      <input type="file" class="file-input" onchange={handleFileSelect} />
+      <label class="field-label" for="rag-upload-file">选择文件（支持文档/PDF/CSV/代码/图片等）</label>
+      <input id="rag-upload-file" type="file" class="file-input" onchange={handleFileSelect} />
       {#if fileName}
         <div class="file-info">
           <span>{fileName}</span>
@@ -234,20 +234,20 @@
   <!-- URL 模式 -->
   {#if activeMode === 'url'}
     <div class="field">
-      <label class="field-label">网页 URL</label>
-      <input type="url" class="input" bind:value={url} placeholder="https://example.com/article" />
+      <label class="field-label" for="rag-upload-url">网页 URL</label>
+      <input id="rag-upload-url" type="url" class="input" bind:value={url} placeholder="https://example.com/article" />
     </div>
   {/if}
 
   <!-- REST 模式 -->
   {#if activeMode === 'rest'}
     <div class="field">
-      <label class="field-label">REST API URL</label>
-      <input type="url" class="input" bind:value={restUrl} placeholder="https://api.example.com/data" />
+      <label class="field-label" for="rag-upload-rest-url">REST API URL</label>
+      <input id="rag-upload-rest-url" type="url" class="input" bind:value={restUrl} placeholder="https://api.example.com/data" />
     </div>
     <div class="field">
-      <label class="field-label">数据路径（可选，如 data.items）</label>
-      <input type="text" class="input" bind:value={dataPath} placeholder="留空使用整个响应" />
+      <label class="field-label" for="rag-upload-datapath">数据路径（可选，如 data.items）</label>
+      <input id="rag-upload-datapath" type="text" class="input" bind:value={dataPath} placeholder="留空使用整个响应" />
     </div>
   {/if}
 

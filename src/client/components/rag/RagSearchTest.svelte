@@ -6,8 +6,6 @@
   import { sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
   import { get } from 'svelte/store';
 
-  export let toast = () => {};
-
   let query = '';
   let collection = '';
   let topK = 5;
@@ -73,9 +71,10 @@
   <h4>搜索测试</h4>
 
   <div class="field">
-    <label class="field-label">搜索查询</label>
+    <label class="field-label" for="rag-search-query">搜索查询</label>
     <div class="search-row">
       <input
+        id="rag-search-query"
         type="text"
         class="input search-input"
         bind:value={query}
@@ -90,40 +89,40 @@
 
   <div class="field-row">
     <div class="field half">
-      <label class="field-label">集合（可选）</label>
-      <input type="text" class="input" bind:value={collection} placeholder="留空默认" />
+      <label class="field-label" for="rag-search-collection">集合（可选）</label>
+      <input id="rag-search-collection" type="text" class="input" bind:value={collection} placeholder="留空默认" />
     </div>
     <div class="field half">
-      <label class="field-label">Top K</label>
-      <input type="number" class="input" bind:value={topK} min="1" max="50" />
+      <label class="field-label" for="rag-search-topk">Top K</label>
+      <input id="rag-search-topk" type="number" class="input" bind:value={topK} min="1" max="50" />
     </div>
   </div>
 
   <div class="field-row">
     <div class="field half">
-      <label class="field-label">BM25 权重</label>
-      <input type="number" class="input" bind:value={bm25Weight} min="0" max="1" step="0.1" />
+      <label class="field-label" for="rag-search-bm25">BM25 权重</label>
+      <input id="rag-search-bm25" type="number" class="input" bind:value={bm25Weight} min="0" max="1" step="0.1" />
     </div>
     <div class="field half">
-      <label class="field-label">余弦 Rerank</label>
+      <label class="field-label" for="rag-search-rerank">余弦 Rerank</label>
       <label class="toggle">
-        <input type="checkbox" bind:checked={enableRerank} />
+        <input id="rag-search-rerank" type="checkbox" bind:checked={enableRerank} />
         <span>启用</span>
       </label>
     </div>
   </div>
   <div class="field-row">
     <div class="field half">
-      <label class="field-label">Cross-Encoder Rerank</label>
+      <label class="field-label" for="rag-search-crossencoder">Cross-Encoder Rerank</label>
       <label class="toggle">
-        <input type="checkbox" bind:checked={enableCrossEncoder} />
+        <input id="rag-search-crossencoder" type="checkbox" bind:checked={enableCrossEncoder} />
         <span>启用</span>
       </label>
     </div>
     <div class="field half">
-      <label class="field-label">内容富化</label>
+      <label class="field-label" for="rag-search-enrichment">内容富化</label>
       <label class="toggle">
-        <input type="checkbox" bind:checked={enableEnrichment} />
+        <input id="rag-search-enrichment" type="checkbox" bind:checked={enableEnrichment} />
         <span>启用</span>
       </label>
     </div>

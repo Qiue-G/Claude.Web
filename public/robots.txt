@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://claudeweb-production-9853.up.railway.app/sitemap.xml
