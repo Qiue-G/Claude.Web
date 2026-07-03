@@ -24,6 +24,7 @@
   import ChatControls from './ChatControls.svelte';
 
   export let onsend = null;
+  export let onToggleSidebar = null;
 
   let editContent = '';
   let editingMessageId = null;
@@ -92,7 +93,7 @@
 <div class="chat-area">
   <Navbar
     sidebarOpen={$chatSidebarOpen}
-    on:toggleSidebar={toggleChatSidebar}
+    on:toggleSidebar={onToggleSidebar || toggleChatSidebar}
     on:newchat={handleNewChat}
     on:settings={handleSettings}
   />

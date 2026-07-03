@@ -644,7 +644,7 @@
 
     <div class="content-pane-group">
       <div class="chat-pane" class:mobile-editor-hidden={isMobile && mobileEditorVisible} style="flex: {chatFlex};">
-        <ChatPanel onsend={handleChatSend} />
+        <ChatPanel onsend={handleChatSend} onToggleSidebar={handleToggleChatSidebar} />
         {#if $parallelMode}
           {#if ComparisonViewComponent}
             <ComparisonViewComponent />
