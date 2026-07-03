@@ -656,8 +656,8 @@
     </div>
   </div>
 
-  <!-- 移动端底部导航栏 -->
-  {#if isMobile}
+  <!-- 移动端/平板端底部导航栏 -->
+  {#if isMobile || isTablet}
     <div class="bottom-nav">
       <button
         class="nav-btn"

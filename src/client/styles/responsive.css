@@ -83,12 +83,8 @@
   }
 }
 
-/* === 手机：全屏 Drawer === */
-@media (max-width: 639px) {
-  .sidebar-drawer {
-    width: 100% !important;
-  }
-
+/* === 手机/平板：底部导航 === */
+@media (max-width: 1023px) {
   .bottom-nav {
     display: flex !important;
   }
@@ -98,7 +94,14 @@
   }
 }
 
-/* 桌面端默认隐藏底部导航 */
+/* === 手机：全屏 Drawer === */
+@media (max-width: 639px) {
+  .sidebar-drawer {
+    width: 100% !important;
+  }
+}
+
+/* 桌面端默认隐藏底部导航（手机/平板在 media query 中显示） */
 .bottom-nav {
   display: none;
 }
