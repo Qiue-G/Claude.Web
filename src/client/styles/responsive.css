@@ -1,0 +1,207 @@
+/* ========================================
+   Phase 3-D: 响应式布局与 PWA 支持
+   ======================================== */
+
+/* === 断点变量 === */
+:root {
+  --breakpoint-xs: 0;
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+
+  /* 侧边栏宽度 */
+  --sidebar-chat-width: 280px;
+  --sidebar-file-width: 240px;
+
+  /* 移动端抽屉遮罩 */
+  --drawer-z: 200;
+  --drawer-overlay-z: 199;
+
+  /* 底部导航 */
+  --bottom-nav-z: 150;
+  --bottom-nav-height: 52px;
+
+  /* Touch targets */
+  --touch-target-min: 44px;
+}
+
+/* === 小桌面/平板：侧边栏 Drawer 模式 === */
+@media (max-width: 1023px) {
+  .main-layout .chat-sidebar-container,
+  .main-layout .sidebar {
+    display: none !important; /* 隐藏内联侧边栏 */
+  }
+
+  .content-pane-group {
+    flex: 1 !important;
+  }
+
+  /* 桌面端：抽屉固定宽度 */
+  .drawer-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: var(--drawer-overlay-z);
+    opacity: 1;
+    transition: opacity 0.2s ease;
+  }
+
+  .drawer-overlay.closed {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .sidebar-drawer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: var(--sidebar-chat-width);
+    background: var(--bg-raised);
+    border-right: 1px solid var(--border);
+    z-index: var(--drawer-z);
+    transform: translateX(0);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+  }
+
+  .sidebar-drawer.file-drawer {
+    width: var(--sidebar-file-width);
+  }
+
+  .sidebar-drawer.closed {
+    transform: translateX(-100%);
+  }
+
+  .sidebar-drawer.file-drawer.closed {
+    transform: translateX(-100%);
+  }
+}
+
+/* === 手机：全屏 Drawer === */
+@media (max-width: 639px) {
+  .sidebar-drawer {
+    width: 100% !important;
+  }
+
+  .bottom-nav {
+    display: flex !important;
+  }
+
+  .app {
+    padding-bottom: var(--bottom-nav-height);
+  }
+}
+
+/* 桌面端默认隐藏底部导航 */
+.bottom-nav {
+  display: none;
+}
+
+/* === 响应式工具栏 === */
+@media (max-width: 767px) {
+  .toolbar .project-info {
+    display: none;
+  }
+
+  .toolbar .token-stats {
+    display: none;
+  }
+
+  .toolbar-btn {
+    width: var(--touch-target-min);
+    height: var(--touch-target-min);
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .toolbar .token-stats .token-label,
+  .toolbar .token-stats .token-value {
+    display: none;
+  }
+
+  .toolbar .token-bar {
+    width: 40px;
+  }
+}
+
+/* === 移动端代码编辑器适配 === */
+@media (max-width: 639px) {
+  .editor-pane {
+    display: none; /* 手机上默认隐藏编辑器 */
+  }
+
+  .editor-pane.visible-on-mobile {
+    display: flex !important;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 180;
+    background: var(--bg-base);
+  }
+
+  .content-pane-group {
+    flex-direction: column !important;
+  }
+
+  .resize-handle {
+    display: none !important; /* 手机上隐藏拖拽分割条 */
+  }
+
+  /* 模态框 → 底部 Sheet */
+  .modal-overlay .modal-content {
+    max-height: 80vh;
+    border-radius: 16px 16px 0 0;
+    position: fixed !important;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    transform: none !important;
+    top: auto !important;
+    overflow-y: auto;
+  }
+
+  /* 触摸按钮至少 44px */
+  button, .btn, .toolbar-btn, .action-btn, .mode-tab, .session-item {
+    min-height: var(--touch-target-min);
+  }
+}
+
+/* === 键盘弹出适配 === */
+@media (max-width: 639px) and (orientation: portrait) {
+  .chat-input-area {
+    position: sticky;
+    bottom: 0;
+    background: var(--bg-base);
+    z-index: 10;
+  }
+}
+
+/* === 平板编辑器布局 === */
+@media (min-width: 640px) and (max-width: 1023px) {
+  .content-pane-group {
+    flex-direction: column !important;
+  }
+
+  .resize-handle {
+    display: block !important;
+  }
+
+  .editor-pane {
+    max-height: 40%;
+  }
+}
+
+/* === 100vh fix for mobile browsers === */
+@supports (-webkit-touch-callout: none) {
+  .app {
+    height: -webkit-fill-available;
+  }
+}

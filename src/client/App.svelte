@@ -11,6 +11,7 @@
   import Toast from '$components/common/Toast.svelte';
   import ToolApprovalModal from '$components/chat/ToolApprovalModal.svelte';
   import Modal from '$components/common/Modal.svelte';
+  import InstallPrompt from '$components/common/InstallPrompt.svelte';
   import { sendToolApproval } from '$lib/websocket.js';
 
   // Parallel comparison store (keep store small)
@@ -69,6 +70,62 @@
   import { initFilters } from '$stores/filters.store.js';
   import { effectiveTheme } from '$stores/theme.store.js';
   import { fetchConfig } from '$apis/models.api.js';
+
+  // === 响应式状态 ===
+  let isMobile = $state(false);
+  let isTablet = $state(false);
+  let isOnline = $state(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  let drawerChatOpen = $state(false);
+  let drawerFileOpen = $state(false);
+  let mobileEditorVisible = $state(false);
+  let touchStartX = $state(0);
+  let touchStartY = $state(0);
+  let isSwiping = $state(false);
+
+  // Detect screen size on mount and on resize
+  function checkScreenSize() {
+    const w = window.innerWidth;
+    isMobile = w < 640;
+    isTablet = w >= 640 && w < 1024;
+  }
+
+  function openDrawerChat() { drawerChatOpen = true; }
+  function closeDrawerChat() { drawerChatOpen = false; }
+  function openDrawerFile() { drawerFileOpen = true; }
+  function closeDrawerFile() { drawerFileOpen = false; }
+
+  // Touch gesture for sidebar drawer
+  function handleTouchStart(e) {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    isSwiping = false;
+  }
+
+  function handleTouchMove(e) {
+    const dx = e.touches[0].clientX - touchStartX;
+    const dy = e.touches[0].clientY - touchStartY;
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 30) {
+      isSwiping = true;
+    }
+  }
+
+  function handleTouchEnd(e) {
+    if (!isSwiping) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    if (dx > 60 && !drawerChatOpen) {
+      // 右滑：打开聊天侧边栏（从左侧边缘触发）
+      if (touchStartX < 40) openDrawerChat();
+    } else if (dx < -60 && drawerChatOpen) {
+      // 左滑：关闭聊天侧边栏
+      closeDrawerChat();
+    }
+    isSwiping = false;
+  }
+
+  // 移动端：点击编辑器标签时切换编辑器面板
+  function toggleMobileEditor() {
+    mobileEditorVisible = !mobileEditorVisible;
+  }
 
   let showConfigModal = $state(false);
   let showRagPanel = $state(false);
@@ -129,8 +186,20 @@
     document.body.style.userSelect = '';
   }
 
-  function handleToggleSidebar() { toggleFileSidebar(); }
-  function handleToggleChatSidebar() { toggleChatSidebar(); }
+  function handleToggleSidebar() {
+    if (isMobile || isTablet) {
+      openDrawerFile();
+    } else {
+      toggleFileSidebar();
+    }
+  }
+  function handleToggleChatSidebar() {
+    if (isMobile || isTablet) {
+      openDrawerChat();
+    } else {
+      toggleChatSidebar();
+    }
+  }
   function handleOpenConfig() { showConfigModal = true; }
   function handleOpenRag() { showRagPanel = true; }
   function handleOpenAdmin() { showAdminPanel = true; }
@@ -356,6 +425,8 @@
   }
 
   onMount(async () => {
+    checkScreenSize();
+
     await initChatHistory();
 
     // 自动重连：验证存储的 session 凭证 → 有效则恢复连接 + 模型状态
@@ -398,6 +469,12 @@
     window.addEventListener('keydown', handleGlobalKeydown);
     window.addEventListener('mousemove', handleResizeMove);
     window.addEventListener('mouseup', handleResizeEnd);
+    window.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    window.addEventListener('touchend', handleTouchEnd, { passive: true });
+    window.addEventListener('resize', checkScreenSize);
+    window.addEventListener('online', () => { isOnline = true; });
+    window.addEventListener('offline', () => { isOnline = false; });
     window.addEventListener('tool-approval-request', handleToolApprovalRequest);
     window.addEventListener('tool-approval-complete', handleToolApprovalComplete);
 
@@ -434,6 +511,12 @@
     window.removeEventListener('keydown', handleGlobalKeydown);
     window.removeEventListener('mousemove', handleResizeMove);
     window.removeEventListener('mouseup', handleResizeEnd);
+    window.removeEventListener('touchstart', handleTouchStart);
+    window.removeEventListener('touchmove', handleTouchMove);
+    window.removeEventListener('touchend', handleTouchEnd);
+    window.removeEventListener('resize', checkScreenSize);
+    window.removeEventListener('online', () => {});
+    window.removeEventListener('offline', () => {});
     window.removeEventListener('tool-approval-request', handleToolApprovalRequest);
     window.removeEventListener('tool-approval-complete', handleToolApprovalComplete);
     window.removeEventListener('parallel-start-request', handleParallelStart);
@@ -498,6 +581,9 @@
 </script>
 
 <div class="app">
+  {#if !isOnline}
+    <div class="offline-banner">离线模式 - 部分功能不可用</div>
+  {/if}
   <Toolbar on:toggleSidebar={handleToggleSidebar} on:openConfig={handleOpenConfig} on:openRag={handleOpenRag} on:openAdmin={handleOpenAdmin} on:selectModel={handleSelectModel} />
 
   <div class="parallel-bar">
@@ -506,10 +592,11 @@
   </div>
 
   <div class="main-layout">
-    {#if $chatSidebarOpen}
+    <!-- 桌面端侧边栏（≥ 1024px 内联显示） -->
+    {#if !isMobile && !isTablet && $chatSidebarOpen}
       <div class="chat-sidebar-container"><ChatSidebar on:newchat={handleNewChat} on:select={handleSelectChatSession} /></div>
     {/if}
-    {#if $fileSidebarOpen}
+    {#if !isMobile && !isTablet && $fileSidebarOpen}
       <div class="sidebar">
         <FileTree on:fileSelect={handleFileSelect} />
         {#if $currentFile}
@@ -517,8 +604,46 @@
         {/if}
       </div>
     {/if}
+
+    <!-- 移动端/平板端聊天侧边栏 Drawer -->
+    {#if isMobile || isTablet}
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <div
+        class="drawer-overlay"
+        class:closed={!drawerChatOpen}
+        onclick={closeDrawerChat}
+        role="presentation"
+      ></div>
+      <div class="sidebar-drawer" class:closed={!drawerChatOpen}>
+        <div class="drawer-header">
+          <button class="drawer-close-btn" onclick={closeDrawerChat} aria-label="关闭侧边栏">✕</button>
+        </div>
+        <ChatSidebar on:newchat={handleNewChat} on:select={handleSelectChatSession} />
+      </div>
+    {/if}
+
+    <!-- 移动端/平板端文件侧边栏 Drawer -->
+    {#if isMobile || isTablet}
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <div
+        class="drawer-overlay"
+        class:closed={!drawerFileOpen}
+        onclick={closeDrawerFile}
+        role="presentation"
+      ></div>
+      <div class="sidebar-drawer file-drawer" class:closed={!drawerFileOpen}>
+        <div class="drawer-header">
+          <button class="drawer-close-btn" onclick={closeDrawerFile} aria-label="关闭文件侧边栏">✕</button>
+        </div>
+        <FileTree on:fileSelect={handleFileSelect} />
+        {#if $currentFile}
+          <FileHistoryPanel filePath={$currentFile} on:rollback={handleFileSelect} />
+        {/if}
+      </div>
+    {/if}
+
     <div class="content-pane-group">
-      <div class="chat-pane" style="flex: {chatFlex};">
+      <div class="chat-pane" class:mobile-editor-hidden={isMobile && mobileEditorVisible} style="flex: {chatFlex};">
         <ChatPanel onsend={handleChatSend} />
         {#if $parallelMode}
           {#if ComparisonViewComponent}
@@ -527,9 +652,50 @@
         {/if}
       </div>
       <button class="resize-handle" class:active={isResizing} onmousedown={handleResizeStart} aria-label={_t('editor.resizeHandle')}></button>
-      <div class="editor-pane" style="flex: {editorFlex};"><CodeEditor on:tabClose={handleTabClose} on:change={handleEditorChange} on:save={handleSaveFile} /></div>
+      <div class="editor-pane" class:visible-on-mobile={isMobile && mobileEditorVisible} style="flex: {editorFlex};"><CodeEditor on:tabClose={handleTabClose} on:change={handleEditorChange} on:save={handleSaveFile} /></div>
     </div>
   </div>
+
+  <!-- 移动端底部导航栏 -->
+  {#if isMobile}
+    <div class="bottom-nav">
+      <button
+        class="nav-btn"
+        class:active={drawerChatOpen}
+        onclick={openDrawerChat}
+        title="聊天"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span class="nav-label">聊天</span>
+      </button>
+      <button
+        class="nav-btn"
+        class:active={drawerFileOpen}
+        onclick={openDrawerFile}
+        title="文件"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <span class="nav-label">文件</span>
+      </button>
+      <button
+        class="nav-btn"
+        class:active={mobileEditorVisible}
+        onclick={toggleMobileEditor}
+        title="编辑器"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        <span class="nav-label">编辑器</span>
+      </button>
+      <button
+        class="nav-btn"
+        onclick={() => { showRagPanel = true; }}
+        title="知识库"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        <span class="nav-label">知识库</span>
+      </button>
+    </div>
+  {/if}
 
   <ConfigModal bind:open={showConfigModal} on:close={handleCloseConfig} on:connect={handleConnectModel} />
   <Modal bind:open={showRagPanel} title={_t('rag.title')} width="560px">
@@ -578,6 +744,7 @@
       onreject={handleRejectTool}
     />
   {/if}
+  <InstallPrompt />
 </div>
 
 <style>
@@ -654,4 +821,124 @@
     0%, 100% { opacity: 0.3; transform: scale(0.8); }
     50% { opacity: 1; transform: scale(1.2); }
   }
-</style>
+
+  /* === Drawer 侧边栏样式 === */
+  .drawer-overlay {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 199;
+    opacity: 1;
+    transition: opacity 0.2s ease;
+  }
+  .drawer-overlay.closed {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .sidebar-drawer {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 280px;
+    background: var(--bg-raised);
+    border-right: 1px solid var(--border);
+    z-index: 200;
+    transform: translateX(0);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    flex-direction: column;
+  }
+  .sidebar-drawer.closed {
+    transform: translateX(-100%) !important;
+  }
+  .sidebar-drawer.file-drawer {
+    width: 240px;
+  }
+  .drawer-header {
+    display: flex;
+    justify-content: flex-end;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .drawer-close-btn {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 16px;
+  }
+  .drawer-close-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  /* === 底部导航栏 === */
+  .bottom-nav {
+    display: none !important; /* hidden by default, shown on mobile via responsive.css */
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 52px;
+    background: var(--bg-raised);
+    border-top: 1px solid var(--border);
+    z-index: 150;
+    justify-content: space-around;
+    align-items: center;
+    padding: 0 4px;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  .nav-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 4px 12px;
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    border-radius: 6px;
+    min-width: 56px;
+    min-height: 44px;
+    transition: all 0.15s;
+  }
+  .nav-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+  }
+  .nav-btn.active {
+    color: var(--amber);
+  }
+  .nav-label {
+    font-size: 10px;
+    line-height: 1;
+  }
+
+  /* === 移动端编辑器隐藏 === */
+  .mobile-editor-hidden {
+    display: flex !important;
+  }
+
+  /* === 离线指示器 === */
+  .offline-banner {
+    flex-shrink: 0;
+    padding: 6px 16px;
+    background: var(--red);
+    color: white;
+    font-size: 12px;
+    text-align: center;
+    font-weight: 500;
+  }</style>
