@@ -17,7 +17,7 @@
 
 const RRF_K = 60; // RRF 常数
 
-import { extractEntities } from './entityExtractor.js';
+import { extractEntities, entityMatchSearch } from './entityExtractor.js';
 
 /**
  * 多通道混合检索（BM25 + 向量 + 可选 HyDE）
@@ -117,29 +117,31 @@ export async function hybridSearch(vectorStore, embedder, collection, query, opt
     bm25Weight,
   });
 
-  // ── [B3] 实体匹配增强通道 ──
+  // ── [B3] 通道D：实体匹配检索（entityMatchSearch）──
+  const entityBoost = 0.15; // 实体匹配额外加分
   const queryEntities = extractEntities(effectiveQuery);
   if (queryEntities.length > 0 && fused.length > 0) {
-    const entityBoost = 0.15; // 实体匹配额外加分
-    for (const result of fused) {
-      const docEntities = extractEntities(result.text);
-      // 计算实体重叠度
-      let overlap = 0;
-      for (const qe of queryEntities) {
-        if (docEntities.some(de => de.type === qe.type && de.value === qe.value)) {
-          overlap++;
+    const entityResults = entityMatchSearch(fused, queryEntities);
+    if (entityResults.length > 0) {
+      // 将 entityMatchSearch 的评分结果以实体加分形式合并到 fused 中
+      const entityScoreMap = new Map();
+      for (const er of entityResults) {
+        entityScoreMap.set(er.hash, er.score);
+      }
+      for (const result of fused) {
+        const es = entityScoreMap.get(result.hash);
+        if (es !== undefined) {
+          result.score += entityBoost * es;
+          result.matchedEntity = entityResults.find(er => er.hash === result.hash)?.matchedEntity;
         }
       }
-      if (overlap > 0) {
-        result.score += entityBoost * (overlap / queryEntities.length);
-      }
+      fused.sort((a, b) => b.score - a.score);
+      console.log(`[RETRIEVAL] Entity channel: ${entityResults.length}/${fused.length} docs matched, boost=${entityBoost}`);
     }
-    // 重新排序
-    fused.sort((a, b) => b.score - a.score);
-    console.log(`[RETRIEVAL] Entity boost: ${queryEntities.length} entities matched in ${fused.length} results`);
   }
 
-  // ── [B3] 元数据过滤通道 ──
+  // ── [B3] 元数据过滤通道（保存过滤前副本供回退用）──
+  const fusedBeforeFilter = fused;
   if (options.metadataFilter && typeof options.metadataFilter === 'object' && fused.length > 0) {
     fused = fused.filter(r => {
       const meta = r.metadata || {};
@@ -159,7 +161,7 @@ export async function hybridSearch(vectorStore, embedder, collection, query, opt
     }
   } else {
     // 如果所有结果都被过滤掉了，回退到 unfiltered 的前 topK
-    fused = fused.slice(0, topK);
+    fused = fusedBeforeFilter.slice(0, topK);
   }
 
   // ── 5. 内容富化 ──

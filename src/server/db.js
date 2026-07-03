@@ -91,12 +91,13 @@ export async function initDb(workspaceDir) {
     console.log('[DB] created new database at ' + filePath);
   }
 
-  // E4: WAL mode for concurrent read perf; MEMORY journal for write speed
-  db.run('PRAGMA journal_mode=WAL');
-  db.run('PRAGMA synchronous=NORMAL');
-  db.run('PRAGMA cache_size=-8000'); // 8MB cache
-  db.run('PRAGMA temp_store=MEMORY');
-  db.run('PRAGMA mmap_size=268435456'); // 256MB mmap
+  // sql.js 是 WASM 内存数据库，以下 PRAGMA 仅有内存级效果：
+  // - cache_size: 影响内存页缓存，对 export 速度有间接帮助
+  // - temp_store=MEMORY: 临时表存储在内存中
+  // 注意: WAL/mmap/synchronous 等磁盘 I/O 相关 PRAGMA 对 sql.js 无效，
+  //       数据库持久化通过 db.export() + writeFile() 实现
+  db.run('PRAGMA cache_size=-8000');     // 8MB 内存页缓存
+  db.run('PRAGMA temp_store=MEMORY');    // 临时表在内存中
 
   // ── Schema ──
   db.run(`

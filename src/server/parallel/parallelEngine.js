@@ -20,7 +20,7 @@ import { logger } from '../lib/logger.js';
 import { modelStats } from '../lib/modelStats.js';
 
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || process.cwd();
-const GLOBAL_PROCESS_LIMIT = parseInt(process.env.GLOBAL_PROCESS_LIMIT || '16', 10);
+const GLOBAL_PROCESS_LIMIT = parseInt(process.env.MAX_GLOBAL_PROCESSES || '16', 10);
 const MODEL_TIMEOUT_MS = parseInt(process.env.MODEL_TIMEOUT_MS || '300000', 10); // 5 min
 
 let globalProcCount = 0;
@@ -349,8 +349,10 @@ class ParallelEngine {
    */
   async dispose() {
     this.abortAll();
+    // 必须在 clear() 之前读取 size，否则 globalProcCount 永不减少
+    const count = this.activeRuns.size;
     this.activeRuns.clear();
-    globalProcCount = Math.max(0, globalProcCount - this.activeRuns.size);
+    globalProcCount = Math.max(0, globalProcCount - count);
   }
 
   /**

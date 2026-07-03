@@ -41,6 +41,10 @@ class StreamMuxer {
     const stream = this.streams.get(modelId);
     if (stream) {
       stream.done = true;
+      // 即使 buffer 为空也发送完成信号
+      if (stream.buffer.length === 0 && this._onChunk) {
+        this._onChunk({ modelId, text: '', done: true });
+      }
       this._flush();
     }
   }
