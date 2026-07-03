@@ -885,7 +885,7 @@
 
   /* === 底部导航栏 === */
   .bottom-nav {
-    display: none !important; /* hidden by default, shown on mobile via responsive.css */
+    display: none;
     position: fixed;
     bottom: 0;
     left: 0;
@@ -898,6 +898,16 @@
     align-items: center;
     padding: 0 4px;
     padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  /* 手机/平板显示底部导航 */
+  @media (max-width: 1023px) {
+    .bottom-nav {
+      display: flex;
+    }
+    .app {
+      padding-bottom: 52px;
+    }
   }
   .nav-btn {
     display: flex;
