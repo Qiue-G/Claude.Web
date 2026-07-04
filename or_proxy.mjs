@@ -39,7 +39,7 @@ function buildOpenRouterHeaders() {
     'Authorization': `Bearer ${KEY}`,
   };
   if (BASE_URL.includes('openrouter.ai')) {
-    h['HTTP-Referer'] = 'https://claudefree-production.up.railway.app';
+    h['HTTP-Referer'] = process.env.PUBLIC_URL || 'https://claudeweb-production-9853.up.railway.app';
     h['X-Title'] = 'ClaudeFree Proxy';
   }
   return h;
