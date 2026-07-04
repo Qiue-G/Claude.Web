@@ -229,7 +229,7 @@ async function startProxy(session) {
 
   let proxyOutput = '';
   const portPromise = new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error('Proxy startup timeout')), 10000);
+    const t = setTimeout(() => reject(new Error('Proxy startup timeout')), 30000);
     proxy.stdout.on('data', (chunk) => {
       proxyOutput += chunk.toString();
       const portMatch = proxyOutput.match(/(?:port|listening)[^\d]*(\d{4,5})/i);

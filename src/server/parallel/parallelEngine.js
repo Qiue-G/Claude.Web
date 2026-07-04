@@ -44,7 +44,7 @@ function startProxy(modelId, apiKey, baseUrl, fallbackModel) {
 
     const timeout = setTimeout(() => {
       reject(new Error(`Proxy startup timeout for ${modelId}`));
-    }, 15000);
+    }, 30000);
 
     proxy.stdout.on('data', (data) => {
       const text = data.toString();
