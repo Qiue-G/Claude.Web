@@ -16,6 +16,11 @@
 
 import { initDb } from '../src/server/db.js';
 import { encrypt, isEncrypted } from '../src/server/lib/crypto.js';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../workspace');
 
 async function migrate() {
   // 检查密钥是否已配置
@@ -26,8 +31,9 @@ async function migrate() {
     process.exit(1);
   }
 
+  console.log('[MIGRATE] 工作目录:', WORKSPACE_DIR);
   console.log('[MIGRATE] 初始化数据库...');
-  const { db, saveDb } = await initDb();
+  const { db, saveDb } = await initDb(WORKSPACE_DIR);
 
   console.log('[MIGRATE] 查询所有 session...');
   const rows = db.exec('SELECT id, apiKey FROM sessions WHERE apiKey IS NOT NULL AND apiKey != ""');
