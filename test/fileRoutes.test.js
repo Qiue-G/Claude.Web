@@ -27,7 +27,8 @@ function withApp(app) {
 async function createTestEnv() {
   const SQL = await initSqlJs();
   const db = new SQL.Database();
-  db.run('CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, token TEXT, csrfToken TEXT, apiKey TEXT, model TEXT, provider TEXT, dir TEXT, createdAt INTEGER, lastActivity INTEGER, currentModel TEXT, modelHealth TEXT)');
+  db.run('CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, token TEXT, csrfToken TEXT, apiKey TEXT, model TEXT, provider TEXT, dir TEXT, createdAt INTEGER, lastActivity INTEGER, currentModel TEXT, modelHealth TEXT, owner_id TEXT, role TEXT DEFAULT \'owner\', status TEXT DEFAULT \'private\', share_token TEXT UNIQUE, coauthors TEXT DEFAULT \'[]\')');
+  db.run('CREATE TABLE IF NOT EXISTS share_sessions (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, inviter_id TEXT NOT NULL, invitee_id TEXT NOT NULL, permission TEXT DEFAULT \'read\', created_at TEXT DEFAULT (datetime(\'now\')), FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE)');
 
   const workDir = join(tmpdir(), 'file-test-' + Date.now() + '-' + Math.random().toString(36).slice(2));
   mkdirSync(workDir, { recursive: true });

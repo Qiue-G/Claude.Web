@@ -18,7 +18,24 @@ async function createTestDb() {
       createdAt INTEGER NOT NULL,
       lastActivity INTEGER NOT NULL,
       currentModel TEXT,
-      modelHealth TEXT DEFAULT 'connecting'
+      modelHealth TEXT DEFAULT 'connecting',
+      owner_id TEXT,
+      role TEXT DEFAULT 'owner',
+      status TEXT DEFAULT 'private',
+      share_token TEXT UNIQUE,
+      coauthors TEXT DEFAULT '[]'
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS share_sessions (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      inviter_id TEXT NOT NULL,
+      invitee_id TEXT NOT NULL,
+      permission TEXT DEFAULT 'read',
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
     )
   `);
 

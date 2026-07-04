@@ -116,6 +116,28 @@ export async function initDb(workspaceDir) {
     )
   `);
 
+  // 兼容旧数据：添加分享相关字段（如果不存在）
+  try { db.run('ALTER TABLE sessions ADD COLUMN owner_id TEXT'); } catch (_) {}
+  try { db.run('ALTER TABLE sessions ADD COLUMN role TEXT DEFAULT \'owner\''); } catch (_) {}
+  try { db.run('ALTER TABLE sessions ADD COLUMN status TEXT DEFAULT \'private\''); } catch (_) {}
+  try { db.run('ALTER TABLE sessions ADD COLUMN share_token TEXT UNIQUE'); } catch (_) {}
+  try { db.run('ALTER TABLE sessions ADD COLUMN coauthors TEXT DEFAULT \'[]\''); } catch (_) {}
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS share_sessions (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      inviter_id TEXT NOT NULL,
+      invitee_id TEXT NOT NULL,
+      permission TEXT DEFAULT 'read',
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    )
+  `);
+
+  db.run('CREATE INDEX IF NOT EXISTS idx_share_sessions_session ON share_sessions(session_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_share_sessions_invitee ON share_sessions(invitee_id)');
+
   db.run(`
     CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY,

@@ -4,6 +4,8 @@
   import { createEventDispatcher } from 'svelte';
   import { t } from '$lib/i18n.js';
   import { searchChats } from '$apis/search.api.js';
+  import { isAuthenticated } from '$stores/auth.store.js';
+  import ShareModal from './ShareModal.svelte';
 
   const dispatch = createEventDispatcher();
 
@@ -13,6 +15,10 @@
   let searchLoading = false;
 
   let searchResults = []; // { sessionId, matchTitle, matchContent }
+
+  // 分享弹窗状态
+  let showShareModal = false;
+  let shareSessionId = '';
 
   // 响应式格式化列表：当 sessions 或 locale 变化时重新生成
   let formattedSessions = [];
@@ -116,6 +122,18 @@
     editTitle = '';
   }
 
+  function handleShare(e, session) {
+    e.stopPropagation();
+    if (!$isAuthenticated) return;
+    shareSessionId = session.id;
+    showShareModal = true;
+  }
+
+  function handleShareModalClose() {
+    showShareModal = false;
+    shareSessionId = '';
+  }
+
   function formatTime(timestamp) {
     const date = new Date(timestamp);
     const now = new Date();
@@ -198,6 +216,15 @@
             {/if}
           </div>
           <div class="session-actions">
+            {#if $isAuthenticated}
+              <button
+                class="action-btn"
+                on:click={(e) => handleShare(e, session)}
+                title="分享"
+              >
+                <Icon name="share" size="sm" />
+              </button>
+            {/if}
             <button
               class="action-btn"
               on:click={(e) => { e.stopPropagation(); startEditing(session); }}
@@ -225,6 +252,12 @@
     {/if}
   </div>
 </div>
+
+<ShareModal
+  bind:open={showShareModal}
+  sessionId={shareSessionId}
+  on:close={handleShareModalClose}
+/>
 
 <style>
   .chat-sidebar {

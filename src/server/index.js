@@ -433,7 +433,7 @@ app.use(['/api/tools', '/api/config', '/api/models'], (req, res, next) => {
 // ===== Session API ====
 app.use('/api/session', createSessionRouter({
   createSession, getSession, deleteSession, sessions, sessionProcesses, sessionProxies, messageStore,
-  checkRateLimit, RATE_WINDOW, RATE_MAX_CREATE, MAX_SESSIONS, DEFAULTS
+  checkRateLimit, RATE_WINDOW, RATE_MAX_CREATE, MAX_SESSIONS, DEFAULTS, db
 }));
 
 // ===== Model Discovery API ====

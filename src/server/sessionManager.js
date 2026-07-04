@@ -30,7 +30,12 @@ export function createSessionManager({ db, saveDb, workspaceDir, auditLog }) {
       createdAt: row.createdAt,
       lastActivity: row.lastActivity,
       currentModel: row.currentModel,
-      modelHealth: row.modelHealth
+      modelHealth: row.modelHealth,
+      owner_id: row.owner_id || null,
+      role: row.role || 'owner',
+      status: row.status || 'private',
+      share_token: row.share_token || null,
+      coauthors: row.coauthors || '[]'
     };
   }
 
@@ -62,14 +67,16 @@ export function createSessionManager({ db, saveDb, workspaceDir, auditLog }) {
   async function saveSessions() {
     try {
       const stmt = db.prepare(`
-        INSERT OR REPLACE INTO sessions (id, token, csrfToken, apiKey, model, provider, dir, createdAt, lastActivity, currentModel, modelHealth)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO sessions (id, token, csrfToken, apiKey, model, provider, dir, createdAt, lastActivity, currentModel, modelHealth, owner_id, role, status, share_token, coauthors)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const session of sessions.values()) {
         stmt.run([
-          session.id, session.token, session.csrfToken, encrypt(session.apiKey),  // 加密后存储
+          session.id, session.token, session.csrfToken, encrypt(session.apiKey),
           session.model, session.provider, session.dir, session.createdAt,
-          session.lastActivity, session.currentModel, session.modelHealth
+          session.lastActivity, session.currentModel, session.modelHealth,
+          session.owner_id || null, session.role || 'owner', session.status || 'private',
+          session.share_token || null, session.coauthors || '[]'
         ]);
       }
       stmt.free();
@@ -104,16 +111,21 @@ export function createSessionManager({ db, saveDb, workspaceDir, auditLog }) {
       createdAt: now,
       lastActivity: now,
       currentModel: model,
-      modelHealth: 'connecting'
+      modelHealth: 'connecting',
+      owner_id: null,
+      role: 'owner',
+      status: 'private',
+      share_token: null,
+      coauthors: '[]'
     };
 
     sessions.set(sessionId, session);
 
     try {
       db.run(
-        `INSERT INTO sessions (id, token, csrfToken, apiKey, model, provider, dir, createdAt, lastActivity, currentModel, modelHealth)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [sessionId, sessionToken, csrfToken, encrypt(apiKey), model, provider, sessionDir, now, now, model, 'connecting']
+        `INSERT INTO sessions (id, token, csrfToken, apiKey, model, provider, dir, createdAt, lastActivity, currentModel, modelHealth, owner_id, role, status, share_token, coauthors)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [sessionId, sessionToken, csrfToken, encrypt(apiKey), model, provider, sessionDir, now, now, model, 'connecting', null, 'owner', 'private', null, '[]']
       );
       await saveDb();
       if (auditLog) auditLog.log('session.create', { resource: 'session', resourceId: sessionId, details: { model, provider } });
