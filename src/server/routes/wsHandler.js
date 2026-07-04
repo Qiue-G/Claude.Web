@@ -7,6 +7,8 @@ import { runHooks } from '../runtime/hooksRunner.js';
 import { runFilters } from '../runtime/filterPipeline.js';
 import { buildFilterList } from '../runtime/filters/index.js';
 import { loadPipelines, runPipelines } from '../pipelines/index.js';
+import { YDocManager } from '../collab/ydocManager.js';
+import * as Y from 'yjs';
 
 /**
  * 将 RAG 搜索结果格式化为可读文本
@@ -71,6 +73,11 @@ let processSeqId = 0;
  * @param {number} deps.RATE_MAX_INPUT
  */
 export function createWsHandler(deps) {
+  // ===== Yjs 协作文档管理器（所有 WebSocket 连接共享同一实例） =====
+  const ydocManager = new YDocManager({
+    docsDir: deps.docsDir || './ydocs'
+  });
+
   return function handleConnection(ws, req) {
     const {
       getSession, sessions, sessionProcesses, sessionProxies, sessionClients, wsProcCount,
@@ -569,6 +576,85 @@ export function createWsHandler(deps) {
               engine.dispose();
             }
           })();
+        } else if (message.type === 'yjs_sync') {
+          // ===== Yjs 同步请求：返回完整的 Y.Doc 状态 =====
+          if (!sessionId) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Session not initialized' }));
+            return;
+          }
+          const syncSession = getSession(sessionId);
+          if (!syncSession) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Invalid session' }));
+            return;
+          }
+
+          // 注册客户端（如果尚未注册）
+          const clientId = message.clientId || ws._clientId || (ws._clientId = 'ws_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8));
+          ws._clientId = clientId;
+
+          ydocManager.addClient(sessionId, clientId, {
+            username: message.username || 'anonymous',
+            color: message.color || ''
+          });
+
+          // 设置 session 广播器（如果尚未设置）
+          const state = Y.encodeStateAsUpdate(ydocManager.getOrCreateDoc(sessionId));
+          ydocManager.registerBroadcaster(sessionId, (update) => {
+            broadcastToSession(sessionId, {
+              type: 'yjs_update',
+              update: Buffer.from(update).toString('base64')
+            });
+          });
+
+          // 发送完整状态给请求客户端
+          ws.send(JSON.stringify({
+            type: 'yjs_sync',
+            state: Buffer.from(state).toString('base64'),
+            clientId
+          }));
+
+          // 通知其他客户端有新用户加入
+          broadcastToSession(sessionId, {
+            type: 'presence',
+            clients: ydocManager.getActiveClients(sessionId)
+          });
+
+        } else if (message.type === 'yjs_update') {
+          // ===== Yjs 增量更新：apply 并广播给其他客户端 =====
+          if (!sessionId || !message.update) return;
+
+          const updateBuf = Buffer.from(message.update, 'base64');
+          ydocManager.broadcastUpdate(sessionId, new Uint8Array(updateBuf));
+
+          if (message.clientId) {
+            ydocManager.updateActivity(message.clientId);
+          }
+
+        } else if (message.type === 'cursor_update') {
+          // ===== 光标位置更新：广播给其他客户端 =====
+          if (!sessionId) return;
+
+          broadcastToSession(sessionId, {
+            type: 'cursor_update',
+            clientId: message.clientId,
+            username: message.username,
+            color: message.color,
+            position: message.position,
+            selection: message.selection
+          });
+
+          if (message.clientId) {
+            ydocManager.updateActivity(message.clientId);
+          }
+
+        } else if (message.type === 'presence') {
+          // ===== 在线状态广播 =====
+          if (!sessionId) return;
+
+          broadcastToSession(sessionId, {
+            type: 'presence',
+            clients: ydocManager.getActiveClients(sessionId)
+          });
         }
 
       } catch (error) {
@@ -595,6 +681,11 @@ export function createWsHandler(deps) {
             clearTimeout(pending._timeout);
             pendingApprovals.delete(approvalId);
           }
+        }
+
+        // 从 YDocManager 移除该客户端
+        if (ws._clientId) {
+          ydocManager.removeClient(sessionId, ws._clientId);
         }
 
         const clients = sessionClients.get(sessionId);
