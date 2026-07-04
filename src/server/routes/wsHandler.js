@@ -99,6 +99,7 @@ export function createWsHandler(deps) {
     ws.on('pong', () => { ws.isAlive = true; });
 
     ws.on('message', async (data) => {
+      let isInputMessage = false;
       try {
         const message = JSON.parse(data.toString());
 
@@ -177,6 +178,7 @@ export function createWsHandler(deps) {
           }
 
         } else if (message.type === 'input') {
+          isInputMessage = true;
           const session = getSession(sessionId);
           if (!session) {
             ws.send(JSON.stringify({ type: 'error', message: 'Invalid session' }));
@@ -574,8 +576,8 @@ export function createWsHandler(deps) {
         if (ws.readyState === ws.OPEN) {
           ws.send(JSON.stringify({ type: 'error', message: error.message || 'Internal server error' }));
         }
-        // 清理进程计数
-        if (sessionId && wsProcCount) {
+        // 仅 input 消息才需要清理进程计数
+        if (isInputMessage && sessionId && wsProcCount) {
           wsProcCount.set(sessionId, Math.max(0, (wsProcCount.get(sessionId) || 0) - 1));
         }
       }

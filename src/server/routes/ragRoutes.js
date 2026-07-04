@@ -82,6 +82,21 @@ export function createRagRouter(deps) {
     // ── 文件模式（base64） ──
     if (req.body.filename && req.body.content) {
       const filename = req.body.filename;
+
+      // 文件类型验证
+      const allowedExtensions = ['.txt', '.md', '.pdf', '.docx', '.doc', '.pptx', '.xlsx', '.csv', '.json', '.html', '.htm', '.xml', '.js', '.ts', '.py', '.java', '.cpp', '.c', '.go', '.rs', '.rb', '.php', '.css', '.scss', '.less', '.vue', '.svelte', '.jsx', '.tsx'];
+      const ext = filename.slice(filename.lastIndexOf('.')).toLowerCase();
+      if (!allowedExtensions.includes(ext)) {
+        throw new AppError(400, `不支持的文件类型: ${ext}。支持的类型: ${allowedExtensions.join(', ')}`);
+      }
+
+      // 文件大小验证（10MB 限制）
+      const MAX_FILE_SIZE = 10 * 1024 * 1024;
+      const contentLength = Buffer.byteLength(req.body.content, 'base64');
+      if (contentLength > MAX_FILE_SIZE) {
+        throw new AppError(400, `文件过大: ${(contentLength / 1024 / 1024).toFixed(2)}MB。限制: 10MB`);
+      }
+
       const tmpDir = join(process.cwd(), '.rag-uploads');
       await mkdir(tmpDir, { recursive: true });
       const tmpPath = join(tmpDir, randomUUID() + '-' + filename);

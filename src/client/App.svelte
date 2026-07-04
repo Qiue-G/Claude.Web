@@ -515,8 +515,8 @@
     window.removeEventListener('touchmove', handleTouchMove);
     window.removeEventListener('touchend', handleTouchEnd);
     window.removeEventListener('resize', checkScreenSize);
-    window.removeEventListener('online', () => {});
-    window.removeEventListener('offline', () => {});
+    window.removeEventListener('online', handleOnline);
+    window.removeEventListener('offline', handleOffline);
     window.removeEventListener('tool-approval-request', handleToolApprovalRequest);
     window.removeEventListener('tool-approval-complete', handleToolApprovalComplete);
     window.removeEventListener('parallel-start-request', handleParallelStart);

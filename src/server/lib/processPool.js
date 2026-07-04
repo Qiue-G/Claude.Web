@@ -103,7 +103,7 @@ class ProcessPool {
     for (const pid of processIds) {
       const entry = this.pool.get(pid);
       if (entry) {
-        entry.proc.kill().catch(() => {});
+        try { entry.proc.kill(); } catch (_) {}
         this.pool.delete(pid);
       }
     }
