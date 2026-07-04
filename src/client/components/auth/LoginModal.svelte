@@ -11,7 +11,7 @@
 
   let _t = $derived($t);
 
-  let { show = false } = $props();
+  let { show = false, onclose, onlogin } = $props();
 
   let isLogin = $state(true);
   let username = $state('');
@@ -21,7 +21,6 @@
   let error = $state('');
 
   // emit
-  let { onclose, onlogin } = $props();
 
   function resetForm() {
     username = '';
