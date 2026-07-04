@@ -154,7 +154,7 @@
   function checkScreenSize() {
     const w = window.innerWidth;
     isMobile = w < 640;
-    isTablet = w >= 640 && w < 1024;
+    isTablet = w >= 640 && w < 900;
   }
 
   function openDrawerChat() { drawerChatOpen = true; }
@@ -666,7 +666,7 @@
   </div>
 
   <div class="main-layout">
-    <!-- 桌面端侧边栏（≥ 1024px 内联显示） -->
+    <!-- 桌面端侧边栏（≥ 900px 内联显示） -->
     {#if !isMobile && !isTablet && $chatSidebarOpen}
       <div class="chat-sidebar-container"><ChatSidebar on:newchat={handleNewChat} on:select={handleSelectChatSession} /></div>
     {/if}
