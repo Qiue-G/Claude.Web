@@ -248,6 +248,54 @@ export class YDocManager {
     logger.info('YDoc cleaned up', { sessionId });
   }
 
+  // ===== 版本戳追踪 (T5) =====
+
+  /**
+   * 获取某个 session 的 Y.Doc 当前版本号。
+   * 每次 applyUpdate 时自动递增版本戳。
+   * @param {string} sessionId
+   * @returns {number}
+   */
+  getDocVersion(sessionId) {
+    const doc = this._docs.get(sessionId);
+    if (!doc) return 0;
+    // Yjs 的 clock 机制：通过 state vector 获取当前文档的操作数
+    const sv = Y.encodeStateVector(doc);
+    // 用 sv 长度作为粗略的变更计数
+    return sv.length;
+  }
+
+  /**
+   * 获取某个 session 的 Y.Doc 状态向量（用于冲突检测）。
+   * @param {string} sessionId
+   * @returns {Uint8Array}
+   */
+  getStateVector(sessionId) {
+    const doc = this._docs.get(sessionId);
+    if (!doc) return new Uint8Array(0);
+    return Y.encodeStateVector(doc);
+  }
+
+  /**
+   * 对比两个 session 的文档状态是否一致。
+   * @param {string} sessionIdA
+   * @param {string} sessionIdB
+   * @returns {boolean}
+   */
+  isDocInSync(sessionIdA, sessionIdB) {
+    const docA = this._docs.get(sessionIdA);
+    const docB = this._docs.get(sessionIdB);
+    if (!docA || !docB) return false;
+    const svA = Y.encodeStateVector(docA);
+    const svB = Y.encodeStateVector(docB);
+    // 比较 state vector 是否相同
+    if (svA.length !== svB.length) return false;
+    for (let i = 0; i < svA.length; i++) {
+      if (svA[i] !== svB[i]) return false;
+    }
+    return true;
+  }
+
   /**
    * 销毁整个管理器（清理定时器 + 所有文档）。
    */

@@ -2,6 +2,7 @@
   import { messages, updateMessage, deleteMessage, deleteMessagesAfter } from '$stores/chat.store.js';
   import {
     currentSession,
+    currentSessionId,
     createSession
   } from '$stores/chatHistory.store.js';
   import {
@@ -102,6 +103,7 @@
     <Messages
       messages={$messages}
       {suggestions}
+      sessionId={$currentSessionId}
       onedit={handleEditMessage}
       onretry={handleRetryMessage}
       onrate={handleRateMessage}

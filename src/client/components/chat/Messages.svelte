@@ -12,6 +12,7 @@
   export let onretry = null;
   export let onrate = null;
   export let ondelete = null;
+  export let sessionId = '';
 
   let messagesContainer;
   let userScrolledUp = false;
@@ -42,7 +43,7 @@
   {:else}
     <div class="messages-list">
       {#each messages as msg, i (msg.id)}
-        <ChatMessage role={msg.role} content={msg.content} time={msg.time} messageId={msg.id} files={msg.files} streaming={i === messages.length - 1 && msg.role === 'assistant' && $isWaiting} rating={msg.rating} {onedit} {onretry} {onrate} {ondelete} />
+        <ChatMessage role={msg.role} content={msg.content} time={msg.time} messageId={msg.id} files={msg.files} streaming={i === messages.length - 1 && msg.role === 'assistant' && $isWaiting} rating={msg.rating} {sessionId} {onedit} {onretry} {onrate} {ondelete} />
       {/each}
     </div>
   {/if}

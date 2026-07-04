@@ -101,3 +101,47 @@ export async function joinSessionByToken(token, authToken) {
     headers: { Authorization: `Bearer ${authToken}` }
   });
 }
+
+// ===== 版本历史 API (T5) =====
+
+/**
+ * 获取某条消息的版本列表
+ * @param {string} sessionId
+ * @param {string} messageId
+ * @param {string} token - JWT token
+ * @returns {Promise<{ sessionId: string, messageId: string, versions: Array }>}
+ */
+export async function getMessageVersions(sessionId, messageId, token) {
+  return api.get(`/api/session/${sessionId}/versions/${messageId}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+}
+
+/**
+ * 回滚到指定版本
+ * @param {string} sessionId
+ * @param {string} messageId
+ * @param {number} version
+ * @param {string} token - JWT token
+ * @returns {Promise<{ success: boolean, message: string, version: object }>}
+ */
+export async function restoreVersion(sessionId, messageId, version, token) {
+  return api.post(`/api/session/${sessionId}/versions/${messageId}/restore/${version}`, null, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+}
+
+/**
+ * 获取两个版本的差异
+ * @param {string} sessionId
+ * @param {string} messageId
+ * @param {number} v1
+ * @param {number} v2
+ * @param {string} token - JWT token
+ * @returns {Promise<{ sessionId: string, messageId: string, v1: number, v2: number, diff: Array }>}
+ */
+export async function getVersionDiff(sessionId, messageId, v1, v2, token) {
+  return api.get(`/api/session/${sessionId}/versions/${messageId}/diff?v1=${v1}&v2=${v2}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+}

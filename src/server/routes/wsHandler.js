@@ -78,12 +78,49 @@ export function createWsHandler(deps) {
     docsDir: deps.docsDir || './ydocs'
   });
 
+  // ===== 版本历史辅助函数 (T5) =====
+  function rowsToVersions(rows) {
+    if (!rows || rows.length === 0 || !rows[0].values) return [];
+    const cols = rows[0].columns;
+    return rows[0].values.map(row => {
+      const obj = {};
+      cols.forEach((col, i) => { obj[col] = row[i]; });
+      return {
+        id: obj.id,
+        sessionId: obj.session_id,
+        messageId: obj.message_id,
+        content: obj.content,
+        version: obj.version,
+        createdBy: obj.created_by || null,
+        createdAt: obj.created_at
+      };
+    });
+  }
+
+  function computeSimpleDiff(linesA, linesB) {
+    const result = [];
+    const maxLen = Math.max(linesA.length, linesB.length);
+    for (let i = 0; i < maxLen; i++) {
+      if (i >= linesA.length) {
+        result.push({ type: 'added', line: linesB[i], lineNumber: i + 1 });
+      } else if (i >= linesB.length) {
+        result.push({ type: 'removed', line: linesA[i], lineNumber: i + 1 });
+      } else if (linesA[i] !== linesB[i]) {
+        result.push({ type: 'removed', line: linesA[i], lineNumber: i + 1 });
+        result.push({ type: 'added', line: linesB[i], lineNumber: i + 1 });
+      } else {
+        result.push({ type: 'unchanged', line: linesA[i], lineNumber: i + 1 });
+      }
+    }
+    return result;
+  }
+
   return function handleConnection(ws, req) {
     const {
       getSession, sessions, sessionProcesses, sessionProxies, sessionClients, wsProcCount,
       broadcastToSession, spawnCli, maskSensitive, stripAnsi,
       checkRateLimit, ALLOWED_ORIGINS, RATE_WINDOW, RATE_MAX_INPUT,
-      messageStore, mcpManager, rag, agentConfig
+      messageStore, mcpManager, rag, agentConfig, db
     } = deps;
     const pluginsConfig = (agentConfig && agentConfig.plugins) || {};
     const filtersConfig = (agentConfig && agentConfig.filters) || {};
@@ -655,6 +692,133 @@ export function createWsHandler(deps) {
             type: 'presence',
             clients: ydocManager.getActiveClients(sessionId)
           });
+
+        // ===== 版本历史相关消息 (T5) =====
+        } else if (message.type === 'version_list') {
+          if (!sessionId || !message.messageId) return;
+          const session = getSession(sessionId);
+          if (!session) return;
+
+          try {
+            const rows = db.exec(
+              `SELECT id, session_id, message_id, content, version, created_by, created_at
+               FROM message_versions WHERE session_id = ? AND message_id = ?
+               ORDER BY version DESC`,
+              [sessionId, message.messageId]
+            );
+            const versions = rowsToVersions(rows);
+            ws.send(JSON.stringify({
+              type: 'version_list',
+              messageId: message.messageId,
+              versions
+            }));
+          } catch (e) {
+            ws.send(JSON.stringify({
+              type: 'error',
+              message: 'Failed to load versions: ' + e.message
+            }));
+          }
+
+        } else if (message.type === 'version_restore') {
+          if (!sessionId || !message.messageId || !message.version) return;
+          const session = getSession(sessionId);
+          if (!session) return;
+
+          try {
+            const versionNum = parseInt(message.version, 10);
+            if (isNaN(versionNum) || versionNum < 1) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Invalid version number' }));
+              return;
+            }
+
+            const rows = db.exec(
+              `SELECT id, session_id, message_id, content, version, created_by, created_at
+               FROM message_versions WHERE session_id = ? AND message_id = ? AND version = ?`,
+              [sessionId, message.messageId, versionNum]
+            );
+            const versions = rowsToVersions(rows);
+
+            if (versions.length === 0) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Version not found' }));
+              return;
+            }
+
+            const targetVersion = versions[0];
+
+            // 更新 messages 表
+            db.run(
+              'UPDATE messages SET content = ? WHERE id = ? AND sessionId = ?',
+              [targetVersion.content, message.messageId, sessionId]
+            );
+
+            ws.send(JSON.stringify({
+              type: 'version_restored',
+              messageId: message.messageId,
+              version: targetVersion
+            }));
+
+            // 通知 session 中的其他客户端
+            broadcastToSession(sessionId, {
+              type: 'message_updated',
+              messageId: message.messageId,
+              content: targetVersion.content,
+              restoredFromVersion: versionNum
+            });
+          } catch (e) {
+            ws.send(JSON.stringify({
+              type: 'error',
+              message: 'Failed to restore version: ' + e.message
+            }));
+          }
+
+        } else if (message.type === 'version_diff') {
+          if (!sessionId || !message.messageId || !message.v1 || !message.v2) return;
+          const session = getSession(sessionId);
+          if (!session) return;
+
+          try {
+            const v1 = parseInt(message.v1, 10);
+            const v2 = parseInt(message.v2, 10);
+
+            const rows = db.exec(
+              `SELECT content, version FROM message_versions
+               WHERE session_id = ? AND message_id = ? AND version IN (?, ?)
+               ORDER BY version ASC`,
+              [sessionId, message.messageId, v1, v2]
+            );
+
+            if (!rows || rows.length === 0 || !rows[0].values) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Versions not found' }));
+              return;
+            }
+
+            const results = rows[0].values.map(r => ({
+              content: r[0],
+              version: r[1]
+            }));
+
+            if (results.length < 2) {
+              ws.send(JSON.stringify({ type: 'error', message: 'One or both versions not found' }));
+              return;
+            }
+
+            const lines1 = results[0].content.split('\n');
+            const lines2 = results[1].content.split('\n');
+            const diff = computeSimpleDiff(lines1, lines2);
+
+            ws.send(JSON.stringify({
+              type: 'version_diff',
+              messageId: message.messageId,
+              v1,
+              v2,
+              diff
+            }));
+          } catch (e) {
+            ws.send(JSON.stringify({
+              type: 'error',
+              message: 'Failed to compute diff: ' + e.message
+            }));
+          }
         }
 
       } catch (error) {

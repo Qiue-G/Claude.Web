@@ -171,6 +171,21 @@ export async function initDb(workspaceDir) {
   db.run('CREATE INDEX IF NOT EXISTS idx_file_versions_session ON file_versions(sessionId, filePath, createdAt)');
   db.run('CREATE INDEX IF NOT EXISTS idx_file_versions_hash ON file_versions(hash)');
 
+  // ── Message Versions (T5) ──
+  db.run(`
+    CREATE TABLE IF NOT EXISTS message_versions (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      created_by TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (session_id) REFERENCES sessions(id)
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_message_versions_session ON message_versions(session_id, message_id, version)');
+
   // ── Users ──
   db.run(`
     CREATE TABLE IF NOT EXISTS users (

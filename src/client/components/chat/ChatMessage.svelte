@@ -1,9 +1,11 @@
 <script>
   import CodeBlock from './CodeBlock.svelte';
+  import VersionHistory from './VersionHistory.svelte';
   import Icon from '$components/common/Icon.svelte';
   import { escapeHtml, formatFileSize } from '$lib/utils.js';
   import { t } from '$lib/i18n.js';
   import { marked } from 'marked';
+  import { authToken, authUser } from '$stores/auth.store.js';
 
   $: _t = $t;
 
@@ -19,12 +21,14 @@
   export let messageId = null;
   export let rating = null;
   export let files = null;
+  export let sessionId = '';
   export let onedit = null;
   export let onretry = null;
   export let onrate = null;
   export let ondelete = null;
 
   let copied = false;
+  let versionHistoryOpen = false;
 
   $: roleLabel = role === 'user' ? 'You' : role === 'assistant' ? 'Assistant' : 'System';
   $: parsedParts = parseContent(content);
@@ -151,6 +155,12 @@
         </button>
       {/if}
       {#if role !== 'system'}
+        {#if $authToken && $authUser && messageId}
+          <button class="action-btn version-btn" onclick={() => versionHistoryOpen = true} title={_t('chat.versionHistory') || '历史版本'}>
+            <Icon name="clock" size="sm" />
+            历史版本
+          </button>
+        {/if}
         <button class="action-btn delete-btn" onclick={deleteMsg} title={_t('common.delete')}>
           <Icon name="trash" size="sm" />
         </button>
@@ -158,6 +168,14 @@
     </div>
   {/if}
 </div>
+
+<VersionHistory
+  bind:open={versionHistoryOpen}
+  {sessionId}
+  messageId={messageId}
+  on:close={() => { versionHistoryOpen = false; }}
+  on:restored={(e) => { versionHistoryOpen = false; }}
+/>
 
 <style>
   .chat-msg {

@@ -515,12 +515,16 @@ PORT, HOST, () => {
 
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024 });
 
+// ===== Version History API (T5) =====
+const { createVersionRouter } = await import('./routes/versionRoutes.js');
+app.use('/api', createVersionRouter({ db, getSession, saveDb }));
+
 // WebSocket connection handling is in routes/wsHandler.js
 wss.on('connection', createWsHandler({
   getSession, sessions, sessionProcesses, sessionProxies, sessionClients, wsProcCount,
   broadcastToSession, spawnCli, maskSensitive, stripAnsi,
   checkRateLimit, ALLOWED_ORIGINS, RATE_WINDOW, RATE_MAX_INPUT,
-  messageStore, mcpManager, rag, agentConfig, processPool
+  messageStore, mcpManager, rag, agentConfig, processPool, db
 }));
 
 async function gracefulShutdown(signal) {

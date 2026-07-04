@@ -59,6 +59,10 @@ function makeMockDeps(overrides = {}) {
     RATE_MAX_INPUT: 20,
     messageStore: null,
     mcpManager: null,
+    db: {
+      exec: () => [],
+      run: () => {}
+    },
     ...overrides
   };
 }
