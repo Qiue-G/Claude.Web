@@ -20,6 +20,33 @@
   import ModelMultiSelect from '$components/parallel/ModelMultiSelect.svelte';
   import { sendParallel } from '$lib/websocket.js';
 
+  // Auth state
+  let showLoginModal = $state(false);
+  let showUserMenu = $state(false);
+
+  function handleOpenLogin() {
+    showLoginModal = true;
+  }
+
+  function handleCloseLogin() {
+    showLoginModal = false;
+  }
+
+  function handleLoginSuccess(e) {
+    showLoginModal = false;
+    const { sessionId: sid, sessionToken: token } = e;
+    if (sid && token) {
+      connectWebSocket(sid, token);
+    }
+  }
+
+  function handleLogout() {
+    clearAuth();
+    showUserMenu = false;
+    // Disconnect WebSocket
+    disconnectWebSocket();
+  }
+
   // Lazy loaded components (code-split at build time)
   let RagPanelComponent = $state(null);
   let AuditLogComponent = $state(null);
@@ -56,7 +83,7 @@
   import { chatSidebarOpen, fileSidebarOpen, toggleChatSidebar, toggleFileSidebar, showToast } from '$stores/ui.store.js';
   import { openCommandPalette } from '$stores/keyboard.store.js';
   import { toggleTheme } from '$stores/theme.store.js';
-  import { connectWebSocket, sendInput } from '$lib/websocket.js';
+  import { connectWebSocket, sendInput, disconnectWebSocket } from '$lib/websocket.js';
   import { enabledTools } from '$stores/tools.store.js';
   import { createSession as apiCreateSession, validateSession } from '$apis/session.api.js';
   import { writeFile, readFile, getFileTree } from '$apis/files.api.js';
@@ -64,6 +91,8 @@
   import { sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
   import { get } from 'svelte/store';
   import { t } from '$lib/i18n.js';
+  import LoginModal from '$components/auth/LoginModal.svelte';
+  import { authUser, authToken, isAuthenticated, clearAuth } from '$stores/auth.store.js';
   let _t = $derived($t);
   import { readFilesForAI } from '$lib/attachments.js';
   import { initPlugins, pluginsConfig, activeThemeTokens, getEnabledTokens, applyThemeTokens } from '$stores/plugins.store.js';
@@ -747,6 +776,33 @@
     />
   {/if}
   <InstallPrompt />
+  <LoginModal show={showLoginModal} onclose={handleCloseLogin} onlogin={handleLoginSuccess} />
+  {#if $isAuthenticated}
+    <div class="user-badge" style="position: fixed; bottom: 8px; right: 8px; z-index: 999;">
+      <button class="toolbar-btn" onclick={() => showUserMenu = !showUserMenu}
+        title={$authUser?.username || 'User'}
+        style="width: 28px; height: 28px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 50%; font-size: 11px; cursor: pointer; color: var(--text-primary);">
+        {$authUser?.username?.charAt(0)?.toUpperCase() || 'U'}
+      </button>
+      {#if showUserMenu}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="user-menu" onclick={() => showUserMenu = false} onkeydown={() => {}} style="position: absolute; bottom: 36px; right: 0; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 8px; padding: 8px; min-width: 150px; box-shadow: 0 4px 16px rgba(0,0,0,0.3);">
+          <div style="padding: 4px 8px; font-size: 13px; color: var(--text-primary);">{$authUser?.username}</div>
+          <div style="padding: 4px 8px; font-size: 11px; color: var(--text-dim);">{$authUser?.role}</div>
+          <hr style="border: none; border-top: 1px solid var(--border); margin: 6px 0;">
+          <button class="link-btn" onclick={handleLogout} style="width: 100%; text-align: left; padding: 6px 8px; font-size: 13px;">注销</button>
+        </div>
+      {/if}
+    </div>
+  {:else}
+    <div class="login-badge" style="position: fixed; bottom: 8px; right: 8px; z-index: 999;">
+      <button class="toolbar-btn" onclick={handleOpenLogin}
+        title="登录 / 注册"
+        style="width: 28px; height: 28px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 50%; font-size: 11px; cursor: pointer; color: var(--text-primary);">
+        L
+      </button>
+    </div>
+  {/if}
 </div>
 
 <style>

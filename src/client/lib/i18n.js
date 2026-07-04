@@ -330,6 +330,23 @@ const translations = {
     'success_count': '成功数',
     'selected_count': '已选 {count} 个模型',
     'select_result': '采纳此结果',
+
+    // 认证
+    'auth.login': '登录',
+    'auth.register': '注册',
+    'auth.username': '用户名',
+    'auth.password': '密码',
+    'auth.confirmPassword': '确认密码',
+    'auth.usernamePlaceholder': '请输入用户名（至少3个字符）',
+    'auth.passwordPlaceholder': '请输入密码（至少6个字符）',
+    'auth.confirmPlaceholder': '再次输入密码',
+    'auth.usernameLength': '用户名至少3个字符',
+    'auth.passwordLength': '密码至少6个字符',
+    'auth.passwordMismatch': '两次密码输入不一致',
+    'auth.loginFailed': '登录失败',
+    'auth.registerFailed': '注册失败',
+    'auth.noAccount': '还没有账号？',
+    'auth.hasAccount': '已有账号？',
   },
 
   en: {
@@ -652,6 +669,22 @@ const translations = {
     'success_count': 'Success',
     'selected_count': '{count} selected',
     'select_result': 'Use this result',
+
+    'auth.login': 'Login',
+    'auth.register': 'Register',
+    'auth.username': 'Username',
+    'auth.password': 'Password',
+    'auth.confirmPassword': 'Confirm Password',
+    'auth.usernamePlaceholder': 'Enter username (>= 3 chars)',
+    'auth.passwordPlaceholder': 'Enter password (>= 6 chars)',
+    'auth.confirmPlaceholder': 'Re-enter password',
+    'auth.usernameLength': 'Username must be at least 3 characters',
+    'auth.passwordLength': 'Password must be at least 6 characters',
+    'auth.passwordMismatch': 'Passwords do not match',
+    'auth.loginFailed': 'Login failed',
+    'auth.registerFailed': 'Registration failed',
+    'auth.noAccount': 'No account yet?',
+    'auth.hasAccount': 'Already have an account?',
   }
 };
 

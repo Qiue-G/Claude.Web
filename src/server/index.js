@@ -33,6 +33,7 @@ import { createAdminRouter } from './routes/adminRoutes.js';
 import { createAuditLog } from './lib/auditLog.js';
 import { createRagSystem } from '../rag/index.js';
 import { createSwaggerRouter } from './swagger.js';
+import { createUserRouter } from './auth/userRoutes.js';
 import { AppError } from './lib/AppError.js';
 import { logger } from './lib/logger.js';
 
@@ -470,8 +471,11 @@ app.use('/api/admin', createAdminRouter({ sessions, sessionProcesses, sessionPro
 const { createTemplateRouter } = await import('./routes/templateRoutes.js');
 app.use('/api/templates', createTemplateRouter());
 
-// ===== Swagger API Docs ====
+// ===== Swagger API Docs =====
 app.use('/api', createSwaggerRouter());
+
+// ===== User Authentication API =====
+app.use('/api/auth', createUserRouter({ db, createSession }));
 
 // ===== SPA fallback: serve index.html for non-API routes =====
 app.get('*', (req, res) => {

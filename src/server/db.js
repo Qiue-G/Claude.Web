@@ -149,6 +149,25 @@ export async function initDb(workspaceDir) {
   db.run('CREATE INDEX IF NOT EXISTS idx_file_versions_session ON file_versions(sessionId, filePath, createdAt)');
   db.run('CREATE INDEX IF NOT EXISTS idx_file_versions_hash ON file_versions(hash)');
 
+  // ── Users ──
+  db.run(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT DEFAULT 'user' CHECK(role IN ('admin', 'user')),
+      created_at TEXT DEFAULT (datetime('now')),
+      last_login TEXT
+    )
+  `);
+
+  // 兼容旧数据：添加 userId 列（如果不存在）
+  try {
+    db.run('ALTER TABLE sessions ADD COLUMN userId TEXT REFERENCES users(id)');
+  } catch (_) {
+    // 列已存在，忽略
+  }
+
   console.log('[DB] schema initialized');
 
   // ── 慢查询监控 (E4) ──
