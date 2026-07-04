@@ -276,9 +276,8 @@ export function createSessionRouter(deps) {
    * 获取协作者列表
    */
   router.get('/:id/collaborators', requireAuth, asyncHandler(async (req, res) => {
-    const token = req.headers['x-session-token'];
-    const session = getSession(req.params.id, token);
-    if (!session) throw new AppError(401, 'Invalid session or token');
+    const session = getSession(req.params.id);
+    if (!session) throw new AppError(401, 'Invalid session');
 
     let coauthors = [];
     try { coauthors = JSON.parse(session.coauthors || '[]'); if (!Array.isArray(coauthors)) coauthors = []; } catch (_) {}

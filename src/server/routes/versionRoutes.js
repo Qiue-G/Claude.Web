@@ -97,9 +97,8 @@ export function createVersionRouter({ db, getSession, saveDb }) {
    */
   router.get('/session/:id/versions', (req, res) => {
     const { id } = req.params;
-    const token = req.headers['x-session-token'];
 
-    const session = getSession(id, token);
+    const session = getSession(id);
     if (!session) {
       return res.status(404).json({ error: 'Session not found', code: 'session_not_found' });
     }
@@ -124,9 +123,8 @@ export function createVersionRouter({ db, getSession, saveDb }) {
    */
   router.get('/session/:id/versions/:messageId', (req, res) => {
     const { id, messageId } = req.params;
-    const token = req.headers['x-session-token'];
 
-    const session = getSession(id, token);
+    const session = getSession(id);
     if (!session) {
       return res.status(404).json({ error: 'Session not found', code: 'session_not_found' });
     }
