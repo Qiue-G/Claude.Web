@@ -200,6 +200,8 @@
       toggleChatSidebar();
     }
   }
+  function handleOnline() { isOnline = true; }
+  function handleOffline() { isOnline = false; }
   function handleOpenConfig() { showConfigModal = true; }
   function handleOpenRag() { showRagPanel = true; }
   function handleOpenAdmin() { showAdminPanel = true; }
@@ -473,8 +475,8 @@
     window.addEventListener('touchmove', handleTouchMove, { passive: true });
     window.addEventListener('touchend', handleTouchEnd, { passive: true });
     window.addEventListener('resize', checkScreenSize);
-    window.addEventListener('online', () => { isOnline = true; });
-    window.addEventListener('offline', () => { isOnline = false; });
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
     window.addEventListener('tool-approval-request', handleToolApprovalRequest);
     window.addEventListener('tool-approval-complete', handleToolApprovalComplete);
 

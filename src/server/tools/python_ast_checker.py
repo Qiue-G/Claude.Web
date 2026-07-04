@@ -20,6 +20,8 @@ DANGEROUS_IMPORTS = {
     'platform', 'pwd', 'grp', 'spwd',
     'resource', 'select', 'selectors',
     'asyncio', 'threading', '_thread',
+    # 动态导入/反射模块（可绕过静态 import 检查）
+    'importlib', 'pkgutil',
 }
 
 # 允许的模块
@@ -50,6 +52,8 @@ DANGEROUS_FUNCTIONS = {
     'open', 'exec', 'eval', 'compile', 'input',
     '__import__', 'globals', 'locals', 'vars',
     'breakpoint', 'exit', 'quit',
+    # 反射函数（可动态访问危险属性和模块）
+    'getattr', 'setattr', 'delattr',
 }
 
 # 禁止的属性访问

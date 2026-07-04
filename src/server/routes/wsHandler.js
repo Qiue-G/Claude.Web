@@ -94,15 +94,6 @@ export function createWsHandler(deps) {
       return;
     }
 
-    // Verify session token from URL query parameter (handshake auth)
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const handshakeToken = url.searchParams.get('token');
-    if (!handshakeToken) {
-      ws.send(JSON.stringify({ type: 'error', message: 'Missing session token' }));
-      ws.close();
-      return;
-    }
-
     let sessionId = null;
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
@@ -187,7 +178,6 @@ export function createWsHandler(deps) {
           }
 
         } else if (message.type === 'input') {
-          isInputMessage = true;
           const session = getSession(sessionId);
           if (!session) {
             ws.send(JSON.stringify({ type: 'error', message: 'Invalid session' }));
@@ -404,6 +394,7 @@ export function createWsHandler(deps) {
           console.log('[INPUT] prompt length: ' + (prompt ? prompt.length : 0) + ', tools: [' + tools.join(',') + ']');
 
           wsProcCount.set(sessionId, (wsProcCount.get(sessionId) || 0) + 1);
+          isInputMessage = true;
           const proc = await spawnCli(session, prompt);
           proc._procSeq = ++processSeqId;
           sessionProcesses.set(sessionId, proc);
