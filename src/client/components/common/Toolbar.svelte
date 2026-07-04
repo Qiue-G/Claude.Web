@@ -5,6 +5,7 @@
   import ThemeToggle from '$components/common/ThemeToggle.svelte';
   import LanguageSelector from '$components/common/LanguageSelector.svelte';
   import { connectionStatus } from '$stores/session.store.js';
+  import { onlineUsers } from '$stores/collab.store.js';
   import { tokenStats } from '$stores/chat.store.js';
   import { t } from '$lib/i18n.js';
   import { registeredToolbarItems, executeCommand } from '$stores/plugins.store.js';
@@ -69,7 +70,17 @@
       </div>
     </div>
 
-    {#if $tokenStats.input > 0}
+      {#if $onlineUsers.length > 0}
+        <div class="online-users" title={$onlineUsers.map(u => u.username).join(', ')}>
+          {#each $onlineUsers as user}
+            <span class="online-user-avatar" style="background:{user.color || '#888'}" title={user.username}>
+              {(user.username || '?')[0].toUpperCase()}
+            </span>
+          {/each}
+        </div>
+      {/if}
+
+      {#if $tokenStats.input > 0}
       <div class="token-stats" title={$t('toolbar.tokenUsage')}>
         <span class="token-label">{$t('toolbar.tokens')}</span>
         <div class="token-bar">
@@ -262,5 +273,33 @@
   .token-value {
     font-family: var(--font-mono);
     min-width: 80px;
+  }
+
+  .online-users {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    background: var(--bg-input);
+    border-radius: 4px;
+  }
+
+  .online-user-avatar {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    cursor: default;
+    transition: transform 0.15s ease;
+  }
+
+  .online-user-avatar:hover {
+    transform: scale(1.2);
   }
 </style>

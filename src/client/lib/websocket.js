@@ -22,6 +22,20 @@ const RECONNECT_DELAYS = [1000, 2000, 5000, 10000, 30000, 60000, 60000, 60000, 6
 let autoReconnectEnabled = true;
 let isOffline = false;
 
+// 协作客户端就绪回调（App.svelte 用于初始化 CollabClient）
+let _onReadyCallback = null;
+let _readyCalled = false;
+
+export function onWsReady(callback) {
+  _onReadyCallback = callback;
+  // 如果 ready 消息已经到达过，立即调用
+  if (_readyCalled) callback();
+}
+
+export function getWs() {
+  return ws;
+}
+
 // ── Message Queue: buffer messages during disconnection ──
 const pendingMessages = [];
 const MAX_PENDING = 50;
@@ -257,6 +271,8 @@ function handleServerMessage(msg) {
       connectionStatus.set('connected');
       reconnectAttempts = 0;
       flushPendingMessages();
+      _readyCalled = true;
+      _onReadyCallback?.();
       if (get(isWaiting)) {
         isWaiting.set(false);
         isTyping.set(false);

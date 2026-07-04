@@ -41,10 +41,47 @@
   }
 
   function handleLogout() {
+    destroyCollab();
     clearAuth();
     showUserMenu = false;
     // Disconnect WebSocket
     disconnectWebSocket();
+  }
+
+  // ── 协作客户端管理 ──
+  let _collabInstance = null;
+
+  function initCollab() {
+    const ws = getWs();
+    const sid = $sessionId;
+    const token = $sessionToken;
+    if (!ws || !sid || ws.readyState !== WebSocket.OPEN) return;
+
+    // 销毁旧的协作实例
+    if (_collabInstance) {
+      _collabInstance.destroy();
+      _collabInstance = null;
+    }
+
+    const username = $authUser?.username || 'anonymous';
+    const client = new CollabClient(ws, sid, token, username);
+
+    client.onAwarenessChange((users) => {
+      onlineUsers.set(users);
+    });
+
+    client.connect();
+    _collabInstance = client;
+    collabClientStore.set(client);
+  }
+
+  function destroyCollab() {
+    if (_collabInstance) {
+      _collabInstance.destroy();
+      _collabInstance = null;
+      collabClientStore.set(null);
+      onlineUsers.set([]);
+    }
   }
 
   // Lazy loaded components (code-split at build time)
@@ -83,7 +120,9 @@
   import { chatSidebarOpen, fileSidebarOpen, toggleChatSidebar, toggleFileSidebar, showToast } from '$stores/ui.store.js';
   import { openCommandPalette } from '$stores/keyboard.store.js';
   import { toggleTheme } from '$stores/theme.store.js';
-  import { connectWebSocket, sendInput, disconnectWebSocket } from '$lib/websocket.js';
+  import { connectWebSocket, sendInput, disconnectWebSocket, onWsReady, getWs } from '$lib/websocket.js';
+  import { CollabClient } from '$lib/collab.js';
+  import { onlineUsers, collabClient as collabClientStore } from '$stores/collab.store.js';
   import { enabledTools } from '$stores/tools.store.js';
   import { createSession as apiCreateSession, validateSession } from '$apis/session.api.js';
   import { writeFile, readFile, getFileTree } from '$apis/files.api.js';
@@ -460,6 +499,9 @@
 
     await initChatHistory();
 
+    // 注册协作客户端就绪回调（在每次 WebSocket ready 后自动初始化）
+    onWsReady(() => initCollab());
+
     // 自动重连：验证存储的 session 凭证 → 有效则恢复连接 + 模型状态
     const sid = $sessionId;
     const token = $sessionToken;
@@ -539,6 +581,7 @@
   });
 
   onDestroy(() => {
+    destroyCollab();
     window.removeEventListener('keydown', handleGlobalKeydown);
     window.removeEventListener('mousemove', handleResizeMove);
     window.removeEventListener('mouseup', handleResizeEnd);
