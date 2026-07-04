@@ -6,6 +6,7 @@
   import LanguageSelector from '$components/common/LanguageSelector.svelte';
   import { connectionStatus } from '$stores/session.store.js';
   import { onlineUsers } from '$stores/collab.store.js';
+  import { authUser } from '$stores/auth.store.js';
   import { tokenStats } from '$stores/chat.store.js';
   import { t } from '$lib/i18n.js';
   import { registeredToolbarItems, executeCommand } from '$stores/plugins.store.js';
@@ -73,6 +74,19 @@
       {#if $onlineUsers.length > 0}
         <div class="online-users" title={$onlineUsers.map(u => u.username).join(', ')}>
           {#each $onlineUsers as user}
+            <span class="online-user-avatar" style="background:{user.color || '#888'}" title={user.username}>
+              {(user.username || '?')[0].toUpperCase()}
+            </span>
+          {/each}
+        </div>
+      {/if}
+
+      {#if $connectionStatus === 'connected'}
+        <div class="online-users" title="协作已就绪">
+          <span class="online-user-avatar online-self" style="background:var(--accent)" title="自己 — {$authUser?.username || 'anonymous'}">
+            {($authUser?.username || '?')[0].toUpperCase()}
+          </span>
+          {#each $onlineUsers.filter(u => u.username !== $authUser?.username) as user}
             <span class="online-user-avatar" style="background:{user.color || '#888'}" title={user.username}>
               {(user.username || '?')[0].toUpperCase()}
             </span>
@@ -301,5 +315,9 @@
 
   .online-user-avatar:hover {
     transform: scale(1.2);
+  }
+
+  .online-self {
+    border: 1.5px solid var(--text-primary);
   }
 </style>
