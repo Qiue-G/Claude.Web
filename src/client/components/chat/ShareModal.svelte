@@ -276,7 +276,7 @@
   }
 
   .share-modal-content {
-    background: var(--bg-modal);
+    background: var(--bg-panel);
     border: 1px solid var(--border);
     border-radius: 12px;
     width: 90%;
