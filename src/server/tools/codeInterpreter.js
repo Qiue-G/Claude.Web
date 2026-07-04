@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import os from 'os';
+import { buildSafeEnv } from '../lib/safeEnv.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PYTHON_CMD = process.platform === 'win32' ? 'python' : 'python3';
@@ -18,23 +19,7 @@ const MAX_OUTPUT = 1024 * 1024; // 1MB
 // 代码大小限制（第4层）
 const MAX_CODE_SIZE = 100 * 1024; // 100KB
 
-/**
- * 安全的环境变量（第1层：环境变量净化）
- * 只传递必要的环境变量，防止 JWT_SECRET、API Key 等泄露
- */
-function getSafeEnv() {
-  const env = {
-    PATH: process.env.PATH || '',
-    TMPDIR: os.tmpdir(),
-  };
-  // Windows 下添加 USERPROFILE，Linux 下添加 HOME
-  if (process.platform === 'win32') {
-    env.USERPROFILE = process.env.USERPROFILE || '';
-  } else {
-    env.HOME = process.env.HOME || '/tmp';
-  }
-  return env;
-}
+// 全局并发控制（第5层）
 
 /**
  * 第1层防护：AST 安全分析
@@ -113,7 +98,7 @@ async function tryDockerExecute(code) {
       '--read-only', '--tmpfs', '/tmp:size=64m',
       'python:3.12-slim',
       'python', '-c', code,
-    ], { timeout: 30000, env: getSafeEnv() });
+    ], { timeout: 30000, env: buildSafeEnv() });
 
     let stdout = '';
     let stderr = '';
@@ -154,13 +139,12 @@ function executeWithLimits(code, cwd) {
     let args;
 
     if (process.platform === 'linux') {
-      // Linux: 通过 shell 包装设置 ulimit（第7层）
-      //   -v 262144: 虚拟内存 256MB
-      //   -u 50: 用户进程数 50
-      //   -f 10240: 文件大小 10MB
-      cmd = 'sh';
-      // 使用 POSIX shell 单引号转义处理代码中的特殊字符
-      args = ['-c', `ulimit -v 262144 -u 50 -f 10240; exec ${PYTHON_CMD} -c '${code.replace(/'/g, "'\\''")}'`];
+      // Linux: 将代码写入临时文件后执行，避免 shell 注入风险
+      // 临时文件在 tmpDir(cwd) 内，由执行后的 cleanup 自动删除
+      const tmpFile = path.join(cwd, `_exec_${Date.now()}.py`);
+      fs.writeFileSync(tmpFile, code, 'utf-8');
+      cmd = '/bin/sh';
+      args = ['-c', `ulimit -v 262144 -u 50 -f 10240; exec ${PYTHON_CMD} "${tmpFile}"`];
     } else {
       // Windows: 不设置 ulimit，仅使用超时 + 临时目录隔离
       cmd = PYTHON_CMD;
@@ -170,7 +154,7 @@ function executeWithLimits(code, cwd) {
     const proc = spawn(cmd, args, {
       timeout: 15000,
       cwd,
-      env: getSafeEnv(),
+      env: buildSafeEnv(),
       // Linux detached=true 使子进程拥有独立进程组，便于清理（第3层）
       ...(process.platform === 'linux' ? { detached: true } : {}),
     });

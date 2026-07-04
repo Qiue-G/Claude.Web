@@ -44,3 +44,5 @@ export function createModelStats() {
 
   return { map: stats, recordSuccess, recordFail, getAll };
 }
+
+export const modelStats = createModelStats();

@@ -249,6 +249,8 @@ export function createWsHandler(deps) {
 
           const oldProc = sessionProcesses.get(sessionId);
           if (oldProc) oldProc.kill();
+          const oldProxy = sessionProxies.get(sessionId);
+          if (oldProxy) { oldProxy.kill(); sessionProxies.delete(sessionId); }
 
           // message.data 可能是字符串或对象 { text, files, images, tools }
           const originalPrompt = typeof message.data === 'string' ? message.data : message.data.text;
@@ -355,7 +357,8 @@ export function createWsHandler(deps) {
                 if (parsed) {
                   broadcastToSession(sessionId, { type: 'output', data: `\n[执行 MCP 工具: ${parsed.serverName}/${parsed.toolName}...]\n` });
                   const toolArgs = applyPreToolUseHook(toolId, { query: originalPrompt }, pluginsConfig);
-                  const result = await mcpManager.callTool(parsed.serverName, parsed.toolName, toolArgs);
+                  const { _instruction, ...cleanArgs } = toolArgs;
+                  const result = await mcpManager.callTool(parsed.serverName, parsed.toolName, cleanArgs);
                   if (result.content) {
                     toolResults.push({
                       type: 'tool_result',

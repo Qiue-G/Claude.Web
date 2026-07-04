@@ -11,6 +11,23 @@ import { randomUUID } from 'crypto';
 import { hashPassword, verifyPassword } from './password.js';
 import { signToken, requireAuth } from './authMiddleware.js';
 
+// 登录暴力破解防护：基于 IP 的失败计数
+const loginAttempts = new Map();
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_BLOCK_DURATION = 60000; // 60 秒
+
+/**
+ * 检查密码复杂度
+ * 要求至少包含大写字母、小写字母、数字中至少两种
+ */
+function checkPasswordComplexity(password) {
+  let categories = 0;
+  if (/[a-z]/.test(password)) categories++;
+  if (/[A-Z]/.test(password)) categories++;
+  if (/[0-9]/.test(password)) categories++;
+  return categories >= 2;
+}
+
 /**
  * @param {object} deps
  * @param {object} deps.db - SQLite database handle with .run() and .exec() methods
@@ -32,8 +49,17 @@ export function createUserRouter(deps) {
       if (!username || typeof username !== 'string' || username.trim().length < 3) {
         return res.status(400).json({ error: 'Username must be at least 3 characters', code: 'invalid_username' });
       }
-      if (!password || typeof password !== 'string' || password.length < 6) {
-        return res.status(400).json({ error: 'Password must be at least 6 characters', code: 'invalid_password' });
+      if (username.trim().length > 64) {
+        return res.status(400).json({ error: 'Username must be at most 64 characters', code: 'invalid_username' });
+      }
+      if (!password || typeof password !== 'string' || password.length < 8) {
+        return res.status(400).json({ error: 'Password must be at least 8 characters', code: 'invalid_password' });
+      }
+      if (password.length > 128) {
+        return res.status(400).json({ error: 'Password must be at most 128 characters', code: 'invalid_password' });
+      }
+      if (!checkPasswordComplexity(password)) {
+        return res.status(400).json({ error: 'Password must contain at least two of: lowercase letter, uppercase letter, digit', code: 'weak_password' });
       }
 
       const trimmedUsername = username.trim();
@@ -86,17 +112,53 @@ export function createUserRouter(deps) {
         return res.status(400).json({ error: 'Username and password required', code: 'missing_credentials' });
       }
 
+      // 输入长度限制
+      if (typeof username === 'string' && username.length > 64) {
+        return res.status(400).json({ error: 'Invalid username or password', code: 'auth_failed' });
+      }
+      if (typeof password === 'string' && password.length > 128) {
+        return res.status(400).json({ error: 'Invalid username or password', code: 'auth_failed' });
+      }
+
+      // 暴力破解防护：检查 IP 是否被临时封禁
+      const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+      const attemptKey = 'login:' + ip;
+      const now = Date.now();
+      const attemptRecord = loginAttempts.get(attemptKey);
+      if (attemptRecord) {
+        if (attemptRecord.count >= MAX_LOGIN_ATTEMPTS) {
+          if (now - attemptRecord.firstAttempt < LOGIN_BLOCK_DURATION) {
+            const retryAfter = Math.ceil((LOGIN_BLOCK_DURATION - (now - attemptRecord.firstAttempt)) / 1000);
+            return res.status(429).json({
+              error: 'Too many login attempts. Please try again later.',
+              code: 'login_blocked',
+              retryAfter
+            });
+          } else {
+            // 封禁到期，重置计数
+            loginAttempts.delete(attemptKey);
+          }
+        }
+      }
+
       // 查询用户 (sql.js exec returns [{ columns: [...], values: [[...]] }])
       const rows = db.exec('SELECT id, username, password_hash, role FROM users WHERE username = ?', [username.trim()]);
       if (!rows?.[0]?.values?.length) {
+        // 记录失败尝试
+        _recordFailedAttempt(loginAttempts, attemptKey);
         return res.status(401).json({ error: 'Invalid username or password', code: 'auth_failed' });
       }
 
       const [id, dbUsername, passwordHash, role] = rows[0].values[0];
       const valid = await verifyPassword(password, passwordHash);
       if (!valid) {
+        // 记录失败尝试
+        _recordFailedAttempt(loginAttempts, attemptKey);
         return res.status(401).json({ error: 'Invalid username or password', code: 'auth_failed' });
       }
+
+      // 登录成功，清除失败记录
+      loginAttempts.delete(attemptKey);
 
       // 更新最后登录时间
       db.run('UPDATE users SET last_login = datetime(\'now\') WHERE id = ?', [id]);
@@ -134,4 +196,17 @@ export function createUserRouter(deps) {
   });
 
   return router;
+}
+
+/**
+ * 记录登录失败尝试
+ */
+function _recordFailedAttempt(attemptsMap, key) {
+  const now = Date.now();
+  const record = attemptsMap.get(key);
+  if (record) {
+    record.count++;
+  } else {
+    attemptsMap.set(key, { count: 1, firstAttempt: now });
+  }
 }

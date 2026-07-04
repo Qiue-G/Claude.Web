@@ -149,6 +149,7 @@ test('POST /api/session/:id/share generates share link', async () => {
       headers: {
         'Content-Type': 'application/json',
         'x-session-token': 'test-token-1',
+        'x-csrf-token': 'test-csrf-1',
         Authorization: `Bearer ${aliceToken}`
       }
     });
@@ -185,6 +186,7 @@ test('DELETE /api/session/:id/share revokes share link', async () => {
       headers: {
         'Content-Type': 'application/json',
         'x-session-token': 'test-token-1',
+        'x-csrf-token': 'test-csrf-1',
         Authorization: `Bearer ${aliceToken}`
       }
     });
@@ -195,6 +197,7 @@ test('DELETE /api/session/:id/share revokes share link', async () => {
       method: 'DELETE',
       headers: {
         'x-session-token': 'test-token-1',
+        'x-csrf-token': 'test-csrf-1',
         Authorization: `Bearer ${aliceToken}`
       }
     });
@@ -217,6 +220,7 @@ test('POST /api/session/:id/collaborators adds a collaborator', async () => {
       headers: {
         'Content-Type': 'application/json',
         'x-session-token': 'test-token-1',
+        'x-csrf-token': 'test-csrf-1',
         Authorization: `Bearer ${aliceToken}`
       },
       body: JSON.stringify({ username: 'bob' })
@@ -239,6 +243,7 @@ test('POST /api/session/:id/collaborators rejects non-existent user', async () =
       headers: {
         'Content-Type': 'application/json',
         'x-session-token': 'test-token-1',
+        'x-csrf-token': 'test-csrf-1',
         Authorization: `Bearer ${aliceToken}`
       },
       body: JSON.stringify({ username: 'nonexistent' })
@@ -257,6 +262,7 @@ test('GET /api/session/:id/collaborators returns collaborator list', async () =>
       headers: {
         'Content-Type': 'application/json',
         'x-session-token': 'test-token-1',
+        'x-csrf-token': 'test-csrf-1',
         Authorization: `Bearer ${aliceToken}`
       },
       body: JSON.stringify({ username: 'bob' })
@@ -287,6 +293,7 @@ test('DELETE /api/session/:id/collaborators/:username removes a collaborator', a
       headers: {
         'Content-Type': 'application/json',
         'x-session-token': 'test-token-1',
+        'x-csrf-token': 'test-csrf-1',
         Authorization: `Bearer ${aliceToken}`
       },
       body: JSON.stringify({ username: 'bob' })
@@ -297,6 +304,7 @@ test('DELETE /api/session/:id/collaborators/:username removes a collaborator', a
       method: 'DELETE',
       headers: {
         'x-session-token': 'test-token-1',
+        'x-csrf-token': 'test-csrf-1',
         Authorization: `Bearer ${aliceToken}`
       }
     });

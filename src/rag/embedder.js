@@ -55,9 +55,7 @@ export function createEmbedder(options = {}) {
    * @returns {Promise<number[][]>}
    */
   async function embedDocuments(input) {
-    const texts = Array.isArray(input) ? input : [input];
-    const prefixed = texts.map(t => `search_document: ${t}`);
-    return _embed(prefixed);
+    return _embedWithPrefix(input, 'search_document: ');
   }
 
   /**
@@ -66,8 +64,18 @@ export function createEmbedder(options = {}) {
    * @returns {Promise<number[][]>}
    */
   async function embedQuery(input) {
+    return _embedWithPrefix(input, 'search_query: ');
+  }
+
+  /**
+   * 内部：统一带前缀的嵌入方法
+   * @param {string|string[]} input
+   * @param {string} prefix
+   * @returns {Promise<number[][]>}
+   */
+  async function _embedWithPrefix(input, prefix) {
     const texts = Array.isArray(input) ? input : [input];
-    const prefixed = texts.map(t => `search_query: ${t}`);
+    const prefixed = texts.map(t => `${prefix}${t}`);
     return _embed(prefixed);
   }
 
@@ -111,7 +119,8 @@ export function createEmbedder(options = {}) {
     // 缓存惰性清理
     pruneCache();
 
-    return results;
+    // 确保返回的向量都不为 null（防止 API 异常返回导致下游崩溃）
+    return results.map((v, i) => v || _mockEmbedding(texts[i]));
   }
 
   async function _callApi(texts) {

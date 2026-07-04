@@ -18,6 +18,7 @@
 const RRF_K = 60; // RRF 常数
 
 import { extractEntities, entityMatchSearch } from './entityExtractor.js';
+import { cosineSimilarity } from './utils.js';
 
 /**
  * 多通道混合检索（BM25 + 向量 + 可选 HyDE）
@@ -448,14 +449,4 @@ async function crossEncoderRerank(query, results, topK, { rerankConfig } = {}) {
 //   工具函数
 // ════════════════════════════════════════════
 
-function cosineSimilarity(a, b) {
-  if (!a || !b || a.length !== b.length) return 0;
-  let dot = 0, magA = 0, magB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    magA += a[i] * a[i];
-    magB += b[i] * b[i];
-  }
-  const mag = Math.sqrt(magA) * Math.sqrt(magB);
-  return mag === 0 ? 0 : dot / mag;
-}
+// 来自 utils.js: cosineSimilarity

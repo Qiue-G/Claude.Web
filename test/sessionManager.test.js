@@ -6,6 +6,10 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { createSessionManager } from '../src/server/sessionManager.js';
 
+// 设置测试加密密钥（调用 encrypt/decrypt 时需要）
+const TEST_KEY = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2';
+process.env.ENCRYPTION_KEY = TEST_KEY;
+
 /** Create an in-memory SQLite database with the schema from db.js */
 async function createTestDb() {
   const SQL = await initSqlJs();

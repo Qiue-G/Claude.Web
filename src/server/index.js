@@ -58,6 +58,20 @@ try {
   });
 } catch (e) {}
 
+// ===== 安全检查: JWT_SECRET =====
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'fc-auth-dev-secret-do-not-use-in-production') {
+  console.error('致命错误: 必须设置强 JWT_SECRET 环境变量！');
+  console.error('建议: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+  process.exit(1);
+}
+
+// ===== 安全检查: ENCRYPTION_KEY =====
+if (!process.env.ENCRYPTION_KEY) {
+  console.error('致命错误: 必须设置 ENCRYPTION_KEY 环境变量用于 API Key 加密！');
+  console.error('建议: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+  process.exit(1);
+}
+
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR || join(__dirname, '../../workspace');
@@ -341,7 +355,7 @@ async function spawnCli(session, prompt) {
   }
 }
 
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+const BASE_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
   : [
       'http://localhost:3000',
@@ -350,9 +364,9 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
 
 // Railway 部署：自动添加部署域名
 const RAILWAY_URL = process.env.RAILWAY_PUBLIC_DOMAIN || process.env.RAILWAY_STATIC_URL;
-if (RAILWAY_URL) {
-  ALLOWED_ORIGINS.push('https://' + RAILWAY_URL);
-}
+const ALLOWED_ORIGINS = RAILWAY_URL
+  ? [...BASE_ORIGINS, 'https://' + RAILWAY_URL]
+  : BASE_ORIGINS;
 
 const app = express();
 
@@ -531,18 +545,20 @@ async function gracefulShutdown(signal) {
   logger.info('Shutdown signal received', { signal });
 
   // 1. Kill proxy processes
-  for (const [id, proxy] of sessionProxies) {
-    try { proxy.kill('SIGTERM'); } catch (e) { /* already dead */ }
+  const proxyIds = [...sessionProxies.keys()];
+  for (const id of proxyIds) {
+    try { sessionProxies.get(id)?.kill('SIGTERM'); } catch (e) { /* already dead */ }
+    sessionProxies.delete(id);
     logger.info('Killed proxy', { sessionId: id });
   }
-  sessionProxies.clear();
 
   // 2. Kill CLI processes
-  for (const [id, proc] of sessionProcesses) {
-    try { proc.kill('SIGTERM'); } catch (e) { /* already dead */ }
+  const procIds = [...sessionProcesses.keys()];
+  for (const id of procIds) {
+    try { sessionProcesses.get(id)?.kill('SIGTERM'); } catch (e) { /* already dead */ }
+    sessionProcesses.delete(id);
     logger.info('Killed process', { sessionId: id });
   }
-  sessionProcesses.clear();
 
   // 2b. Destroy process pool
   await processPool.destroy();
@@ -620,7 +636,6 @@ setInterval(async () => {
       if (proc) { try { proc.kill(); } catch (e) {} sessionProcesses.delete(id); }
       const proxy = sessionProxies.get(id);
       if (proxy) { try { proxy.kill(); } catch (e) {} sessionProxies.delete(id); }
-      sessionClients.delete(id);
       wsProcCount.delete(id);
     }
   }
@@ -628,6 +643,7 @@ setInterval(async () => {
      for (const id of expiredIds) {
        // C1: Notify connected clients before deleting session
        broadcastToSession(id, { type: 'session_expired' });
+       sessionClients.delete(id);
        await deleteSession(id);
        await messageStore.deleteSessionMessages(id);
      }

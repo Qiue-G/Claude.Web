@@ -7,20 +7,19 @@ import { writable, derived } from 'svelte/store';
 /** 原始过滤器配置（从 /api/config 获取） */
 export const filtersConfig = writable({});
 
+/** 创建过滤器启用状态的 derived store */
+function createFilterEnabled(key) {
+  return derived(filtersConfig, ($cfg) => $cfg[key]?.enabled !== false);
+}
+
 /** 当前是否启用 contextInject 过滤器 */
-export const contextInjectEnabled = derived(filtersConfig, ($cfg) => {
-  return $cfg.contextInject?.enabled !== false;
-});
+export const contextInjectEnabled = createFilterEnabled('contextInject');
 
 /** 当前是否启用 profanity 过滤器 */
-export const profanityEnabled = derived(filtersConfig, ($cfg) => {
-  return $cfg.profanity?.enabled !== false;
-});
+export const profanityEnabled = createFilterEnabled('profanity');
 
 /** 当前是否启用 formatGuard 过滤器 */
-export const formatGuardEnabled = derived(filtersConfig, ($cfg) => {
-  return $cfg.formatGuard?.enabled !== false;
-});
+export const formatGuardEnabled = createFilterEnabled('formatGuard');
 
 /** 所有过滤器的元信息 */
 export const filterMeta = derived(filtersConfig, ($cfg) => {

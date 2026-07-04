@@ -68,7 +68,7 @@ export function createSessionRouter(deps) {
     if (!session) throw new AppError(401, 'Invalid session or token');
     // 解析 coauthors
     let coauthors = [];
-    try { coauthors = JSON.parse(session.coauthors || '[]'); } catch (_) {}
+    try { coauthors = JSON.parse(session.coauthors || '[]'); if (!Array.isArray(coauthors)) coauthors = []; } catch (_) {}
     res.json({
       sessionId: session.id,
       model: session.model,
@@ -105,6 +105,11 @@ export function createSessionRouter(deps) {
     const session = getSession(req.params.id, token);
     if (!session) throw new AppError(401, 'Invalid session or token');
 
+    // CSRF 校验
+    const csrfToken = req.headers['x-csrf-token'];
+    if (!csrfToken || csrfToken !== session.csrfToken)
+      throw new AppError(403, 'CSRF token missing or invalid');
+
     // 验证权限：只有 owner 可以分享
     if (session.owner_id && session.owner_id !== req.user.id) {
       throw new AppError(403, 'Only the session owner can share this session');
@@ -132,6 +137,11 @@ export function createSessionRouter(deps) {
     const token = req.headers['x-session-token'];
     const session = getSession(req.params.id, token);
     if (!session) throw new AppError(401, 'Invalid session or token');
+
+    // CSRF 校验
+    const csrfToken = req.headers['x-csrf-token'];
+    if (!csrfToken || csrfToken !== session.csrfToken)
+      throw new AppError(403, 'CSRF token missing or invalid');
 
     // 验证权限
     if (session.owner_id && session.owner_id !== req.user.id) {
@@ -165,6 +175,11 @@ export function createSessionRouter(deps) {
     const session = getSession(req.params.id, token);
     if (!session) throw new AppError(401, 'Invalid session or token');
 
+    // CSRF 校验
+    const csrfToken = req.headers['x-csrf-token'];
+    if (!csrfToken || csrfToken !== session.csrfToken)
+      throw new AppError(403, 'CSRF token missing or invalid');
+
     // 验证权限
     if (session.owner_id && session.owner_id !== req.user.id) {
       throw new AppError(403, 'Only the session owner can add collaborators');
@@ -181,7 +196,7 @@ export function createSessionRouter(deps) {
 
     // 解析当前协作者列表
     let coauthors = [];
-    try { coauthors = JSON.parse(session.coauthors || '[]'); } catch (_) {}
+    try { coauthors = JSON.parse(session.coauthors || '[]'); if (!Array.isArray(coauthors)) coauthors = []; } catch (_) {}
 
     // 检查是否已存在
     if (coauthors.some(c => c.username === inviteeUsername)) {
@@ -218,6 +233,11 @@ export function createSessionRouter(deps) {
     const session = getSession(req.params.id, token);
     if (!session) throw new AppError(401, 'Invalid session or token');
 
+    // CSRF 校验
+    const csrfToken = req.headers['x-csrf-token'];
+    if (!csrfToken || csrfToken !== session.csrfToken)
+      throw new AppError(403, 'CSRF token missing or invalid');
+
     // 验证权限
     if (session.owner_id && session.owner_id !== req.user.id) {
       throw new AppError(403, 'Only the session owner can remove collaborators');
@@ -225,7 +245,7 @@ export function createSessionRouter(deps) {
 
     const username = req.params.username;
     let coauthors = [];
-    try { coauthors = JSON.parse(session.coauthors || '[]'); } catch (_) {}
+    try { coauthors = JSON.parse(session.coauthors || '[]'); if (!Array.isArray(coauthors)) coauthors = []; } catch (_) {}
 
     const idx = coauthors.findIndex(c => c.username === username);
     if (idx === -1) {
@@ -261,7 +281,7 @@ export function createSessionRouter(deps) {
     if (!session) throw new AppError(401, 'Invalid session or token');
 
     let coauthors = [];
-    try { coauthors = JSON.parse(session.coauthors || '[]'); } catch (_) {}
+    try { coauthors = JSON.parse(session.coauthors || '[]'); if (!Array.isArray(coauthors)) coauthors = []; } catch (_) {}
 
     res.json({ collaborators: coauthors });
   }));
@@ -285,7 +305,7 @@ export function createSessionRouter(deps) {
 
     // 解析协作者列表
     let coauthors = [];
-    try { coauthors = JSON.parse(session.coauthors || '[]'); } catch (_) {}
+    try { coauthors = JSON.parse(session.coauthors || '[]'); if (!Array.isArray(coauthors)) coauthors = []; } catch (_) {}
 
     // 检查是否已经是协作者
     const isOwner = session.owner_id === req.user.id;

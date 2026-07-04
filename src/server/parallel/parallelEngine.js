@@ -148,17 +148,20 @@ class ParallelEngine {
       runConfigs.push({ modelId, config });
     }
 
-    if (runConfigs.length === 0) {
+    const configCount = runConfigs.length;
+
+    if (configCount === 0) {
       throw new Error('No valid models to run');
     }
 
-    if (globalProcCount + runConfigs.length > GLOBAL_PROCESS_LIMIT) {
+    if (globalProcCount + configCount > GLOBAL_PROCESS_LIMIT) {
       throw new Error(`Server busy. Would exceed process limit (${GLOBAL_PROCESS_LIMIT}).`);
     }
 
-    globalProcCount += runConfigs.length;
+    globalProcCount += configCount;
 
-    const promises = runConfigs.map(async ({ modelId, config }) => {
+    try {
+      const promises = runConfigs.map(async ({ modelId, config }) => {
       const run = {
         modelId,
         config,
@@ -280,6 +283,9 @@ class ParallelEngine {
     }
 
     return { results: Object.fromEntries(results), summary };
+    } finally {
+      globalProcCount = Math.max(0, globalProcCount - configCount);
+    }
   }
 
   /**
@@ -335,10 +341,8 @@ class ParallelEngine {
    */
   async dispose() {
     this.abortAll();
-    // 必须在 clear() 之前读取 size，否则 globalProcCount 永不减少
-    const count = this.activeRuns.size;
     this.activeRuns.clear();
-    globalProcCount = Math.max(0, globalProcCount - count);
+    // globalProcCount 现在由 start() 的 try/finally 管理
   }
 
   /**

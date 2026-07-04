@@ -18,21 +18,22 @@ export const ENC_PREFIX = 'enc:';
 
 /**
  * 获取加密密钥（从环境变量）
- * 返回 null 表示未配置密钥，应跳过加密
+ * 未配置密钥或密钥无效时抛出错误，确保不会静默降级为明文
  */
 function getEncryptionKey() {
   const keyHex = process.env.ENCRYPTION_KEY;
-  if (!keyHex) return null;
+  if (!keyHex) {
+    throw new Error('[CRYPTO] ENCRYPTION_KEY 未设置，无法执行加密操作');
+  }
   try {
     const key = Buffer.from(keyHex, 'hex');
     if (key.length !== 32) {
-      console.warn('[CRYPTO] ENCRYPTION_KEY 长度不正确（需要32字节/64十六进制字符），已跳过加密');
-      return null;
+      throw new Error('[CRYPTO] ENCRYPTION_KEY 长度不正确（需要32字节/64十六进制字符）');
     }
     return key;
-  } catch {
-    console.warn('[CRYPTO] ENCRYPTION_KEY 格式无效，已跳过加密');
-    return null;
+  } catch (e) {
+    if (e.message.startsWith('[CRYPTO]')) throw e;
+    throw new Error('[CRYPTO] ENCRYPTION_KEY 格式无效');
   }
 }
 
@@ -47,7 +48,8 @@ export function isEncrypted(text) {
 /**
  * 加密文本
  * @param {string} text - 明文
- * @returns {string|null} 加密后的 base64 字符串（带 enc: 前缀），失败返回原文
+ * @returns {string} 加密后的 base64 字符串（带 enc: 前缀）
+ * @throws {Error} 如果 ENCRYPTION_KEY 未设置或加密失败
  */
 export function encrypt(text) {
   if (!text || typeof text !== 'string') return text;
@@ -56,10 +58,6 @@ export function encrypt(text) {
   if (isEncrypted(text)) return text;
 
   const key = getEncryptionKey();
-  if (!key) {
-    console.warn('[CRYPTO] ENCRYPTION_KEY 未配置，API Key 将以明文存储');
-    return text;
-  }
 
   try {
     const iv = crypto.randomBytes(IV_LENGTH);
@@ -70,15 +68,16 @@ export function encrypt(text) {
     const result = Buffer.concat([iv, tag, encrypted]).toString('base64');
     return ENC_PREFIX + result;
   } catch (e) {
-    console.error('[CRYPTO] 加密失败:', e.message);
-    return text;
+    if (e.message.startsWith('[CRYPTO]')) throw e;
+    throw new Error('[CRYPTO] 加密失败: ' + e.message);
   }
 }
 
 /**
  * 解密文本
  * @param {string} encryptedText - 加密后的字符串（带 enc: 前缀）
- * @returns {string|null} 解密后的明文，失败返回原文
+ * @returns {string} 解密后的明文
+ * @throws {Error} 如果 ENCRYPTION_KEY 未设置或解密失败
  */
 export function decrypt(encryptedText) {
   if (!encryptedText || typeof encryptedText !== 'string') return encryptedText;
@@ -87,10 +86,6 @@ export function decrypt(encryptedText) {
   if (!isEncrypted(encryptedText)) return encryptedText;
 
   const key = getEncryptionKey();
-  if (!key) {
-    console.warn('[CRYPTO] ENCRYPTION_KEY 未配置，无法解密，返回密文');
-    return encryptedText;
-  }
 
   try {
     const data = Buffer.from(encryptedText.slice(ENC_PREFIX.length), 'base64');
@@ -101,7 +96,7 @@ export function decrypt(encryptedText) {
     decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
   } catch (e) {
-    console.error('[CRYPTO] 解密失败:', e.message);
-    return encryptedText;
+    if (e.message && e.message.startsWith('[CRYPTO]')) throw e;
+    throw new Error('[CRYPTO] 解密失败: ' + e.message);
   }
 }

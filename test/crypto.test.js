@@ -66,18 +66,18 @@ test('decrypt returns plaintext for non-encrypted input', () => {
   process.env.ENCRYPTION_KEY = orig;
 });
 
-test('encrypt/decrypt with missing ENCRYPTION_KEY returns plaintext', () => {
+test('encrypt/decrypt with missing ENCRYPTION_KEY throws error', () => {
   const orig = process.env.ENCRYPTION_KEY;
   delete process.env.ENCRYPTION_KEY;
 
   const apiKey = 'sk-ant-test-key';
-  const result = encrypt(apiKey);
-  assert.equal(result, apiKey, '无密钥时应返回原文');
+  assert.throws(() => encrypt(apiKey), /ENCRYPTION_KEY.*未设置/);
+  assert.throws(() => decrypt(ENC_PREFIX + 'abc'), /ENCRYPTION_KEY.*未设置/);
 
   process.env.ENCRYPTION_KEY = orig;
 });
 
-test('decrypt with wrong key returns original encrypted text', () => {
+test('decrypt with wrong key throws error', () => {
   const orig = process.env.ENCRYPTION_KEY;
   process.env.ENCRYPTION_KEY = TEST_KEY;
 
@@ -86,9 +86,7 @@ test('decrypt with wrong key returns original encrypted text', () => {
 
   // 切换密钥
   process.env.ENCRYPTION_KEY = '0000000000000000000000000000000000000000000000000000000000000000';
-  const result = decrypt(encrypted);
-  // 解密失败应返回原文（密文）
-  assert.equal(result, encrypted);
+  assert.throws(() => decrypt(encrypted), /解密失败/);
 
   process.env.ENCRYPTION_KEY = orig;
 });

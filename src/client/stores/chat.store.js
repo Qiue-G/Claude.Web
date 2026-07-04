@@ -12,6 +12,17 @@ import {
 
 export const MAX_STORED_MESSAGES = 100;
 
+/**
+ * 辅助函数：按 sessionId 更新会话，自动设置 updatedAt
+ */
+function updateSession(sessionId, updater) {
+  sessions.update(s => s.map(session =>
+    session.id === sessionId
+      ? { ...updater(session), updatedAt: Date.now() }
+      : session
+  ));
+}
+
 // messages 现在是从 currentSession 派生的派生 store
 // 避免双份存储和同步问题
 export const messages = derived(currentSession, ($session) => {
@@ -55,12 +66,7 @@ export function addMessage(role, content, meta, files) {
 export function setMessages(msgs) {
   const sessionId = get(currentSessionId);
   if (!sessionId) return;
-
-  sessions.update(s => s.map(session =>
-    session.id === sessionId
-      ? { ...session, messages: msgs || [], updatedAt: Date.now() }
-      : session
-  ));
+  updateSession(sessionId, session => ({ ...session, messages: msgs || [] }));
 }
 
 /**
@@ -70,17 +76,11 @@ export function setMessages(msgs) {
 export function prependMessages(olderMessages) {
   const sessionId = get(currentSessionId);
   if (!sessionId || !olderMessages?.length) return;
-
-  sessions.update(s => s.map(session => {
-    if (session.id !== sessionId) return session;
+  updateSession(sessionId, session => {
     const existingIds = new Set(session.messages.map(m => m.id));
     const uniqueOlder = olderMessages.filter(m => !existingIds.has(m.id));
-    return {
-      ...session,
-      messages: [...uniqueOlder, ...session.messages],
-      updatedAt: Date.now()
-    };
-  }));
+    return { ...session, messages: [...uniqueOlder, ...session.messages] };
+  });
 }
 
 /**
@@ -91,11 +91,7 @@ export function clearMessages() {
 
   const sessionId = get(currentSessionId);
   if (sessionId) {
-    sessions.update(s => s.map(session =>
-      session.id === sessionId
-        ? { ...session, messages: [], updatedAt: Date.now() }
-        : session
-    ));
+    updateSession(sessionId, session => ({ ...session, messages: [] }));
   }
 }
 
@@ -105,21 +101,15 @@ export function clearMessages() {
 export function appendToLastAssistant(text) {
   const sessionId = get(currentSessionId);
   if (!sessionId) return;
-
-  sessions.update(s => s.map(session => {
-    if (session.id !== sessionId) return session;
+  updateSession(sessionId, session => {
     const sessionMsgs = session.messages || [];
     const last = sessionMsgs[sessionMsgs.length - 1];
     if (last && last.role === 'assistant') {
       const updated = { ...last, content: last.content + text };
-      return {
-        ...session,
-        messages: [...sessionMsgs.slice(0, -1), updated],
-        updatedAt: Date.now()
-      };
+      return { ...session, messages: [...sessionMsgs.slice(0, -1), updated] };
     }
     return session;
-  }));
+  });
 }
 
 /**
@@ -128,15 +118,9 @@ export function appendToLastAssistant(text) {
 export function updateMessage(messageId, updates) {
   const sessionId = get(currentSessionId);
   if (!sessionId) return;
-
-  sessions.update(s => s.map(session => {
-    if (session.id !== sessionId) return session;
-    const sessionMsgs = session.messages || [];
-    return {
-      ...session,
-      messages: sessionMsgs.map(m => m.id === messageId ? { ...m, ...updates } : m),
-      updatedAt: Date.now()
-    };
+  updateSession(sessionId, session => ({
+    ...session,
+    messages: (session.messages || []).map(m => m.id === messageId ? { ...m, ...updates } : m),
   }));
 }
 
@@ -146,14 +130,9 @@ export function updateMessage(messageId, updates) {
 export function deleteMessage(messageId) {
   const sessionId = get(currentSessionId);
   if (!sessionId) return;
-
-  sessions.update(s => s.map(session => {
-    if (session.id !== sessionId) return session;
-    return {
-      ...session,
-      messages: (session.messages || []).filter(m => m.id !== messageId),
-      updatedAt: Date.now()
-    };
+  updateSession(sessionId, session => ({
+    ...session,
+    messages: (session.messages || []).filter(m => m.id !== messageId),
   }));
 }
 
@@ -163,16 +142,10 @@ export function deleteMessage(messageId) {
 export function deleteMessagesAfter(messageId) {
   const sessionId = get(currentSessionId);
   if (!sessionId) return;
-
-  sessions.update(s => s.map(session => {
-    if (session.id !== sessionId) return session;
+  updateSession(sessionId, session => {
     const msgs = session.messages || [];
     const idx = msgs.findIndex(m => m.id === messageId);
     if (idx === -1) return session;
-    return {
-      ...session,
-      messages: msgs.slice(0, idx + 1),
-      updatedAt: Date.now()
-    };
-  }));
+    return { ...session, messages: msgs.slice(0, idx + 1) };
+  });
 }
