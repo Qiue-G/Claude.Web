@@ -2,6 +2,7 @@ import { mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { encrypt, decrypt } from './lib/crypto.js';
 
 /**
  * Creates a session manager backed by SQLite.
@@ -22,7 +23,7 @@ export function createSessionManager({ db, saveDb, workspaceDir, auditLog }) {
       id: row.id,
       token: row.token,
       csrfToken: row.csrfToken,
-      apiKey: row.apiKey,
+      apiKey: decrypt(row.apiKey),  // 解密后存入内存，消费者无需感知
       model: row.model,
       provider: row.provider,
       dir: row.dir,
@@ -66,7 +67,7 @@ export function createSessionManager({ db, saveDb, workspaceDir, auditLog }) {
       `);
       for (const session of sessions.values()) {
         stmt.run([
-          session.id, session.token, session.csrfToken, session.apiKey,
+          session.id, session.token, session.csrfToken, encrypt(session.apiKey),  // 加密后存储
           session.model, session.provider, session.dir, session.createdAt,
           session.lastActivity, session.currentModel, session.modelHealth
         ]);
@@ -112,7 +113,7 @@ export function createSessionManager({ db, saveDb, workspaceDir, auditLog }) {
       db.run(
         `INSERT INTO sessions (id, token, csrfToken, apiKey, model, provider, dir, createdAt, lastActivity, currentModel, modelHealth)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [sessionId, sessionToken, csrfToken, apiKey, model, provider, sessionDir, now, now, model, 'connecting']
+        [sessionId, sessionToken, csrfToken, encrypt(apiKey), model, provider, sessionDir, now, now, model, 'connecting']
       );
       await saveDb();
       if (auditLog) auditLog.log('session.create', { resource: 'session', resourceId: sessionId, details: { model, provider } });
