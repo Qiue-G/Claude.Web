@@ -508,7 +508,7 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, '127.0.0.1', () => {
   const addr = server.address();
-  process.stdout.write(String(addr.port));
+  process.stdout.write(`port ${addr.port}\n`);
   const info = FALLBACK_MODEL
     ? `[proxy] v6 listening on 127.0.0.1:${addr.port} target=${BASE_URL} model=${MODEL} fallback=${FALLBACK_MODEL}`
     : `[proxy] v6 listening on 127.0.0.1:${addr.port} target=${BASE_URL} model=${MODEL} (no fallback)`;
