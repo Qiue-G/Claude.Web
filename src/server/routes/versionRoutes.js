@@ -97,8 +97,9 @@ export function createVersionRouter({ db, getSession, saveDb }) {
    */
   router.get('/session/:id/versions', (req, res) => {
     const { id } = req.params;
+    const token = req.headers['x-session-token'];
 
-    const session = getSession(id);
+    const session = getSession(id, token);
     if (!session) {
       return res.status(404).json({ error: 'Session not found', code: 'session_not_found' });
     }
@@ -123,8 +124,9 @@ export function createVersionRouter({ db, getSession, saveDb }) {
    */
   router.get('/session/:id/versions/:messageId', (req, res) => {
     const { id, messageId } = req.params;
+    const token = req.headers['x-session-token'];
 
-    const session = getSession(id);
+    const session = getSession(id, token);
     if (!session) {
       return res.status(404).json({ error: 'Session not found', code: 'session_not_found' });
     }
@@ -149,10 +151,17 @@ export function createVersionRouter({ db, getSession, saveDb }) {
    */
   router.post('/session/:id/versions/:messageId/restore/:version', (req, res) => {
     const { id, messageId, version } = req.params;
+    const token = req.headers['x-session-token'];
+    const csrfToken = req.headers['x-csrf-token'];
 
-    const session = getSession(id);
+    const session = getSession(id, token);
     if (!session) {
       return res.status(404).json({ error: 'Session not found', code: 'session_not_found' });
+    }
+
+    // CSRF 校验
+    if (!csrfToken || csrfToken !== session.csrfToken) {
+      return res.status(403).json({ error: 'Invalid CSRF token', code: 'csrf_mismatch' });
     }
 
     try {
@@ -199,6 +208,7 @@ export function createVersionRouter({ db, getSession, saveDb }) {
    */
   router.get('/session/:id/versions/:messageId/diff', (req, res) => {
     const { id, messageId } = req.params;
+    const token = req.headers['x-session-token'];
     const v1 = parseInt(req.query.v1, 10);
     const v2 = parseInt(req.query.v2, 10);
 
@@ -206,7 +216,7 @@ export function createVersionRouter({ db, getSession, saveDb }) {
       return res.status(400).json({ error: 'Invalid version numbers', code: 'invalid_version' });
     }
 
-    const session = getSession(id);
+    const session = getSession(id, token);
     if (!session) {
       return res.status(404).json({ error: 'Session not found', code: 'session_not_found' });
     }

@@ -7,7 +7,7 @@
  */
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fc-auth-dev-secret-do-not-use-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
 const TOKEN_EXPIRY = '8h';
 
 /**

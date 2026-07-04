@@ -215,7 +215,13 @@ function broadcastToSession(sessionId, message) {
 
 // --- API Key masking for terminal output ---
 function maskSensitive(text, apiKey) {
-  if (!apiKey || apiKey.length < 12) return text;
+  if (!apiKey) return text;
+  if (apiKey.length < 12) {
+    // 短 Key：屏蔽中间部分
+    const mid = Math.floor(apiKey.length / 2);
+    const masked = apiKey.substring(0, Math.max(1, mid - 2)) + '***' + apiKey.substring(mid + 2);
+    return text.split(apiKey).join(masked);
+  }
   const masked = apiKey.substring(0, 8) + '***' + apiKey.substring(apiKey.length - 4);
   return text.split(apiKey).join(masked);
 }
