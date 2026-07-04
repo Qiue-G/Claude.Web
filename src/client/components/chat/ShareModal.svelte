@@ -2,6 +2,7 @@
   import { createEventDispatcher, onMount } from 'svelte';
   import { fly, fade } from 'svelte/transition';
   import { authToken, authUser } from '$stores/auth.store.js';
+  import { sessionToken } from '$stores/session.store.js';
   import { showToast } from '$stores/ui.store.js';
   import {
     shareSession,
@@ -38,7 +39,7 @@
     if (!$authToken) return;
     loading = true;
     try {
-      const data = await getCollaborators(sessionId, $authToken);
+      const data = await getCollaborators(sessionId, $authToken, $sessionToken);
       collaborators = data.collaborators || [];
 
       // 检查是否已共享
@@ -64,12 +65,12 @@
     loading = true;
     try {
       if (isShared) {
-        await unshareSession(sessionId, $authToken);
+        await unshareSession(sessionId, $authToken, $sessionToken);
         isShared = false;
         shareUrl = '';
         showToast('已取消分享', 'success');
       } else {
-        const result = await shareSession(sessionId, $authToken);
+        const result = await shareSession(sessionId, $authToken, $sessionToken);
         isShared = true;
         shareUrl = `${window.location.origin}/join/${result.shareToken}`;
         showToast('分享链接已生成', 'success');
@@ -90,7 +91,7 @@
     }
     addingCollaborator = true;
     try {
-      const result = await addCollaborator(sessionId, username, $authToken);
+      const result = await addCollaborator(sessionId, username, $authToken, $sessionToken);
       collaborators = result.collaborators || [];
       collaboratorInput = '';
       showToast('已添加协作者', 'success');
@@ -104,7 +105,7 @@
   async function handleRemoveCollaborator(username) {
     if (!$authToken) return;
     try {
-      const result = await removeCollaborator(sessionId, username, $authToken);
+      const result = await removeCollaborator(sessionId, username, $authToken, $sessionToken);
       collaborators = result.collaborators || [];
       showToast('已移除协作者', 'success');
     } catch (e) {

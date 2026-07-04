@@ -2,6 +2,7 @@
   import { createEventDispatcher, onMount } from 'svelte';
   import { fly, fade } from 'svelte/transition';
   import { authToken, authUser } from '$stores/auth.store.js';
+  import { sessionToken } from '$stores/session.store.js';
   import { showToast } from '$stores/ui.store.js';
   import {
     getMessageVersions,
@@ -41,7 +42,7 @@
     loading = true;
     error = '';
     try {
-      const data = await getMessageVersions(sessionId, messageId, $authToken);
+      const data = await getMessageVersions(sessionId, messageId, $authToken, $sessionToken);
       versions = data.versions || [];
       if (versions.length === 0) {
         error = '暂无版本历史记录';
@@ -61,7 +62,7 @@
     }
     restoring = true;
     try {
-      await restoreVersion(sessionId, messageId, version, $authToken);
+      await restoreVersion(sessionId, messageId, version, $authToken, $sessionToken);
       showToast(`已回滚到版本 ${version}`, 'success');
       handleClose();
       dispatch('restored', { messageId, version });
@@ -79,7 +80,7 @@
     diffLoading = true;
     diffData = null;
     try {
-      const data = await getVersionDiff(sessionId, messageId, v1, v2, $authToken);
+      const data = await getVersionDiff(sessionId, messageId, v1, v2, $authToken, $sessionToken);
       diffData = data.diff || [];
       showDiff = true;
     } catch (e) {
