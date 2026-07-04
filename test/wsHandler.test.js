@@ -22,10 +22,11 @@ function withWsServer(handler) {
 }
 
 /** Helper: connect a WS client, return ws after open */
-function connectClient(url, origin) {
+function connectClient(url, origin, token) {
   return new Promise((resolve, reject) => {
     const opts = origin ? { origin } : { origin: 'http://localhost:5173' };
-    const ws = new WebSocket(url, opts);
+    const wsUrl = token ? `${url}?token=${encodeURIComponent(token)}` : url;
+    const ws = new WebSocket(wsUrl, opts);
     ws.on('open', () => resolve(ws));
     ws.on('error', reject);
     setTimeout(() => reject(new Error('Connection timeout')), 3000);
@@ -84,7 +85,7 @@ test('wsHandler rejects connection with invalid origin', async () => {
   const { url, close } = await withWsServer(handler);
 
   try {
-    const ws = await connectClient(url, 'http://evil.com');
+    const ws = await connectClient(url, 'http://evil.com', 'test-token');
     // Server should close the connection after sending error
     const closeCode = await new Promise((resolve) => {
       ws.on('close', (code) => resolve(code));
@@ -106,7 +107,7 @@ test('wsHandler rejects init with invalid session', async () => {
   const { url, close } = await withWsServer(handler);
 
   try {
-    const ws = await connectClient(url);
+    const ws = await connectClient(url, 'http://localhost:5173', 'valid-token');
     ws.send(JSON.stringify({ type: 'init', sessionId: 'bad', token: 'bad' }));
 
     // Should receive error and close
@@ -135,7 +136,7 @@ test('wsHandler init with valid session returns ready', async () => {
   const { url, close } = await withWsServer(handler);
 
   try {
-    const ws = await connectClient(url);
+    const ws = await connectClient(url, 'http://localhost:5173', 'valid-token');
     ws.send(JSON.stringify({ type: 'init', sessionId: 'valid-session', token: 'valid-token' }));
 
     const msg = await new Promise((resolve) => ws.once('message', (d) => resolve(JSON.parse(d.toString()))));
@@ -177,7 +178,7 @@ test('wsHandler init with messageStore returns history', async () => {
   const { url, close } = await withWsServer(handler);
 
   try {
-    const ws = await connectClient(url);
+    const ws = await connectClient(url, 'http://localhost:5173', 'valid-token');
     ws.send(JSON.stringify({ type: 'init', sessionId: 'history-session', token: 'valid-token' }));
 
     // Collect all messages (both ready and history)
@@ -224,7 +225,7 @@ test('wsHandler handles load_more pagination', async () => {
   const { url, close } = await withWsServer(handler);
 
   try {
-    const ws = await connectClient(url);
+    const ws = await connectClient(url, 'http://localhost:5173', 'valid-token');
     ws.send(JSON.stringify({ type: 'init', sessionId: 'page-session', token: 'valid-token' }));
     // Wait for history
     await new Promise((resolve) => {
@@ -261,7 +262,7 @@ test('wsHandler validates token on input', async () => {
   const { url, close } = await withWsServer(handler);
 
   try {
-    const ws = await connectClient(url);
+    const ws = await connectClient(url, 'http://localhost:5173', 'valid-token');
     ws.send(JSON.stringify({ type: 'init', sessionId: 'token-session', token: 'valid-token' }));
     await new Promise((resolve) => ws.once('message', (d) => resolve()));
 
@@ -299,7 +300,7 @@ test('wsHandler rate limits excessive input', async () => {
   const { url, close } = await withWsServer(handler);
 
   try {
-    const ws = await connectClient(url);
+    const ws = await connectClient(url, 'http://localhost:5173', 'valid-token');
     ws.send(JSON.stringify({ type: 'init', sessionId: 'rate-session', token: 'valid-token' }));
     await new Promise((resolve) => ws.once('message', (d) => resolve()));
 
@@ -344,7 +345,7 @@ test('wsHandler uses the active session id for automatic RAG search collection',
   const { url, close } = await withWsServer(handler);
 
   try {
-    const ws = await connectClient(url);
+    const ws = await connectClient(url, 'http://localhost:5173', 'valid-token');
     ws.send(JSON.stringify({ type: 'init', sessionId: 'rag-session', token: 'valid-token' }));
     await new Promise((resolve) => ws.once('message', () => resolve()));
 

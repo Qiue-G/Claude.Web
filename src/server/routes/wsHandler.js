@@ -94,6 +94,15 @@ export function createWsHandler(deps) {
       return;
     }
 
+    // Verify session token from URL query parameter (handshake auth)
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const handshakeToken = url.searchParams.get('token');
+    if (!handshakeToken) {
+      ws.send(JSON.stringify({ type: 'error', message: 'Missing session token' }));
+      ws.close();
+      return;
+    }
+
     let sessionId = null;
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });

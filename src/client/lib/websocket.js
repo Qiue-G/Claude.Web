@@ -114,7 +114,7 @@ export function connectWebSocket(sid, token, autoReconnect = true) {
   connectionStatus.set('connecting');
 
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const url = `${protocol}//${location.host}/ws`;
+  const url = `${protocol}//${location.host}/ws?token=${encodeURIComponent(token)}`;
 
   ws = new WebSocket(url);
 

@@ -18,27 +18,13 @@ import { spawn } from 'child_process';
 import { join } from 'path';
 import { logger } from '../lib/logger.js';
 import { modelStats } from '../lib/modelStats.js';
+import { buildSafeEnv } from '../lib/safeEnv.js';
 
 const FREE_CODE_DIR = process.env.FREE_CODE_DIR || process.cwd();
 const GLOBAL_PROCESS_LIMIT = parseInt(process.env.MAX_GLOBAL_PROCESSES || '16', 10);
 const MODEL_TIMEOUT_MS = parseInt(process.env.MODEL_TIMEOUT_MS || '300000', 10); // 5 min
 
 let globalProcCount = 0;
-
-/**
- * 构建安全的子进程环境变量
- */
-function buildSafeEnv(extra = {}) {
-  const safe = ['PATH', 'HOME', 'TMP', 'TEMP', 'NODE_PATH', 'APPDATA'];
-  const env = {};
-  for (const key of safe) {
-    if (process.env[key]) env[key] = process.env[key];
-  }
-  for (const [k, v] of Object.entries(extra)) {
-    env[k] = String(v);
-  }
-  return env;
-}
 
 /**
  * 启动 or_proxy.mjs 进程

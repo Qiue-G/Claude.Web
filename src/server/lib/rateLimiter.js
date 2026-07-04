@@ -58,5 +58,24 @@ export function createRateLimiter(windowMs = 60000) {
     return entries;
   }
 
-  return { check, remaining, snapshot };
+  /**
+   * Remove expired entries to prevent unbounded memory growth.
+   */
+  function cleanup() {
+    const now = Date.now();
+    for (const [key, entry] of limits) {
+      if (now - entry.windowStart > windowMs) {
+        limits.delete(key);
+      }
+    }
+  }
+
+  // Auto-cleanup every 5 minutes
+  const cleanupInterval = setInterval(cleanup, 5 * 60 * 1000);
+  // Allow the process to exit even if the timer is still running
+  if (typeof cleanupInterval.unref === 'function') {
+    cleanupInterval.unref();
+  }
+
+  return { check, remaining, snapshot, cleanup };
 }

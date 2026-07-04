@@ -21,6 +21,7 @@ import { createMessageStore } from './messageStore.js';
 import { initDb } from './db.js';
 import { createMcpManager } from './mcp/index.js';
 import { createRateLimiter } from './lib/rateLimiter.js';
+import { buildSafeEnv } from './lib/safeEnv.js';
 import { createModelStats } from './lib/modelStats.js';
 import { createSessionRouter } from './routes/sessionRoutes.js';
 import { createModelRouter } from './routes/modelRoutes.js';
@@ -176,16 +177,6 @@ function stripAnsi(str) {
   return str;
 }
 
-// 白名单方式构建子进程环境变量，避免泄露全部 process.env
-function buildSafeEnv(extraVars = {}) {
-  const SAFE_KEYS = ['PATH', 'HOME', 'TMP', 'TEMP', 'NODE_PATH', 'APPDATA', 'LOCALAPPDATA', 'USERPROFILE'];
-  const safeEnv = {};
-  for (const key of SAFE_KEYS) {
-    if (process.env[key]) safeEnv[key] = process.env[key];
-  }
-  return { ...safeEnv, ...extraVars };
-}
-
 // Push model health updates to connected WebSocket clients
 function notifyModelUpdate(session) {
   broadcastToSession(session.id, {
@@ -241,7 +232,7 @@ async function startProxy(session) {
     const t = setTimeout(() => reject(new Error('Proxy startup timeout')), 10000);
     proxy.stdout.on('data', (chunk) => {
       proxyOutput += chunk.toString();
-      const portMatch = proxyOutput.match(/(\d{4,5})/);
+      const portMatch = proxyOutput.match(/(?:port|listening)[^\d]*(\d{4,5})/i);
       if (portMatch) {
         clearTimeout(t);
         resolve(parseInt(portMatch[1], 10));

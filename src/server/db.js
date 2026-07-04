@@ -157,7 +157,7 @@ export async function initDb(workspaceDir) {
   // ── Throttled save: debounce disk writes to avoid excessive I/O ──
   let saveTimer = null;
   let pendingSave = false;
-  const SAVE_DEBOUNCE_MS = 2000;
+  const SAVE_DEBOUNCE_MS = 5000;
 
   /** Persist the database to disk (throttled). */
   async function saveDb() {
