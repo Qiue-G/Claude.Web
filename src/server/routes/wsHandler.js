@@ -305,12 +305,13 @@ export function createWsHandler(deps) {
           }
           const bashSession = getSession(sessionId);
           const bashCwd = bashSession ? bashSession.dir : process.cwd();
+          const preExecSnapshot = bashSession ? await takeFileSnapshot(bashSession.dir) : new Map();
           broadcastToSession(sessionId, { type: 'output', data: `\n[执行命令] $ ${command}\n` });
           exec(command, {
             cwd: bashCwd,
             timeout: 30000,
             maxBuffer: 1024 * 1024
-          }, (err, stdout, stderr) => {
+          }, async (err, stdout, stderr) => {
             if (stdout) {
               broadcastToSession(sessionId, { type: 'output', data: stdout + '\n' });
             }
@@ -321,6 +322,17 @@ export function createWsHandler(deps) {
               broadcastToSession(sessionId, { type: 'output', data: `\n[命令退出码: ${err.code || 1}]\n` });
             } else {
               broadcastToSession(sessionId, { type: 'output', data: `\n[命令执行完毕]\n` });
+            }
+            // Detect file changes after command execution
+            if (bashSession) {
+              try {
+                const changedFiles = await detectChangedFiles(bashSession, preExecSnapshot, db);
+                if (changedFiles.length > 0) {
+                  broadcastToSession(sessionId, { type: 'file_diff', diffs: changedFiles });
+                }
+              } catch (e) {
+                console.error('[FILE DIFF] Error detecting changes:', e.message);
+              }
             }
           });
           return;
