@@ -18,8 +18,8 @@ import { warning } from '$stores/toast.store.js';
 let ws = null;
 let reconnectAttempts = 0;
 let reconnectTimer = null;
-const MAX_RECONNECT_ATTEMPTS = 10;
-const RECONNECT_DELAYS = [1000, 2000, 5000, 10000, 30000, 60000, 60000, 60000, 60000, 60000];
+let reconnectResetTimer = null;
+const MAX_RECONNECT_DELAY = 60000;
 let autoReconnectEnabled = true;
 let isOffline = false;
 
@@ -157,20 +157,25 @@ export function connectWebSocket(sid, token, autoReconnect = true) {
     isTyping.set(false);
     stopHeartbeat();
 
-    // Don't reconnect if offline or max attempts reached
-    if (isOffline || !autoReconnectEnabled || reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) return;
+    // WebSocket 断开后持续重连（无限指数退避，最长 60s）
+    if (isOffline || !autoReconnectEnabled) return;
 
     const currentSid = get(sessionId);
     const currentToken = get(sessionToken);
     if (!currentSid || !currentToken) return;
 
-    const delay = RECONNECT_DELAYS[reconnectAttempts] || RECONNECT_DELAYS[RECONNECT_DELAYS.length - 1];
+    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
     reconnectAttempts++;
     connectionStatus.set('reconnecting');
-    addMessage('system', get(t)('status.reconnectingMsg', { seconds: delay / 1000, attempt: reconnectAttempts, max: MAX_RECONNECT_ATTEMPTS }));
     reconnectTimer = setTimeout(() => {
       connectWebSocket(currentSid, currentToken, autoReconnectEnabled);
     }, delay);
+
+    // 每 5 分钟重置一次重连指数退避，避免延迟过长
+    if (reconnectResetTimer) clearTimeout(reconnectResetTimer);
+    reconnectResetTimer = setTimeout(() => {
+      reconnectAttempts = Math.max(0, reconnectAttempts - 2);
+    }, 300000);
   };
 
   ws.onerror = () => {
@@ -252,8 +257,12 @@ export function disconnectWebSocket() {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
+  if (reconnectResetTimer) {
+    clearTimeout(reconnectResetTimer);
+    reconnectResetTimer = null;
+  }
   stopHeartbeat();
-  reconnectAttempts = MAX_RECONNECT_ATTEMPTS; // Prevent reconnect
+  autoReconnectEnabled = false; // 阻止自动重连
 
   if (ws) {
     ws.onclose = null;
