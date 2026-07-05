@@ -190,6 +190,7 @@ const translations = {
 
     // 代码
     'code.lines': '{n} 行',
+    'code.run': '允许执行',
 
     // 文件上传
     'files.dropToUpload': '松开以上传文件',
@@ -534,6 +535,7 @@ const translations = {
 
     // Code
     'code.lines': '{n} lines',
+    'code.run': 'Allow Execute',
 
     // File upload
     'files.dropToUpload': 'Release to upload files',

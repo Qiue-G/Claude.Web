@@ -413,3 +413,16 @@ export function sendParallel(prompt, modelIds) {
     }));
   }
 }
+
+/**
+ * 发送 Bash 命令执行请求（来自 AI 代码块的允许执行按钮）
+ * @param {string} command - 要执行的 shell 命令
+ */
+export function sendBashCommand(command) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      type: 'run_bash_command',
+      command
+    }));
+  }
+}

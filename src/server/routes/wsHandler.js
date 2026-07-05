@@ -1,4 +1,5 @@
 import { extractPythonBlocks, executePython } from '../tools/codeInterpreter.js';
+import { exec } from 'child_process';
 import { searchWeb } from '../tools/webSearch.js';
 import { analyzeFilesFromPromptContext, stripFileBlocksFromPrompt } from '../tools/fileAnalysis.js';
 import { buildPrompt } from '../runtime/promptBuilder.js';
@@ -164,6 +165,34 @@ export function createWsHandler(deps) {
         // ===== 心跳 ping/pong =====
         if (message.type === 'ping') {
           ws.send(JSON.stringify({ type: 'pong' }));
+          return;
+        }
+
+        // ===== 执行 Bash 命令（来自 AI 代码块的允许执行按钮） =====
+        if (message.type === 'run_bash_command') {
+          const command = message.command;
+          if (!command || typeof command !== 'string') {
+            ws.send(JSON.stringify({ type: 'error', message: 'Invalid command' }));
+            return;
+          }
+          broadcastToSession(sessionId, { type: 'output', data: `\n[执行命令] $ ${command}\n` });
+          exec(command, {
+            cwd: process.cwd(),
+            timeout: 30000,
+            maxBuffer: 1024 * 1024
+          }, (err, stdout, stderr) => {
+            if (stdout) {
+              broadcastToSession(sessionId, { type: 'output', data: stdout + '\n' });
+            }
+            if (stderr) {
+              broadcastToSession(sessionId, { type: 'output', data: stderr + '\n' });
+            }
+            if (err) {
+              broadcastToSession(sessionId, { type: 'output', data: `\n[命令退出码: ${err.code || 1}]\n` });
+            } else {
+              broadcastToSession(sessionId, { type: 'output', data: `\n[命令执行完毕]\n` });
+            }
+          });
           return;
         }
 

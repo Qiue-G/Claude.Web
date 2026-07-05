@@ -3,6 +3,7 @@
   import hljs from 'highlight.js/lib/core';
   import { t } from '$lib/i18n.js';
   import { escapeHtml } from '$lib/utils.js';
+  import { sendBashCommand } from '$lib/websocket.js';
   
   // 注册常用语言
   import javascript from 'highlight.js/lib/languages/javascript';
@@ -100,15 +101,33 @@
 
   let displayLang = '';
   $: displayLang = langMap[language] || language || 'code';
+
+  // Bash 命令执行
+  let executing = false;
+  const isExecutable = ['bash', 'sh', 'shell'].includes(language);
+
+  async function executeCommand() {
+    if (executing) return;
+    executing = true;
+    sendBashCommand(code);
+  }
 </script>
 
 <div class="code-block">
   <div class="code-block-hdr">
     <span class="code-lang">{displayLang}{#if lineCount > 0}<span class="code-lines">{$t('code.lines', { n: lineCount })}</span>{/if}</span>
-    <button class="copy-btn" class:copied on:click={copyCode}>
-      <Icon name="copy" size="sm" />
-      {copied ? $t('common.copied') : $t('common.copy')}
-    </button>
+    <div class="hdr-actions">
+      {#if isExecutable}
+        <button class="run-btn" class:running={executing} on:click={executeCommand} disabled={executing}>
+          <Icon name="play" size="sm" />
+          {executing ? $t('common.running') : $t('code.run')}
+        </button>
+      {/if}
+      <button class="copy-btn" class:copied on:click={copyCode}>
+        <Icon name="copy" size="sm" />
+        {copied ? $t('common.copied') : $t('common.copy')}
+      </button>
+    </div>
   </div>
   <pre><code>{@html highlightedCode}</code></pre>
 </div>
@@ -134,7 +153,13 @@
     font-family: var(--font-mono);
   }
 
-  .copy-btn {
+  .hdr-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .copy-btn, .run-btn {
     display: flex;
     align-items: center;
     gap: 4px;
@@ -150,6 +175,10 @@
 
   .copy-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
   .copy-btn.copied { color: var(--green); }
+
+  .run-btn:hover { background: var(--bg-hover); color: var(--green); }
+  .run-btn.running { color: var(--amber); cursor: not-allowed; }
+  .run-btn:disabled { opacity: 0.6; }
 
   .code-lang { display: flex; align-items: center; gap: 8px; }
   .code-lines { color: var(--text-muted); font-size: 10px; }
