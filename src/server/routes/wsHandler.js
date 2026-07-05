@@ -42,6 +42,77 @@ function formatRagResults(results, query) {
   return parts.join('\n\n');
 }
 
+/**
+ * Extract write_file fenced blocks from AI output.
+ * Format:
+ * ```write_file
+ * path: relative/file/path
+ * language: txt
+ *
+ * file content here
+ * ```
+ */
+function extractWriteFileBlocks(text) {
+  const blocks = [];
+  const regex = /```write_file\n?([\s\S]*?)```/g;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const block = match[1].trim();
+    const lines = block.split('\n');
+    // Find path: line
+    const pathIdx = lines.findIndex(l => l.startsWith('path:'));
+    if (pathIdx === -1) continue;
+    const filePath = lines[pathIdx].slice(5).trim();
+    // Content is everything after the metadata lines (path:, language:, etc.)
+    const contentLines = lines.slice(pathIdx + 1).filter((l, i, arr) => {
+      // Skip blank lines only at the beginning of content
+      if (i === 0 && l.trim() === '') return false;
+      return true;
+    });
+    // Re-filter: skip leading blank lines
+    let start = 0;
+    while (start < contentLines.length && contentLines[start].trim() === '') start++;
+    const content = contentLines.slice(start).join('\n');
+    blocks.push({ path: filePath, content });
+  }
+  return blocks;
+}
+
+/**
+ * Extract edit_file fenced blocks from AI output.
+ * Format:
+ * ```edit_file
+ * path: relative/file/path
+ * <<<<<<< SEARCH
+ * old content
+ * =======
+ * new content
+ * >>>>>>>
+ * ```
+ */
+function extractEditFileBlocks(text) {
+  const blocks = [];
+  const regex = /```edit_file\n?([\s\S]*?)```/g;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const block = match[1].trim();
+    const lines = block.split('\n');
+    const pathIdx = lines.findIndex(l => l.startsWith('path:'));
+    if (pathIdx === -1) continue;
+    const filePath = lines[pathIdx].slice(5).trim();
+    // Find SEARCH/REPLACE markers
+    const searchStart = lines.findIndex(l => l.includes('<<<<<<< SEARCH') || l.includes('<<<<<<<'));
+    const divider = lines.findIndex(l => l.startsWith('======='));
+    const replaceEnd = lines.findIndex(l => l.startsWith('>>>>>>>'));
+    if (searchStart === -1 || divider === -1 || replaceEnd === -1) continue;
+    const searchStr = lines.slice(searchStart + 1, divider).join('\n').trim();
+    const replaceStr = lines.slice(divider + 1, replaceEnd).join('\n').trim();
+    if (!searchStr) continue;
+    blocks.push({ path: filePath, searchStr, replaceStr });
+  }
+  return blocks;
+}
+
 export function applyPreToolUseHook(toolName, args, pluginsConfig = {}) {
   const hooksCtx = runHooks('preToolUse', { toolName, arguments: args }, pluginsConfig);
   return hooksCtx.arguments || args;
@@ -648,6 +719,8 @@ export function createWsHandler(deps) {
           // ===== 代码解释器：缓冲完整输出，关闭时检测 Python 代码块 =====
           let codeInterpreterBuffer = '';
           const hasCodeInterpreter = tools.includes('code_interpreter');
+          const hasWriteFile = tools.includes('write_file');
+          const hasEditFile = tools.includes('edit_file');
           // 累积 AI 输出，关闭时保存完整消息
           let assistantBuffer = '';
 
@@ -702,6 +775,52 @@ export function createWsHandler(deps) {
                   if (result.stderr) output += `\n错误:\n${result.stderr}`;
                   if (result.exitCode !== 0) output += `\n退出码: ${result.exitCode}`;
                   broadcastToSession(sessionId, { type: 'output', data: output + '\n' });
+                }
+              }
+            }
+
+            // ===== Write File Tool：提取 write_file 代码块并直接写入 =====
+            if ((hasWriteFile || hasEditFile) && assistantBuffer.trim()) {
+              const writeBlocks = extractWriteFileBlocks(assistantBuffer);
+              const editBlocks = extractEditFileBlocks(assistantBuffer);
+
+              for (const block of writeBlocks) {
+                const fullPath = path.resolve(session.dir, block.path);
+                // 安全检查：必须在工作目录内
+                if (!fullPath.startsWith(path.resolve(session.dir))) {
+                  broadcastToSession(sessionId, { type: 'output', data: `\n[Write File 拒绝] 路径 ${block.path} 不在允许的工作目录内\n` });
+                  continue;
+                }
+                try {
+                  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+                  await fs.writeFile(fullPath, block.content, 'utf-8');
+                  broadcastToSession(sessionId, { type: 'output', data: `\n[文件已写入] ${block.path} (${block.content.length} 字符)\n` });
+                } catch (err) {
+                  broadcastToSession(sessionId, { type: 'output', data: `\n[文件写入失败] ${block.path}: ${err.message}\n` });
+                }
+              }
+
+              for (const block of editBlocks) {
+                const fullPath = path.resolve(session.dir, block.path);
+                if (!fullPath.startsWith(path.resolve(session.dir))) {
+                  broadcastToSession(sessionId, { type: 'output', data: `\n[Edit File 拒绝] 路径 ${block.path} 不在允许的工作目录内\n` });
+                  continue;
+                }
+                try {
+                  const currentContent = await fs.readFile(fullPath, 'utf-8');
+                  if (!currentContent.includes(block.searchStr)) {
+                    broadcastToSession(sessionId, { type: 'output', data: `\n[编辑失败] ${block.path}: 未找到匹配的原文\n` });
+                    continue;
+                  }
+                  const newContent = currentContent.replace(block.searchStr, block.replaceStr);
+                  if (newContent === currentContent) {
+                    broadcastToSession(sessionId, { type: 'output', data: `\n[编辑失败] ${block.path}: 替换后内容无变化\n` });
+                    continue;
+                  }
+                  await fs.writeFile(fullPath, newContent, 'utf-8');
+                  broadcastToSession(sessionId, { type: 'output', data: `\n[文件已编辑] ${block.path}\n` });
+                } catch (err) {
+                  broadcastToSession(sessionId, { type: 'output', data: `\n[文件编辑失败] ${block.path}: ${err.message}\n` });
                 }
               }
             }

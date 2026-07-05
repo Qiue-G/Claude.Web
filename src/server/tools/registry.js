@@ -40,6 +40,22 @@ const TOOL_DEFINITIONS = [
     instruction: 'You can search the knowledge base to find relevant documents and information. Use this when the user asks about previously uploaded documents, project files, or stored knowledge. The search results include the most relevant text chunks with similarity scores.',
     configured: (env = process.env) => Boolean(env.RAG_ENABLED) || Boolean(env.OPENAI_API_KEY),
     unavailableReason: 'RAG system not initialized'
+  },
+  {
+    id: 'write_file',
+    label: 'Write File',
+    description: '直接写入文件（绕过沙箱限制）',
+    icon: 'file-plus',
+    instruction: 'You can write files directly to disk using Node.js fs.writeFile, bypassing shell sandbox restrictions. Use this instead of bash echo/redirect when creating or overwriting files. Output in the following format:\n\n```write_file\npath: relative/file/path\nlanguage: file_extension\n\nThe file content goes here...\n```',
+    configured: () => true
+  },
+  {
+    id: 'edit_file',
+    label: 'Edit File',
+    description: '编辑已存在文件的内容',
+    icon: 'file-edit',
+    instruction: 'You can edit existing files using search-and-replace. Use this when the user asks to modify a file. Output in the following format:\n\n```edit_file\npath: relative/file/path\n<<<<<<< SEARCH\nold content to replace\n=======\nnew content to replace with\n>>>>>>>\n```',
+    configured: () => true
   }
 ];
 
