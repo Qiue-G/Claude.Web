@@ -131,7 +131,9 @@ export function createWsHandler(deps) {
     try {
       const entries = await fs.readdir(dirPath, { withFileTypes: true });
       for (const entry of entries) {
-        if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+        if (entry.name === 'node_modules') continue;
+        if (entry.isDirectory() && entry.name.startsWith('.')) continue;
+        if (entry.name === '.env') continue;
         const fullPath = path.join(dirPath, entry.name);
         if (entry.isDirectory()) {
           const subSnapshot = await takeFileSnapshot(fullPath);
@@ -214,6 +216,32 @@ export function createWsHandler(deps) {
         } catch (e) {
           console.error('[FILE DIFF] Error creating version:', e.message);
         }
+      }
+    }
+
+    // Also detect newly created files
+    for (const [filePath, curData] of currentSnapshot) {
+      if (preExecSnapshot.has(filePath)) continue;
+
+      try {
+        const { randomUUID, createHash } = await import('crypto');
+        const newHash = createHash('sha256').update(curData.content).digest('hex');
+        const newId = randomUUID();
+        db.run(
+          `INSERT INTO file_versions (id, sessionId, filePath, content, hash, size, createdAt, action) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [newId, session.id, filePath, curData.content, newHash, Buffer.byteLength(curData.content, 'utf-8'), Date.now(), 'post-exec']
+        );
+
+        const added = curData.content.split('\n').filter(l => l.trim()).length;
+        results.push({
+          filePath,
+          changes: [{ count: 1, added: true, value: curData.content }],
+          fromVersion: null,
+          toVersion: newId,
+          summary: `+${added} lines (new file) in ${filePath}`
+        });
+      } catch (e) {
+        console.error('[FILE DIFF] Error creating version for new file:', e.message);
       }
     }
 
