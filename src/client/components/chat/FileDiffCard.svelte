@@ -75,8 +75,8 @@
     <button class="btn btn-outline" onclick={handleOpen}>
       在编辑器中打开
     </button>
-    <button class="btn btn-outline btn-danger" onclick={handleRevert} disabled={reverting || reverted}>
-      {reverted ? '已回滚' : reverting ? '回滚中...' : '回滚此更改'}
+    <button class="btn btn-outline btn-danger" onclick={handleRevert} disabled={reverting || reverted || !diff.fromVersion}>
+      {!diff.fromVersion ? '新文件无法回滚' : reverted ? '已回滚' : reverting ? '回滚中...' : '回滚此更改'}
     </button>
     {#if revertError}
       <span class="error-msg">{revertError}</span>
