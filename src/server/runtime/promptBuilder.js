@@ -52,6 +52,20 @@ export function buildPrompt({
     sections.push(prefixText);
   }
 
+  // ===== 通用规则（不被缓存，始终注入） =====
+  sections.push(
+    '[General Rules]\n' +
+    '- When you output a bash/sh/shell code block (```bash ... ```), it automatically gets an "允许执行" (' +
+    '"Allow Execute") button that users can click to run the command directly.\n' +
+    '- Do NOT ask users to type "批准" or "approve" or any approval message to execute commands.\n' +
+    '- Instead, tell users to click the "允许执行" button on the code block.\n' +
+    '- For interactive commands that require user input (like "npm create", "npx create-"), ' +
+    'prefer non-interactive flags (e.g. "npm create vite@latest my-app -- --template react" uses ' +
+    'the -- flag to pass args to create-vite non-interactively).\n' +
+    '- If a command is interactive, warn the user they need to use the "允许执行" button ' +
+    'and the command may prompt for input.'
+  );
+
   // ===== 工具结果 =====
   appendToolResultSections(sections, toolResults);
 
