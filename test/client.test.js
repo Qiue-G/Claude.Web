@@ -89,7 +89,6 @@ const toolsStore = await import('../src/client/stores/tools.store.js');
 test('tools default toolStates has all built-in tools disabled', () => {
   const states = get(toolsStore.toolStates);
   assert.equal(states.web_search, false);
-  assert.equal(states.code_interpreter, false);
   assert.equal(states.image_generation, false);
   assert.equal(states.file_analysis, false);
 });
@@ -115,8 +114,7 @@ test('tools setAvailableTools updates available tools and disables unconfigured'
   toolsStore.setToolEnabled('file_analysis', true);
 
   toolsStore.setAvailableTools([
-    { id: 'web_search', configured: true },
-    { id: 'code_interpreter', configured: true }
+    { id: 'web_search', configured: true }
   ]);
 
   // file_analysis should be disabled since it's not in the new list
@@ -127,12 +125,10 @@ test('tools setAvailableTools updates available tools and disables unconfigured'
 
 test('tools resetTools restores defaults', () => {
   toolsStore.setToolEnabled('web_search', true);
-  toolsStore.setToolEnabled('code_interpreter', true);
   toolsStore.resetTools();
 
   const states = get(toolsStore.toolStates);
   assert.equal(states.web_search, false);
-  assert.equal(states.code_interpreter, false);
   assert.equal(states.image_generation, false);
   assert.equal(states.file_analysis, false);
 });

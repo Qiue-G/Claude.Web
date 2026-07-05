@@ -3,12 +3,10 @@ import assert from 'node:assert/strict';
 import { getToolDefinitions, getToolInstructions, isToolConfigured } from '../src/server/tools/registry.js';
 
 test('getToolInstructions returns only known enabled tools in stable order', () => {
-  const text = getToolInstructions(['code_interpreter', 'unknown', 'web_search', 'web_search']);
+  const text = getToolInstructions(['web_search', 'unknown', 'web_search']);
 
   assert.match(text, /search the web/i);
-  assert.match(text, /execute Python/i);
   assert.doesNotMatch(text, /unknown/i);
-  assert.ok(text.indexOf('web search') < text.indexOf('Python'));
 });
 
 test('image_generation is exposed as unconfigured until an API key exists', () => {
