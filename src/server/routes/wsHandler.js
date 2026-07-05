@@ -113,6 +113,99 @@ function extractEditFileBlocks(text) {
   return blocks;
 }
 
+/**
+ * Extract delete_file fenced blocks from AI output.
+ * Format:
+ * ```delete_file
+ * path: relative/file/path
+ * ```
+ */
+function extractDeleteFileBlocks(text) {
+  const blocks = [];
+  const regex = /```delete_file\n?([\s\S]*?)```/g;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const block = match[1].trim();
+    const lines = block.split('\n');
+    const pathIdx = lines.findIndex(l => l.startsWith('path:'));
+    if (pathIdx === -1) continue;
+    const filePath = lines[pathIdx].slice(5).trim();
+    if (!filePath) continue;
+    blocks.push({ path: filePath });
+  }
+  return blocks;
+}
+
+/**
+ * Extract rename_file fenced blocks from AI output.
+ * Format:
+ * ```rename_file
+ * path: old/relative/file/path
+ * newPath: new/relative/file/path
+ * ```
+ */
+function extractRenameFileBlocks(text) {
+  const blocks = [];
+  const regex = /```rename_file\n?([\s\S]*?)```/g;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const block = match[1].trim();
+    const lines = block.split('\n');
+    const pathIdx = lines.findIndex(l => l.startsWith('path:'));
+    if (pathIdx === -1) continue;
+    const oldPath = lines[pathIdx].slice(5).trim();
+    const newPathIdx = lines.findIndex(l => l.startsWith('newPath:'));
+    if (newPathIdx === -1) continue;
+    const newPath = lines[newPathIdx].slice(8).trim();
+    if (!oldPath || !newPath) continue;
+    blocks.push({ path: oldPath, newPath });
+  }
+  return blocks;
+}
+
+/**
+ * Extract list_files fenced blocks from AI output.
+ * Format:
+ * ```list_files
+ * path: optional/sub/directory
+ * ```
+ */
+function extractListFilesBlocks(text) {
+  const blocks = [];
+  const regex = /```list_files\n?([\s\S]*?)```/g;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const block = match[1].trim();
+    const lines = block.split('\n');
+    const pathIdx = lines.findIndex(l => l.startsWith('path:'));
+    const dirPath = pathIdx !== -1 ? lines[pathIdx].slice(5).trim() : '';
+    blocks.push({ path: dirPath || '.' });
+  }
+  return blocks;
+}
+
+/**
+ * Recursively list files in a directory, returning relative paths.
+ */
+async function listFilesRecursive(dirPath, basePath) {
+  const entries = await fs.readdir(dirPath, { withFileTypes: true });
+  const results = [];
+  for (const entry of entries) {
+    const fullPath = path.join(dirPath, entry.name);
+    const relPath = path.relative(basePath, fullPath);
+    if (entry.isDirectory()) {
+      results.push(relPath + '/');
+      const sub = await listFilesRecursive(fullPath, basePath);
+      results.push(...sub);
+    } else {
+      const stat = await fs.stat(fullPath);
+      const size = stat.size > 1024 ? `${(stat.size / 1024).toFixed(1)} KB` : `${stat.size} B`;
+      results.push(`${relPath} (${size})`);
+    }
+  }
+  return results.sort();
+}
+
 export function applyPreToolUseHook(toolName, args, pluginsConfig = {}) {
   const hooksCtx = runHooks('preToolUse', { toolName, arguments: args }, pluginsConfig);
   return hooksCtx.arguments || args;
@@ -688,6 +781,25 @@ export function createWsHandler(deps) {
             '=======',
             'new content to replace with',
             '>>>>>>>',
+            '```',
+            '',
+            'You can delete files. Output in the following format:',
+            '',
+            '```delete_file',
+            'path: relative/file/path',
+            '```',
+            '',
+            'You can rename/move files. Output in the following format:',
+            '',
+            '```rename_file',
+            'path: old/relative/file/path',
+            'newPath: new/relative/file/path',
+            '```',
+            '',
+            'You can list files in a directory. Output in the following format:',
+            '',
+            '```list_files',
+            'path: optional/sub/directory (omit path: to list root)',
             '```'
           ].join('\n');
 
@@ -863,6 +975,59 @@ export function createWsHandler(deps) {
                   broadcastToSession(sessionId, { type: 'output', data: `\n[文件已编辑] ${block.path}\n` });
                 } catch (err) {
                   broadcastToSession(sessionId, { type: 'output', data: `\n[文件编辑失败] ${block.path}: ${err.message}\n` });
+                }
+              }
+
+              // ===== File Management Tools：提取 delete_file / rename_file / list_files 代码块并执行 =====
+              const deleteBlocks = extractDeleteFileBlocks(assistantBuffer);
+              const renameBlocks = extractRenameFileBlocks(assistantBuffer);
+              const listBlocks = extractListFilesBlocks(assistantBuffer);
+
+              for (const block of deleteBlocks) {
+                const fullPath = path.resolve(session.dir, block.path);
+                if (!fullPath.startsWith(path.resolve(session.dir))) {
+                  broadcastToSession(sessionId, { type: 'output', data: `\n[Delete File 拒绝] 路径 ${block.path} 不在允许的工作目录内\n` });
+                  continue;
+                }
+                try {
+                  await fs.unlink(fullPath);
+                  broadcastToSession(sessionId, { type: 'output', data: `\n[文件已删除] ${block.path}\n` });
+                } catch (err) {
+                  broadcastToSession(sessionId, { type: 'output', data: `\n[文件删除失败] ${block.path}: ${err.message}\n` });
+                }
+              }
+
+              for (const block of renameBlocks) {
+                const oldFullPath = path.resolve(session.dir, block.path);
+                const newFullPath = path.resolve(session.dir, block.newPath);
+                if (!oldFullPath.startsWith(path.resolve(session.dir)) || !newFullPath.startsWith(path.resolve(session.dir))) {
+                  broadcastToSession(sessionId, { type: 'output', data: `\n[Rename File 拒绝] 路径不在允许的工作目录内\n` });
+                  continue;
+                }
+                try {
+                  await fs.mkdir(path.dirname(newFullPath), { recursive: true });
+                  await fs.rename(oldFullPath, newFullPath);
+                  broadcastToSession(sessionId, { type: 'output', data: `\n[文件已重命名] ${block.path} → ${block.newPath}\n` });
+                } catch (err) {
+                  broadcastToSession(sessionId, { type: 'output', data: `\n[文件重命名失败] ${block.path}: ${err.message}\n` });
+                }
+              }
+
+              for (const block of listBlocks) {
+                const dirPath = path.resolve(session.dir, block.path);
+                if (!dirPath.startsWith(path.resolve(session.dir))) {
+                  broadcastToSession(sessionId, { type: 'output', data: `\n[List Files 拒绝] 路径 ${block.path} 不在允许的工作目录内\n` });
+                  continue;
+                }
+                try {
+                  const files = await listFilesRecursive(dirPath, session.dir);
+                  let output = `\n[目录列表] ${block.path === '.' ? '/' : block.path}\n`;
+                  for (const f of files) {
+                    output += `  ${f}\n`;
+                  }
+                  broadcastToSession(sessionId, { type: 'output', data: output });
+                } catch (err) {
+                  broadcastToSession(sessionId, { type: 'output', data: `\n[目录列表失败] ${block.path}: ${err.message}\n` });
                 }
               }
             }
