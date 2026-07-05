@@ -8,7 +8,7 @@
  * - Ping/pong heartbeat: detects dead connections every 30s
  */
 import { isConnected, connectionStatus, sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
-import { messages, addMessage, appendToLastAssistant, isWaiting, isTyping, setMessages, prependMessages, updateLastAssistantContent } from '$stores/chat.store.js';
+import { messages, addMessage, appendToLastAssistant, isWaiting, isTyping, setMessages, prependMessages } from '$stores/chat.store.js';
 import { filtersConfig } from '$stores/filters.store.js';
 import { stripAnsi } from '$lib/utils.js';
 import { t } from '$lib/i18n.js';
@@ -319,12 +319,6 @@ function handleServerMessage(msg) {
         }
       }
       appendToLastAssistant(stripAnsi(msg.data || ''));
-      break;
-    case 'content_update':
-      // 服务端发送的修正后完整内容，替换最后一条 assistant 消息
-      if (msg.content) {
-        updateLastAssistantContent(msg.content);
-      }
       break;
     case 'stderr':
       appendToLastAssistant(stripAnsi('[stderr] ' + (msg.data || '')));

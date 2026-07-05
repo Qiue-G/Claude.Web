@@ -113,23 +113,6 @@ export function appendToLastAssistant(text) {
 }
 
 /**
- * 替换最后一条 assistant 消息的内容（用于服务端内容修正）
- */
-export function updateLastAssistantContent(content) {
-  const sessionId = get(currentSessionId);
-  if (!sessionId) return;
-  updateSession(sessionId, session => {
-    const msgs = session.messages || [];
-    const idx = msgs.length - 1;
-    if (idx >= 0 && msgs[idx].role === 'assistant') {
-      const updated = { ...msgs[idx], content };
-      return { ...session, messages: [...msgs.slice(0, idx), updated] };
-    }
-    return session;
-  });
-}
-
-/**
  * 更新指定消息
  */
 export function updateMessage(messageId, updates) {
