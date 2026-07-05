@@ -246,6 +246,23 @@ export async function sendInput(data) {
     }
   }
 
+  // 会话过期或丢失：尝试从 localStorage 恢复已保存的会话
+  const savedSid = localStorage.getItem('sessionId');
+  const savedToken = localStorage.getItem('sessionToken');
+  if (savedSid && savedToken && savedSid !== sid) {
+    sessionId.set(savedSid);
+    sessionToken.set(savedToken);
+    queueMessage(payload);
+    connectWebSocket(savedSid, savedToken, true);
+    try {
+      await waitForWsOpen(8000);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        flushPendingMessages();
+        return;
+      }
+    } catch (_) {}
+  }
+
   // 所有方式都失败，重置等待状态
   isWaiting.set(false);
   isTyping.set(false);
