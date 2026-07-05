@@ -303,12 +303,13 @@
   // ===== Parallel comparison handlers =====
   function handleParallelStart() {
     const models = get(selectedModels);
-    const prompt = ''; // Will be set from active input
-    parallelRunning.set(true);
-    resetParallel();
-    // Request user to confirm which prompt to use for comparison
-    // The actual prompt will be captured from the input
-    window.dispatchEvent(new CustomEvent('parallel-request-prompt'));
+    if (models.length < 2) {
+      addMessage('system', get(t)('parallel.minModels'));
+      return;
+    }
+    const prompt = window.prompt(get(t)('parallel.enterPrompt'));
+    if (!prompt || !prompt.trim()) return;
+    handleSendParallel(prompt.trim());
   }
 
   function handleParallelChunk(e) {

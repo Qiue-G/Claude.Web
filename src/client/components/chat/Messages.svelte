@@ -2,6 +2,8 @@
   import ChatMessage from './ChatMessage.svelte';
   import Placeholder from './Placeholder.svelte';
   import { isWaiting } from '$stores/chat.store.js';
+  import { loadMoreHistory } from '$lib/websocket.js';
+  import { t } from '$lib/i18n.js';
 
   export let messages = [];
   export let emptyTitle = '';
@@ -16,12 +18,22 @@
 
   let messagesContainer;
   let userScrolledUp = false;
+  let loadingMore = false;
+
+  $: _t = $t;
 
   function handleScroll() {
     const container = messagesContainer;
     if (!container) return;
     const { scrollTop, scrollHeight, clientHeight } = container;
     userScrolledUp = scrollHeight - scrollTop - clientHeight > 80;
+
+    // 滚动到顶部时加载更多历史
+    if (scrollTop < 40 && !loadingMore && window.__historyHasMore) {
+      loadingMore = true;
+      loadMoreHistory();
+      setTimeout(() => { loadingMore = false; }, 1000);
+    }
   }
 
   $: {
@@ -38,6 +50,9 @@
 </script>
 
 <div bind:this={messagesContainer} class="messages-container" onscroll={handleScroll}>
+  {#if window.__historyHasMore}
+    <div class="load-more-hint">{$t('chat.loadMore')}</div>
+  {/if}
   {#if messages.length === 0}
     <Placeholder title={emptyTitle || 'Welcome'} subtitle={emptySubtitle || 'AI-powered coding assistant'} icon="⚙" {suggestions} on:suggestion={(e) => onsuggestion?.(e.detail)} />
   {:else}

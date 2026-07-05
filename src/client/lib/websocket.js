@@ -320,6 +320,9 @@ function handleServerMessage(msg) {
       }
       appendToLastAssistant(stripAnsi(msg.data || ''));
       break;
+    case 'stderr':
+      appendToLastAssistant(stripAnsi('[stderr] ' + (msg.data || '')));
+      break;
     case 'done':
     case 'exit':
       isWaiting.set(false);
@@ -423,6 +426,19 @@ export function sendBashCommand(command) {
     ws.send(JSON.stringify({
       type: 'run_bash_command',
       command
+    }));
+  }
+}
+
+/**
+ * 请求加载更早的历史消息
+ */
+export function loadMoreHistory() {
+  const page = (window.__historyPage || 0) + 1;
+  if (ws && ws.readyState === WebSocket.OPEN && window.__historyHasMore) {
+    ws.send(JSON.stringify({
+      type: 'load_more',
+      page
     }));
   }
 }
