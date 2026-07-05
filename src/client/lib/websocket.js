@@ -327,6 +327,7 @@ function handleServerMessage(msg) {
     case 'exit':
       isWaiting.set(false);
       isTyping.set(false);
+      window.dispatchEvent(new CustomEvent('files-changed'));
       break;
     case 'error':
       isWaiting.set(false);

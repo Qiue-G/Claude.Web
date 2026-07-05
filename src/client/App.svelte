@@ -369,6 +369,12 @@
     }
   }
 
+  function handleFilesChanged() {
+    const sid = $sessionId;
+    const tok = $sessionToken;
+    if (sid && tok) loadFileTree(sid, tok);
+  }
+
   async function handleFileSelect(e) {
     const file = e.detail;
     if (!file || file.type !== 'file') return;
@@ -558,6 +564,7 @@
     window.addEventListener('offline', handleOffline);
     window.addEventListener('tool-approval-request', handleToolApprovalRequest);
     window.addEventListener('tool-approval-complete', handleToolApprovalComplete);
+    window.addEventListener('files-changed', handleFilesChanged);
 
     // Parallel comparison events
     window.addEventListener('parallel-start-request', handleParallelStart);
@@ -601,6 +608,7 @@
     window.removeEventListener('offline', handleOffline);
     window.removeEventListener('tool-approval-request', handleToolApprovalRequest);
     window.removeEventListener('tool-approval-complete', handleToolApprovalComplete);
+    window.removeEventListener('files-changed', handleFilesChanged);
     window.removeEventListener('parallel-start-request', handleParallelStart);
     window.removeEventListener('parallel-chunk', handleParallelChunk);
     window.removeEventListener('parallel-model-done', handleParallelModelDone);
