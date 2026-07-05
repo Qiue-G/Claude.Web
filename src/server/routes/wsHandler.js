@@ -221,6 +221,22 @@ export function createWsHandler(deps) {
             }
           }
 
+        } else if (message.type === 'update_filters') {
+          // ===== 动态更新过滤器配置 =====
+          if (message.config && typeof message.config === 'object') {
+            Object.keys(message.config).forEach((key) => {
+              const filterCfg = message.config[key];
+              // 只更新 filters 中已定义的 key
+              if (filtersConfig[key] !== undefined || key === 'contextInject' || key === 'profanity' || key === 'formatGuard') {
+                filtersConfig[key] = { ...(filtersConfig[key] || {}), ...filterCfg };
+              }
+            });
+            // 重建过滤器管道
+            filterPipeline.length = 0;
+            filterPipeline.push(...buildFilterList(filtersConfig));
+            console.log('[FILTERS] config updated, pipeline rebuilt:', Object.keys(filtersConfig).map(k => k + '=' + filtersConfig[k]?.enabled).join(', '));
+          }
+
         } else if (message.type === 'input') {
           const session = getSession(sessionId);
           if (!session) {

@@ -48,12 +48,25 @@ export const filterMeta = derived(filtersConfig, ($cfg) => {
   ];
 });
 
-/** 更新过滤器配置（目前仅支持开关切换，后续可扩展） */
+/** 将当前过滤器配置通过 WebSocket 发送到后端 */
+function sendFilterConfigToBackend(cfg) {
+  import('$lib/websocket.js').then(({ getWs }) => {
+    const ws = getWs();
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'update_filters', config: cfg }));
+    }
+  });
+}
+
+/** 更新过滤器配置 */
 export function setFilterEnabled(id, enabled) {
   filtersConfig.update((cfg) => {
     if (!cfg[id]) cfg[id] = {};
     cfg[id].enabled = enabled;
-    return { ...cfg };
+    const updated = { ...cfg };
+    // 异步发送到后端
+    sendFilterConfigToBackend(updated);
+    return updated;
   });
 }
 

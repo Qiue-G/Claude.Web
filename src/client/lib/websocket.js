@@ -271,6 +271,13 @@ function handleServerMessage(msg) {
       connectionStatus.set('connected');
       reconnectAttempts = 0;
       flushPendingMessages();
+      // 连接就绪时，将当前过滤器配置同步到后端
+      import('$stores/filters.store.js').then(({ filtersConfig }) => {
+        const cfg = get(filtersConfig);
+        if (cfg && Object.keys(cfg).length > 0) {
+          ws.send(JSON.stringify({ type: 'update_filters', config: cfg }));
+        }
+      });
       _readyCalled = true;
       _onReadyCallback?.();
       if (get(isWaiting)) {
