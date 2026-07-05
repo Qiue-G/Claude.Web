@@ -175,9 +175,11 @@ export function createWsHandler(deps) {
             ws.send(JSON.stringify({ type: 'error', message: 'Invalid command' }));
             return;
           }
+          const bashSession = getSession(sessionId);
+          const bashCwd = bashSession ? bashSession.dir : process.cwd();
           broadcastToSession(sessionId, { type: 'output', data: `\n[执行命令] $ ${command}\n` });
           exec(command, {
-            cwd: process.cwd(),
+            cwd: bashCwd,
             timeout: 30000,
             maxBuffer: 1024 * 1024
           }, (err, stdout, stderr) => {
