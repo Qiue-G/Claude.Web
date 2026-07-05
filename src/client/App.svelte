@@ -377,7 +377,17 @@
 
   function handleOpenFile({ filePath }) {
     if (filePath) {
-      currentFile.set(filePath);
+      const sid = get(sessionId);
+      const tok = get(sessionToken);
+      if (sid && tok) {
+        readFile(sid, filePath, tok).then(result => {
+          if (result && result.content !== undefined) {
+            openFile(filePath, result.content);
+          }
+        });
+      } else {
+        currentFile.set(filePath);
+      }
     }
   }
 
