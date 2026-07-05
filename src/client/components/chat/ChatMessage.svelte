@@ -30,25 +30,64 @@
   let copied = false;
   let versionHistoryOpen = false;
 
+  // 常见 CLI 命令前缀，用于从内联代码中检测可执行命令
+  const CLI_PREFIXES = /^(npm|npx|yarn|pnpm|bun|node|python|pip|pip3|git|docker|kubectl|curl|wget|sudo|apt|brew|choco|cargo|go|rustc|deno|nvm|make|echo|cat|ls|cd|mkdir|touch|rm|cp|mv|chmod|chown|grep|sed|awk|sort|uniq|wc|find|tar|zip|unzip|ssh|scp|rsync|systemctl|service|which|type|set|export|env|pwd|sleep|kill|ps|killall|npx|vite|webpack|tsc|eslint|prettier|jest|vitest)\b/i;
+
+  function isCLICommand(str) {
+    return CLI_PREFIXES.test(str.trim());
+  }
+
+  /** 将 markdown 文本中的内联代码（单反引号）检测为可执行命令 */
+  function detectInlineCommands(text) {
+    const parts = [];
+    const inlineRegex = /`([^`]+)`/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = inlineRegex.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push({ type: 'markdown', content: text.slice(lastIndex, match.index) });
+      }
+      const cmd = match[1].trim();
+      if (isCLICommand(cmd)) {
+        parts.push({ type: 'code', language: 'bash', content: cmd });
+      } else {
+        parts.push({ type: 'markdown', content: match[0] });
+      }
+      lastIndex = match.index + match[0].length;
+    }
+
+    if (lastIndex < text.length) {
+      parts.push({ type: 'markdown', content: text.slice(lastIndex) });
+    }
+
+    return parts.length > 0 ? parts : [{ type: 'markdown', content: text }];
+  }
+
   $: roleLabel = role === 'user' ? 'You' : role === 'assistant' ? 'Assistant' : 'System';
   $: parsedParts = parseContent(content);
 
   function parseContent(text) {
+    if (!text) return [];
     const parts = [];
-    const regex = /```(\w*)\n?([\s\S]*?)```/g;
+    // 1) 先拆分三反引号代码块
+    const fenceRegex = /```(\w*)\n?([\s\S]*?)```/g;
     let lastIndex = 0;
     let match;
 
-    while ((match = regex.exec(text)) !== null) {
+    while ((match = fenceRegex.exec(text)) !== null) {
       if (match.index > lastIndex) {
-        parts.push({ type: 'markdown', content: text.slice(lastIndex, match.index) });
+        // 2) 两块之间的 markdown 文本，再检测内联命令
+        const inlineParts = detectInlineCommands(text.slice(lastIndex, match.index));
+        parts.push(...inlineParts);
       }
       parts.push({ type: 'code', language: match[1], content: match[2].trim() });
       lastIndex = match.index + match[0].length;
     }
 
     if (lastIndex < text.length) {
-      parts.push({ type: 'markdown', content: text.slice(lastIndex) });
+      const inlineParts = detectInlineCommands(text.slice(lastIndex));
+      parts.push(...inlineParts);
     }
 
     return parts;
