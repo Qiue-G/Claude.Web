@@ -154,7 +154,7 @@
   function checkScreenSize() {
     const w = window.innerWidth;
     isMobile = w < 640;
-    isTablet = w >= 640 && w < 900;
+    isTablet = w >= 640 && w < 1024;
   }
 
   function openDrawerChat() { drawerChatOpen = true; }
