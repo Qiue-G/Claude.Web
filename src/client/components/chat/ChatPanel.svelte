@@ -26,6 +26,7 @@
 
   export let onsend = null;
   export let onToggleSidebar = null;
+  export let onopenfile = null;
 
   let editContent = '';
   let editingMessageId = null;
@@ -109,6 +110,7 @@
       onrate={handleRateMessage}
       ondelete={handleDeleteMessage}
       onsuggestion={(text) => onsend?.(text)}
+      {onopenfile}
     />
 
     <div class="input-area">

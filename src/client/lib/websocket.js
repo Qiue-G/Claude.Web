@@ -329,6 +329,13 @@ function handleServerMessage(msg) {
       isTyping.set(false);
       window.dispatchEvent(new CustomEvent('files-changed'));
       break;
+    case 'file_diff':
+      if (Array.isArray(msg.diffs)) {
+        for (const diff of msg.diffs) {
+          addMessage('system', '', { type: 'file_diff', ...diff });
+        }
+      }
+      break;
     case 'error':
       isWaiting.set(false);
       isTyping.set(false);

@@ -11,6 +11,8 @@ import { loadPipelines, runPipelines } from '../pipelines/index.js';
 import { YDocManager } from '../collab/ydocManager.js';
 import { ActivityLog } from '../collab/activityLog.js';
 import * as Y from 'yjs';
+import fs from 'fs/promises';
+import path from 'path';
 
 /**
  * 将 RAG 搜索结果格式化为可读文本
@@ -118,6 +120,104 @@ export function createWsHandler(deps) {
       }
     }
     return result;
+  }
+
+  /**
+   * Take a snapshot of all file hashes in a directory
+   * Returns: Map<filePath, { hash: string, content: string }>
+   */
+  async function takeFileSnapshot(dirPath) {
+    const snapshot = new Map();
+    try {
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+        const fullPath = path.join(dirPath, entry.name);
+        if (entry.isDirectory()) {
+          const subSnapshot = await takeFileSnapshot(fullPath);
+          for (const [k, v] of subSnapshot) {
+            snapshot.set(path.relative(dirPath, path.join(dirPath, entry.name, k)), v);
+          }
+        } else if (entry.isFile()) {
+          const ext = path.extname(entry.name).toLowerCase();
+          // Only track source files (skip binaries)
+          if (['.js', '.jsx', '.ts', '.tsx', '.py', '.css', '.html', '.json', '.md', '.svelte', '.vue', '.cjs', '.mjs', '.yml', '.yaml', '.toml'].includes(ext)) {
+            try {
+              const content = await fs.readFile(fullPath, 'utf-8');
+              const crypto = await import('crypto');
+              const hash = crypto.createHash('sha256').update(content).digest('hex');
+              snapshot.set(path.relative(dirPath, fullPath), { hash, content });
+            } catch {}
+          }
+        }
+      }
+    } catch {}
+    return snapshot;
+  }
+
+  /**
+   * Detect changed files and create version entries
+   * Returns: Array of { filePath, changes, fromVersion, toVersion, summary }
+   */
+  async function detectChangedFiles(session, preExecSnapshot, db) {
+    const results = [];
+    const currentSnapshot = await takeFileSnapshot(session.dir);
+
+    for (const [filePath, preData] of preExecSnapshot) {
+      const currentData = currentSnapshot.get(filePath);
+      if (!currentData) continue; // file was deleted, skip for now
+
+      if (preData.hash !== currentData.hash) {
+        // File changed! Create version entries
+        const oldContent = preData.content;
+        const newContent = currentData.content;
+
+        // Save old version to DB
+        let oldVersionId = null;
+        try {
+          const { randomUUID, createHash } = await import('crypto');
+          const oldHash = createHash('sha256').update(oldContent).digest('hex');
+          const oldId = randomUUID();
+          db.run(
+            `INSERT INTO file_versions (id, sessionId, filePath, content, hash, size, createdAt, action) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [oldId, session.id, filePath, oldContent, oldHash, Buffer.byteLength(oldContent, 'utf-8'), Date.now(), 'pre-exec']
+          );
+          oldVersionId = oldId;
+
+          // Save new version
+          const newHash = createHash('sha256').update(newContent).digest('hex');
+          const newId = randomUUID();
+          db.run(
+            `INSERT INTO file_versions (id, sessionId, filePath, content, hash, size, createdAt, action) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [newId, session.id, filePath, newContent, newHash, Buffer.byteLength(newContent, 'utf-8'), Date.now(), 'post-exec']
+          );
+
+          // Compute diff
+          const { diffLines } = await import('diff');
+          const changes = diffLines(oldContent, newContent);
+
+          const added = changes.filter(c => c.added).reduce((s, c) => s + (c.count || 0), 0);
+          const removed = changes.filter(c => c.removed).reduce((s, c) => s + (c.count || 0), 0);
+
+          results.push({
+            filePath,
+            changes: changes.map(c => ({
+              count: c.count,
+              added: c.added || false,
+              removed: c.removed || false,
+              value: c.value
+            })),
+            fromVersion: oldId,
+            toVersion: newId,
+            summary: `+${added} -${removed} in ${filePath}`
+          });
+        } catch (e) {
+          console.error('[FILE DIFF] Error creating version:', e.message);
+        }
+      }
+    }
+
+    return results;
   }
 
   return function handleConnection(ws, req) {
@@ -499,6 +599,8 @@ export function createWsHandler(deps) {
 
           wsProcCount.set(sessionId, (wsProcCount.get(sessionId) || 0) + 1);
           isInputMessage = true;
+          // Take file snapshot before command execution
+          const preExecSnapshot = await takeFileSnapshot(session.dir);
           const proc = await spawnCli(session, prompt);
           proc._procSeq = ++processSeqId;
           sessionProcesses.set(sessionId, proc);
@@ -603,6 +705,12 @@ export function createWsHandler(deps) {
 
             broadcastToSession(sessionId, { type: 'exit', code });
             broadcastToSession(sessionId, { type: 'done' });
+
+            // Detect file changes and send diffs
+            const changedFiles = await detectChangedFiles(session, preExecSnapshot, db);
+            if (changedFiles.length > 0) {
+              broadcastToSession(sessionId, { type: 'file_diff', diffs: changedFiles });
+            }
 
             // 保存助理消息（仅在未阻断时保存）
             if (messageStore && assistantBuffer.trim() && !outputFilterAborted) {

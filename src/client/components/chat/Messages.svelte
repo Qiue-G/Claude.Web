@@ -1,5 +1,6 @@
 <script>
   import ChatMessage from './ChatMessage.svelte';
+  import FileDiffCard from './FileDiffCard.svelte';
   import Placeholder from './Placeholder.svelte';
   import { isWaiting } from '$stores/chat.store.js';
   import { loadMoreHistory } from '$lib/websocket.js';
@@ -15,6 +16,7 @@
   export let onrate = null;
   export let ondelete = null;
   export let sessionId = '';
+  export let onopenfile = null;
 
   let messagesContainer;
   let userScrolledUp = false;
@@ -58,7 +60,13 @@
   {:else}
     <div class="messages-list">
       {#each messages as msg, i (msg.id)}
-        <ChatMessage role={msg.role} content={msg.content} time={msg.time} messageId={msg.id} files={msg.files} streaming={i === messages.length - 1 && msg.role === 'assistant' && $isWaiting} rating={msg.rating} {sessionId} {onedit} {onretry} {onrate} {ondelete} />
+        {#if msg.meta?.type === 'file_diff'}
+          <div class="diff-message-wrapper">
+            <FileDiffCard diff={msg.meta} {sessionId} on:reverted={() => window.dispatchEvent(new CustomEvent('files-changed'))} on:open={(e) => onopenfile?.(e.detail)} />
+          </div>
+        {:else}
+          <ChatMessage role={msg.role} content={msg.content} time={msg.time} messageId={msg.id} files={msg.files} streaming={i === messages.length - 1 && msg.role === 'assistant' && $isWaiting} rating={msg.rating} {sessionId} {onedit} {onretry} {onrate} {ondelete} />
+        {/if}
       {/each}
     </div>
   {/if}
@@ -67,4 +75,5 @@
 <style>
   .messages-container { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 16px 0; }
   .messages-list { display: flex; flex-direction: column; gap: 4px; }
+  .diff-message-wrapper { padding: 0 16px; }
 </style>

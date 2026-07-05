@@ -375,6 +375,12 @@
     if (sid && tok) loadFileTree(sid, tok);
   }
 
+  function handleOpenFile({ filePath }) {
+    if (filePath) {
+      currentFile.set(filePath);
+    }
+  }
+
   async function handleFileSelect(e) {
     const file = e.detail;
     if (!file || file.type !== 'file') return;
@@ -734,7 +740,7 @@
 
     <div class="content-pane-group">
       <div class="chat-pane" class:mobile-editor-hidden={isMobile && mobileEditorVisible} style="flex: {chatFlex};">
-        <ChatPanel onsend={handleChatSend} onToggleSidebar={handleToggleChatSidebar} />
+        <ChatPanel onsend={handleChatSend} onToggleSidebar={handleToggleChatSidebar} onopenfile={handleOpenFile} />
         {#if $parallelMode}
           {#if ComparisonViewComponent}
             <ComparisonViewComponent />
