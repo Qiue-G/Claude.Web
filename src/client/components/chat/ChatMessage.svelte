@@ -33,22 +33,85 @@
   $: roleLabel = role === 'user' ? 'You' : role === 'assistant' ? 'Assistant' : 'System';
   $: parsedParts = parseContent(content);
 
+  // 常见的 CLI 命令前缀，用于检测内联代码中的可执行命令
+  const cliPrefixes = [
+    'npm', 'npx', 'yarn', 'pnpm', 'bun',
+    'git', 'node', 'python', 'pip', 'pip3',
+    'curl', 'wget', 'docker', 'docker-compose',
+    'cargo', 'go', 'make', 'cmake',
+    'brew', 'apt', 'apt-get', 'yum', 'dnf',
+    'code', 'gh', 'aws', 'gcloud', 'vercel', 'netlify',
+    'vite', 'vue', 'nuxt', 'ng', 'nx',
+    'create-vite', 'create-react-app', 'create-next-app',
+    'npx --yes', 'npx create-'
+  ];
+
+  function isCliCommand(text) {
+    for (const prefix of cliPrefixes) {
+      if (text === prefix || text.startsWith(prefix + ' ')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // 将文本中内联代码（`...`）的 CLI 命令自动升级为代码块
+  function processTextForInlineCommands(text) {
+    if (!text || !text.trim()) return [];
+    const result = [];
+
+    // 匹配内联代码：`command`
+    const inlineRegex = /`([^`]+)`/g;
+    let lastIdx = 0;
+    let m;
+
+    while ((m = inlineRegex.exec(text)) !== null) {
+      if (m.index > lastIdx) {
+        result.push({ type: 'markdown', content: text.slice(lastIdx, m.index) });
+      }
+
+      const cmd = m[1].trim();
+      if (isCliCommand(cmd)) {
+        result.push({ type: 'code', language: 'bash', content: cmd });
+      } else {
+        result.push({ type: 'markdown', content: '`' + cmd + '`' });
+      }
+
+      lastIdx = m.index + m[0].length;
+    }
+
+    if (lastIdx < text.length) {
+      result.push({ type: 'markdown', content: text.slice(lastIdx) });
+    }
+
+    // 如果没有匹配到任何内联代码，原样返回
+    if (lastIdx === 0) {
+      return [{ type: 'markdown', content: text }];
+    }
+
+    return result;
+  }
+
   function parseContent(text) {
     const parts = [];
-    const regex = /```(\w*)\n?([\s\S]*?)```/g;
+    const fencedRegex = /```(\w*)\n?([\s\S]*?)```/g;
     let lastIndex = 0;
     let match;
 
-    while ((match = regex.exec(text)) !== null) {
+    while ((match = fencedRegex.exec(text)) !== null) {
       if (match.index > lastIndex) {
-        parts.push({ type: 'markdown', content: text.slice(lastIndex, match.index) });
+        // 对代码块之间的文本检测内联命令
+        const middleParts = processTextForInlineCommands(text.slice(lastIndex, match.index));
+        parts.push(...middleParts);
       }
       parts.push({ type: 'code', language: match[1], content: match[2].trim() });
       lastIndex = match.index + match[0].length;
     }
 
     if (lastIndex < text.length) {
-      parts.push({ type: 'markdown', content: text.slice(lastIndex) });
+      const remaining = text.slice(lastIndex);
+      const endParts = processTextForInlineCommands(remaining);
+      parts.push(...endParts);
     }
 
     return parts;
