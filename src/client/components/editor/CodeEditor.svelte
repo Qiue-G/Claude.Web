@@ -101,7 +101,7 @@
           name="code-editor"
           bind:this={textarea}
           class="editor-textarea"
-          value={content}
+          bind:value={content}
           on:input={handleInput}
           on:keydown={handleKeydown}
           on:scroll={handleScroll}
