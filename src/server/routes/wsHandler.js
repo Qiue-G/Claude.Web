@@ -646,6 +646,30 @@ export function createWsHandler(deps) {
 
           // Build prompt with MCP tool instructions too
           let toolInstructions = getToolInstructions(approvedTools || []);
+
+          // 始终注入 write_file / edit_file 工具指令（Kun 风格：默认启用，无需审批）
+          toolInstructions += '\n' + [
+            'You can write files directly to disk using Node.js fs.writeFile. Use this instead of bash echo/redirect when creating or overwriting files. Output in the following format:',
+            '',
+            '```write_file',
+            'path: relative/file/path',
+            'language: file_extension',
+            '',
+            'The file content goes here...',
+            '```',
+            '',
+            'You can edit existing files using search-and-replace. Output in the following format:',
+            '',
+            '```edit_file',
+            'path: relative/file/path',
+            '<<<<<<< SEARCH',
+            'old content to replace',
+            '=======',
+            'new content to replace with',
+            '>>>>>>>',
+            '```'
+          ].join('\n');
+
           if (mcpManager && mcpManager.isConnected()) {
             const mcpTools = await mcpManager.listTools();
             for (const mcpTool of mcpTools) {
@@ -719,8 +743,6 @@ export function createWsHandler(deps) {
           // ===== 代码解释器：缓冲完整输出，关闭时检测 Python 代码块 =====
           let codeInterpreterBuffer = '';
           const hasCodeInterpreter = tools.includes('code_interpreter');
-          const hasWriteFile = tools.includes('write_file');
-          const hasEditFile = tools.includes('edit_file');
           // 累积 AI 输出，关闭时保存完整消息
           let assistantBuffer = '';
 
@@ -779,8 +801,8 @@ export function createWsHandler(deps) {
               }
             }
 
-            // ===== Write File Tool：提取 write_file 代码块并直接写入 =====
-            if ((hasWriteFile || hasEditFile) && assistantBuffer.trim()) {
+            // ===== Write File Tool：提取 write_file / edit_file 代码块并直接写入 =====
+            if (assistantBuffer.trim()) {
               const writeBlocks = extractWriteFileBlocks(assistantBuffer);
               const editBlocks = extractEditFileBlocks(assistantBuffer);
 
