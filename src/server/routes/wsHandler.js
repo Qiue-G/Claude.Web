@@ -317,7 +317,9 @@ export function createWsHandler(deps) {
           } catch {} // skip binary/unreadable files
         }
       }
-    } catch {}
+    } catch (e) {
+      console.warn('[FILE SNAPSHOT] Error reading directory:', e.message);
+    }
     return snapshot;
   }
 
@@ -444,7 +446,9 @@ export function createWsHandler(deps) {
 
     // 加载外部管道脚本（非阻塞）
     let pipelines = [];
-    loadPipelines().then(p => { pipelines = p; }).catch(() => {});
+    loadPipelines().then(p => { pipelines = p; }).catch(e => {
+      console.error('[WS] Failed to load pipelines:', e.message);
+    });
 
     // Verify WebSocket origin
     const wsOrigin = req.headers.origin;
@@ -630,6 +634,13 @@ export function createWsHandler(deps) {
 
           // message.data 可能是字符串或对象 { text, files, images, tools }
           const originalPrompt = typeof message.data === 'string' ? message.data : message.data.text;
+
+          // 输入长度限制
+          const MAX_INPUT_LENGTH = 100000;
+          if (originalPrompt && originalPrompt.length > MAX_INPUT_LENGTH) {
+            ws.send(JSON.stringify({ type: 'error', message: `输入超出长度限制 (${MAX_INPUT_LENGTH} 字符)` }));
+            return;
+          }
           let prompt = originalPrompt;
           const tools = (typeof message.data === 'object' ? message.data.tools : null) || [];
           const toolResults = [];
@@ -940,10 +951,11 @@ export function createWsHandler(deps) {
               const writeBlocks = extractWriteFileBlocks(assistantBuffer);
               const editBlocks = extractEditFileBlocks(assistantBuffer);
 
+              const resolvedSessionDir = path.resolve(session.dir) + path.sep;
               for (const block of writeBlocks) {
                 const fullPath = path.resolve(session.dir, block.path);
-                // 安全检查：必须在工作目录内
-                if (!fullPath.startsWith(path.resolve(session.dir))) {
+                // 安全检查：必须在工作目录内（使用 path.sep 防止路径前缀绕过）
+                if (fullPath !== resolvedSessionDir.replace(/[\\/]$/, '') && !fullPath.startsWith(resolvedSessionDir)) {
                   broadcastToSession(sessionId, { type: 'output', data: `\n[Write File 拒绝] 路径 ${block.path} 不在允许的工作目录内\n` });
                   continue;
                 }
@@ -958,7 +970,7 @@ export function createWsHandler(deps) {
 
               for (const block of editBlocks) {
                 const fullPath = path.resolve(session.dir, block.path);
-                if (!fullPath.startsWith(path.resolve(session.dir))) {
+                if (fullPath !== resolvedSessionDir.replace(/[\\/]$/, '') && !fullPath.startsWith(resolvedSessionDir)) {
                   broadcastToSession(sessionId, { type: 'output', data: `\n[Edit File 拒绝] 路径 ${block.path} 不在允许的工作目录内\n` });
                   continue;
                 }
@@ -987,7 +999,7 @@ export function createWsHandler(deps) {
 
               for (const block of deleteBlocks) {
                 const fullPath = path.resolve(session.dir, block.path);
-                if (!fullPath.startsWith(path.resolve(session.dir))) {
+                if (fullPath !== resolvedSessionDir.replace(/[\\/]$/, '') && !fullPath.startsWith(resolvedSessionDir)) {
                   broadcastToSession(sessionId, { type: 'output', data: `\n[Delete File 拒绝] 路径 ${block.path} 不在允许的工作目录内\n` });
                   continue;
                 }
@@ -1002,7 +1014,9 @@ export function createWsHandler(deps) {
               for (const block of renameBlocks) {
                 const oldFullPath = path.resolve(session.dir, block.path);
                 const newFullPath = path.resolve(session.dir, block.newPath);
-                if (!oldFullPath.startsWith(path.resolve(session.dir)) || !newFullPath.startsWith(path.resolve(session.dir))) {
+                const resolvedDir = resolvedSessionDir.replace(/[\\/]$/, '');
+                if ((oldFullPath !== resolvedDir && !oldFullPath.startsWith(resolvedSessionDir)) ||
+                    (newFullPath !== resolvedDir && !newFullPath.startsWith(resolvedSessionDir))) {
                   broadcastToSession(sessionId, { type: 'output', data: `\n[Rename File 拒绝] 路径不在允许的工作目录内\n` });
                   continue;
                 }
@@ -1017,7 +1031,7 @@ export function createWsHandler(deps) {
 
               for (const block of listBlocks) {
                 const dirPath = path.resolve(session.dir, block.path);
-                if (!dirPath.startsWith(path.resolve(session.dir))) {
+                if (dirPath !== resolvedSessionDir.replace(/[\\/]$/, '') && !dirPath.startsWith(resolvedSessionDir)) {
                   broadcastToSession(sessionId, { type: 'output', data: `\n[List Files 拒绝] 路径 ${block.path} 不在允许的工作目录内\n` });
                   continue;
                 }
@@ -1390,6 +1404,7 @@ export function createWsHandler(deps) {
         for (const [approvalId, pending] of pendingApprovals) {
           if (approvalId.startsWith(sessionId + '_')) {
             clearTimeout(pending._timeout);
+            pending.resolve('cancelled'); // 确保等待审批的流程不会永久挂起
             pendingApprovals.delete(approvalId);
           }
         }

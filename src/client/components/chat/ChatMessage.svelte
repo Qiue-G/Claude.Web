@@ -88,7 +88,15 @@
       return escapeHtml(text);
     }
     const safeText = escapeHtml(text);
-    return marked.parse(safeText);
+    // 自定义 renderer 过滤危险协议（javascript: 等）
+    const renderer = new marked.Renderer();
+    renderer.link = ({ href, text: linkText, tokens }) => {
+      if (href && /^(javascript|data|vbscript):/i.test(href)) {
+        return escapeHtml(linkText || href);
+      }
+      return `<a href="${href}" rel="noopener noreferrer">${linkText}</a>`;
+    };
+    return marked.parse(safeText, { renderer });
   }
 
   async function copyMessage() {

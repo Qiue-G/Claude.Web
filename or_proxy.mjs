@@ -405,6 +405,7 @@ const server = createServer(async (req, res) => {
         const reader = orResp.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+        const MAX_BUFFER_SIZE = 1024 * 512; // 512KB buffer 上限
         let totalChars = 0;
         let totalToolBlocks = 0;
         let usageInfo = null;
@@ -415,6 +416,13 @@ const server = createServer(async (req, res) => {
           if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
+
+          // SSE buffer 保护：防止超长行耗尽内存
+          if (buffer.length > MAX_BUFFER_SIZE) {
+            console.error('[proxy] SSE buffer exceeded maximum size, resetting');
+            buffer = '';
+            continue;
+          }
           const lines = buffer.split('\n');
           buffer = lines.pop() || '';
 

@@ -203,6 +203,12 @@ async function spawnCli(session, prompt, agentConfig, sessionClients, sessionPro
     return proc;
   } catch (e) {
     releaseProcessSlot();
+    // 确保代理进程也被清理
+    const proxy = sessionProxies.get(session.id);
+    if (proxy) {
+      try { proxy.kill(); } catch (_) {}
+      sessionProxies.delete(session.id);
+    }
     throw e;
   }
 }

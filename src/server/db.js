@@ -41,11 +41,32 @@ function createSlowQueryMonitor(db) {
     }
   }
 
-  /** 包装 db.exec，自动计时 */
+  /** 包装 db.exec，自动计时
+   *  NOTE: sql.js 的 Database.exec() 不支持参数绑定（第二个参数被静默忽略）。
+   *  当传入 params 时，改用 db.prepare() + getAsObject() 实现参数化查询。
+   *  返回格式与 db.exec() 一致: [{ columns: [...], values: [[...], ...] }]
+   */
   function exec(sql, params) {
     const start = Date.now();
     try {
-      return db.exec(sql, params);
+      if (params && params.length > 0) {
+        const stmt = db.prepare(sql);
+        stmt.bind(params);
+        const rows = [];
+        let columns = [];
+        let first = true;
+        while (stmt.step()) {
+          const obj = stmt.getAsObject();
+          if (first) {
+            columns = Object.keys(obj);
+            first = false;
+          }
+          rows.push(columns.map(c => obj[c]));
+        }
+        stmt.free();
+        return rows.length > 0 ? [{ columns, values: rows }] : [];
+      }
+      return db.exec(sql);
     } finally {
       const elapsed = Date.now() - start;
       if (elapsed > SLOW_QUERY_THRESHOLD_MS) {
@@ -116,12 +137,28 @@ export async function initDb(workspaceDir) {
     )
   `);
 
-  // 兼容旧数据：添加分享相关字段（如果不存在）
-  try { db.run('ALTER TABLE sessions ADD COLUMN owner_id TEXT'); } catch (_) {}
-  try { db.run('ALTER TABLE sessions ADD COLUMN role TEXT DEFAULT \'owner\''); } catch (_) {}
-  try { db.run('ALTER TABLE sessions ADD COLUMN status TEXT DEFAULT \'private\''); } catch (_) {}
-  try { db.run('ALTER TABLE sessions ADD COLUMN share_token TEXT UNIQUE'); } catch (_) {}
-  try { db.run('ALTER TABLE sessions ADD COLUMN coauthors TEXT DEFAULT \'[]\''); } catch (_) {}
+  // 兼容旧数据：使用 PRAGMA 检测列是否存在，避免每次 ALTER TABLE
+  function ensureColumns(table, columns) {
+    const existing = db.exec(`PRAGMA table_info(${table})`);
+    const existingCols = existing[0]?.values?.map(v => v[1]) || [];
+    for (const col of columns) {
+      if (!existingCols.includes(col.name)) {
+        const def = col.type + (col.default ? ` DEFAULT ${col.default}` : '');
+        try {
+          db.run(`ALTER TABLE ${table} ADD COLUMN ${col.name} ${def}`);
+        } catch (e) {
+          console.warn(`[DB] Failed to add column ${col.name}: ${e.message}`);
+        }
+      }
+    }
+  }
+  ensureColumns('sessions', [
+    { name: 'owner_id', type: 'TEXT' },
+    { name: 'role', type: 'TEXT', default: "'owner'" },
+    { name: 'status', type: 'TEXT', default: "'private'" },
+    { name: 'share_token', type: 'TEXT' },
+    { name: 'coauthors', type: 'TEXT', default: "'[]'" }
+  ]);
 
   db.run(`
     CREATE TABLE IF NOT EXISTS share_sessions (
@@ -198,12 +235,10 @@ export async function initDb(workspaceDir) {
     )
   `);
 
-  // 兼容旧数据：添加 userId 列（如果不存在）
-  try {
-    db.run('ALTER TABLE sessions ADD COLUMN userId TEXT REFERENCES users(id)');
-  } catch (_) {
-    // 列已存在，忽略
-  }
+  // 兼容旧数据：添加 userId 列（如果不存在），复用 ensureColumns
+  ensureColumns('sessions', [
+    { name: 'userId', type: 'TEXT REFERENCES users(id)' }
+  ]);
 
   console.log('[DB] schema initialized');
 
@@ -215,7 +250,8 @@ export async function initDb(workspaceDir) {
   let pendingSave = false;
   const SAVE_DEBOUNCE_MS = 5000;
 
-  /** Persist the database to disk (throttled). */
+  /** Persist the database to disk (throttled with retry). */
+  const SAVE_RETRIES = 3;
   async function saveDb() {
     if (saveTimer) {
       pendingSave = true;
@@ -223,9 +259,20 @@ export async function initDb(workspaceDir) {
     }
     try {
       const data = db.export();
-      await writeFile(filePath, Buffer.from(data));
+      let lastError = null;
+      for (let i = 0; i < SAVE_RETRIES; i++) {
+        try {
+          await writeFile(filePath, Buffer.from(data));
+          lastError = null;
+          break;
+        } catch (e) {
+          lastError = e;
+          if (i < SAVE_RETRIES - 1) await new Promise(r => setTimeout(r, 100 * Math.pow(2, i)));
+        }
+      }
+      if (lastError) console.error('[DB] save failed after retries:', lastError.message);
     } catch (e) {
-      console.error('[DB] save failed:', e.message);
+      console.error('[DB] export failed:', e.message);
     }
     // Schedule next save after debounce window
     saveTimer = setTimeout(() => {

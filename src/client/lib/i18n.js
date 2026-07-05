@@ -35,6 +35,7 @@ const translations = {
     'status.error': '连接错误',
     'status.reconnectingMsg': '连接断开，{seconds}秒后尝试重连 ({attempt}/{max})...',
     'status.reconnected': '连接已恢复',
+    'connection.maxReconnect': '重连次数已达上限，请刷新页面',
     'session.expired': '会话已过期，请创建新对话',
 
     // 聊天
@@ -385,6 +386,7 @@ const translations = {
     'status.error': 'Connection Error',
     'status.reconnectingMsg': 'Connection lost, retrying in {seconds}s ({attempt}/{max})...',
     'status.reconnected': 'Connection restored',
+    'connection.maxReconnect': 'Max reconnection attempts reached, please refresh',
 
     // Chat
     'chat.new': 'New Chat',

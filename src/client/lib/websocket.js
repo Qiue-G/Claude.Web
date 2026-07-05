@@ -20,6 +20,7 @@ let reconnectAttempts = 0;
 let reconnectTimer = null;
 let reconnectResetTimer = null;
 const MAX_RECONNECT_DELAY = 60000;
+const MAX_RECONNECT_ATTEMPTS = 20;
 let autoReconnectEnabled = true;
 let isOffline = false;
 
@@ -159,8 +160,14 @@ export function connectWebSocket(sid, token, autoReconnect = true) {
     isTyping.set(false);
     stopHeartbeat();
 
-    // WebSocket 断开后持续重连（无限指数退避，最长 60s）
+    // WebSocket 断开后持续重连（指数退避，最长 60s，最多 MAX_RECONNECT_ATTEMPTS 次）
     if (isOffline || !autoReconnectEnabled) return;
+
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      connectionStatus.set('disconnected');
+      warning(get(t)('connection.maxReconnect'));
+      return;
+    }
 
     const currentSid = get(sessionId);
     const currentToken = get(sessionToken);
