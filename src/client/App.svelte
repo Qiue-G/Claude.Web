@@ -125,7 +125,7 @@
   import { onlineUsers, collabClient as collabClientStore } from '$stores/collab.store.js';
   import { enabledTools } from '$stores/tools.store.js';
   import { createSession as apiCreateSession, validateSession } from '$apis/session.api.js';
-  import { writeFile, readFile, getFileTree, deleteFileApi, renameFile } from '$apis/files.api.js';
+  import { writeFile, readFile, getFileTree, listDirectory, deleteFileApi, renameFile } from '$apis/files.api.js';
   import FileHistoryPanel from '$components/files/FileHistoryPanel.svelte';
   import { sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
   import { get } from 'svelte/store';
@@ -360,9 +360,9 @@
 
   async function loadFileTree(sid, tok) {
     try {
-      const result = await getFileTree(sid, tok);
-      if (result && result.tree) {
-        fileTree.set(result.tree);
+      const result = await listDirectory(sid, '', tok);
+      if (result && result.items) {
+        fileTree.set(result.items);
       }
     } catch (err) {
       console.error('Failed to load file tree:', err.message);
@@ -753,7 +753,7 @@
     {/if}
     {#if !isMobile && !isTablet && $fileSidebarOpen}
       <div class="sidebar">
-        <FileTree on:fileSelect={handleFileSelect} on:fileDelete={handleFileDelete} on:fileRename={handleFileRename} on:fileUpload={handleFileUpload} />
+        <FileTree sessionId={$sessionId} token={$sessionToken} on:fileSelect={handleFileSelect} on:fileDelete={handleFileDelete} on:fileRename={handleFileRename} on:fileUpload={handleFileUpload} />
         {#if $currentFile}
           <FileHistoryPanel filePath={$currentFile} on:rollback={handleFileSelect} />
         {/if}
@@ -790,7 +790,7 @@
         <div class="drawer-header">
           <button class="drawer-close-btn" onclick={closeDrawerFile} aria-label="关闭文件侧边栏">✕</button>
         </div>
-        <FileTree on:fileSelect={handleFileSelect} on:fileDelete={handleFileDelete} on:fileRename={handleFileRename} on:fileUpload={handleFileUpload} />
+        <FileTree sessionId={$sessionId} token={$sessionToken} on:fileSelect={handleFileSelect} on:fileDelete={handleFileDelete} on:fileRename={handleFileRename} on:fileUpload={handleFileUpload} />
         {#if $currentFile}
           <FileHistoryPanel filePath={$currentFile} on:rollback={handleFileSelect} />
         {/if}

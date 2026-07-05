@@ -1,10 +1,13 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, onMount } from 'svelte';
   import Icon from '$components/common/Icon.svelte';
+  import { listDirectory } from '$apis/files.api.js';
 
   export let item;
   export let depth = 0;
   export let isActive = false;
+  export let sessionId = '';
+  export let token = '';
 
   const dispatch = createEventDispatcher();
 
@@ -16,13 +19,42 @@
   let newName = '';
   let renameInput;
 
-  function toggle() {
+  // 懒加载状态
+  let loaded = false;
+  let loading = false;
+  let localChildren = [];
+
+  async function toggle() {
     if (item.type === 'directory') {
       isOpen = !isOpen;
+      if (isOpen && !loaded && sessionId && token) {
+        await lazyLoadChildren();
+      }
       dispatch('toggle', item);
     } else {
       dispatch('select', item);
     }
+  }
+
+  async function lazyLoadChildren() {
+    loading = true;
+    try {
+      const result = await listDirectory(sessionId, item.path, token);
+      if (result && result.items) {
+        localChildren = result.items;
+        loaded = true;
+      }
+    } catch (err) {
+      console.error('Failed to load directory:', err.message);
+    } finally {
+      loading = false;
+    }
+  }
+
+  // 兼容旧数据：如果有预加载的 children，直接使用
+  $: if (item.children && item.children.length > 0 && !loaded) {
+    localChildren = item.children;
+    loaded = true;
   }
 
   function handleContextMenu(e) {
@@ -105,6 +137,10 @@
       {item.name}
     </span>
   {/if}
+
+  {#if loading}
+    <span class="loading-spinner"></span>
+  {/if}
 </div>
 
 {#if contextMenuVisible}
@@ -120,12 +156,15 @@
   </div>
 {/if}
 
-{#if item.type === 'directory' && isOpen && item.children}
-  {#if item.children.length === 0}
+{#if item.type === 'directory' && isOpen}
+  {#if loading}
+    <div class="empty-dir" style="padding-left: {depth * 16 + 36}px">加载中...</div>
+  {:else if localChildren.length === 0}
     <div class="empty-dir" style="padding-left: {depth * 16 + 36}px">空目录</div>
   {:else}
-    {#each item.children as child}
-      <svelte:self item={child} depth={depth + 1} {isActive} on:select on:delete on:rename />
+    {#each localChildren as child}
+      <svelte:self item={child} depth={depth + 1} {isActive} {sessionId} {token}
+        on:select on:delete on:rename />
     {/each}
   {/if}
 {/if}
@@ -234,5 +273,20 @@
     color: var(--text-muted);
     font-style: italic;
     padding: 2px 0;
+  }
+
+  .loading-spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 </style>

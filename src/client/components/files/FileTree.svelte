@@ -3,6 +3,10 @@
   import { fileTree, currentFile } from '$stores/files.store.js';
   import { createEventDispatcher } from 'svelte';
   import { t } from '$lib/i18n.js';
+  import { get } from 'svelte/store';
+
+  export let sessionId = '';
+  export let token = '';
 
   const dispatch = createEventDispatcher();
 
@@ -83,6 +87,8 @@
         <FileItem
           {item}
           depth={0}
+          {sessionId}
+          {token}
           isActive={$currentFile === item.path}
           on:select={handleSelect}
           on:delete={handleDelete}

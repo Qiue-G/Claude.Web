@@ -20,7 +20,7 @@
 import { Router } from 'express';
 import { join, resolve as pathResolve, dirname as pathDirname, relative as pathRelative, isAbsolute as pathIsAbsolute } from 'path';
 import { existsSync } from 'fs';
-import { readFile, writeFile, mkdir, unlink, rm, stat } from 'fs/promises';
+import { readFile, writeFile, mkdir, unlink, rm, stat, readdir } from 'fs/promises';
 import { createHash, randomUUID } from 'crypto';
 import { diffLines } from 'diff';
 import { AppError } from '../lib/AppError.js';
@@ -136,11 +136,35 @@ export function createFileRouter(deps) {
     next();
   });
 
-  // ===== File Tree API =====
+  // ===== File Tree API (full tree) =====
   router.get('/:sessionId', asyncHandler(async (req, res) => {
     const session = validateSession(req);
     const tree = await buildTree(session.dir, '');
     res.json({ tree });
+  }));
+
+  // ===== Directory Listing API (single level, for lazy loading) =====
+  router.get('/:sessionId/list', asyncHandler(async (req, res) => {
+    const session = validateSession(req);
+    const dirPath = req.query.dir || '';
+    const fullDir = resolveFilePath(session, dirPath);
+
+    const entries = await readdir(fullDir, { withFileTypes: true });
+    const items = [];
+    for (const entry of entries) {
+      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+      const relPath = dirPath ? dirPath + '/' + entry.name : entry.name;
+      try {
+        const s = await stat(join(fullDir, entry.name));
+        if (entry.isDirectory()) {
+          items.push({ name: entry.name, path: relPath, type: 'directory', children: [] });
+        } else {
+          items.push({ name: entry.name, path: relPath, type: 'file', size: s.size });
+        }
+      } catch (e) { /* skip */ }
+    }
+    items.sort((a, b) => a.type !== b.type ? (a.type === 'directory' ? -1 : 1) : a.name.localeCompare(b.name));
+    res.json({ items, dir: dirPath });
   }));
 
   // ===== File Version List =====

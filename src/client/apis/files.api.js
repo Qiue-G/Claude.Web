@@ -7,6 +7,17 @@ export async function getFileTree(sessionId, token) {
   return api.get(`/api/files/${sessionId}`, { token });
 }
 
+/**
+ * List a single directory (non-recursive). Used for lazy loading in FileTree.
+ * @param {string} sessionId
+ * @param {string} dirPath - directory path relative to session root ('' for root)
+ * @param {string} token
+ */
+export async function listDirectory(sessionId, dirPath, token) {
+  const params = dirPath ? `?dir=${encodeURIComponent(dirPath)}` : '';
+  return api.get(`/api/files/${sessionId}/list${params}`, { token });
+}
+
 export async function readFile(sessionId, filePath, token) {
   return api.get(`/api/files/${sessionId}/${encodeURIComponent(filePath)}`, { token });
 }
