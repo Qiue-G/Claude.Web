@@ -2,6 +2,9 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import jwt from 'jsonwebtoken';
 
+// 测试用 JWT_SECRET
+process.env.JWT_SECRET = 'test-jwt-secret-for-testing-only-32chars!';
+
 // 直接测试工具函数
 describe('Auth Integration', () => {
   let passwordModule;

@@ -7,8 +7,11 @@
  */
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET;
 const TOKEN_EXPIRY = '8h';
+
+function getJwtSecret() {
+  return process.env.JWT_SECRET;
+}
 
 /**
  * Sign a JWT for the given user object.
@@ -21,7 +24,7 @@ export function signToken(user) {
   }
   return jwt.sign(
     { id: user.id, username: user.username, role: user.role || 'user' },
-    JWT_SECRET,
+    getJwtSecret(),
     { expiresIn: TOKEN_EXPIRY }
   );
 }
@@ -38,7 +41,7 @@ export function requireAuth(req, res, next) {
   }
   try {
     const token = header.slice(7);
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, getJwtSecret());
     req.user = { id: decoded.id, username: decoded.username, role: decoded.role || 'user' };
     next();
   } catch (err) {

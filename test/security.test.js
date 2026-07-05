@@ -6,9 +6,14 @@
  * 2. 输入长度限制
  * 3. JWT 过期时间验证
  */
+
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import jwt from 'jsonwebtoken';
+import express from 'express';
+
+// 测试用 JWT_SECRET
+process.env.JWT_SECRET = 'test-jwt-secret-for-testing-only-32chars!';
 
 // ─── 密码复杂度验证 ───────────────────────────────────────────────
 
@@ -144,7 +149,7 @@ describe('JWT 过期时间验证', () => {
   let signToken;
   let requireAuth;
 
-  const JWT_SECRET = 'fc-auth-dev-secret-do-not-use-in-production';
+  const JWT_SECRET = 'test-jwt-secret-for-testing-only-32chars!';
 
   before(async () => {
     const mod = await import('../src/server/auth/authMiddleware.js');

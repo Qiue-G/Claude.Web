@@ -7,6 +7,10 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import express from 'express';
 import { randomUUID } from 'crypto';
+
+// 测试用 JWT_SECRET
+process.env.JWT_SECRET = 'test-jwt-secret-for-testing-only-32chars!';
+
 import { createSessionRouter } from '../src/server/routes/sessionRoutes.js';
 import { signToken } from '../src/server/auth/authMiddleware.js';
 

@@ -1,6 +1,10 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import jwt from 'jsonwebtoken';
+
+// 测试用 JWT_SECRET
+process.env.JWT_SECRET = 'test-jwt-secret-for-testing-only-32chars!';
+
 import { signToken, requireAuth, requireAdmin } from '../src/server/auth/authMiddleware.js';
 
 describe('authMiddleware.js', () => {
@@ -16,7 +20,7 @@ describe('authMiddleware.js', () => {
     // 用短过期时间造一个过期 token
     expiredToken = jwt.sign(
       { id: 'expired', username: 'expired', role: 'user' },
-      'fc-auth-dev-secret-do-not-use-in-production',
+      process.env.JWT_SECRET,
       { expiresIn: '0s' }
     );
   });
