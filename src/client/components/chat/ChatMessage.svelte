@@ -1,5 +1,6 @@
 <script>
   import CodeBlock from './CodeBlock.svelte';
+  import FileBlock from './FileBlock.svelte';
   import VersionHistory from './VersionHistory.svelte';
   import Icon from '$components/common/Icon.svelte';
   import { escapeHtml, formatFileSize } from '$lib/utils.js';
@@ -32,6 +33,12 @@
 
   $: roleLabel = role === 'user' ? 'You' : role === 'assistant' ? 'Assistant' : 'System';
   $: parsedParts = parseContent(content);
+
+  const fileOpLanguages = ['write_file', 'edit_file', 'delete_file', 'rename_file', 'list_files'];
+
+  function isFileOpLang(lang) {
+    return fileOpLanguages.includes(lang);
+  }
 
   function parseContent(text) {
     const parts = [];
@@ -111,7 +118,9 @@
       </div>
     {/if}
     {#each parsedParts as part}
-      {#if part.type === 'code'}
+      {#if part.type === 'code' && isFileOpLang(part.language)}
+        <FileBlock code={part.content} language={part.language} />
+      {:else if part.type === 'code'}
         <CodeBlock code={part.content} language={part.language} />
       {:else}
         <div class="markdown-content" class:streaming-cursor={streaming && part.type === 'markdown'}>
