@@ -157,12 +157,14 @@
   .messages-container { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 16px 0; }
   .messages-list { display: flex; flex-direction: column; gap: 4px; }
 
-  /* ===== Diff Group ===== */
+  /* ===== Diff Group (预估高度更大) ===== */
   .diff-group {
     display: flex;
     flex-direction: column;
     padding: 0 16px;
     margin: 4px 0;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 200px;
   }
 
   .diff-group-header {

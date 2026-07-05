@@ -1,4 +1,5 @@
 <script>
+  import { onMount, onDestroy } from 'svelte';
   import CodeBlock from './CodeBlock.svelte';
   import FileBlock from './FileBlock.svelte';
   import VersionHistory from './VersionHistory.svelte';
@@ -30,9 +31,30 @@
 
   let copied = false;
   let versionHistoryOpen = false;
+  let element;
+  let visible = false;
+  let observer;
 
   $: roleLabel = role === 'user' ? 'You' : role === 'assistant' ? 'Assistant' : 'System';
-  $: parsedParts = parseContent(content);
+
+  // 懒渲染：只有 streaming（最新消息）或进入视口后才解析内容
+  $: parsedParts = (visible || streaming) ? parseContent(content) : [];
+
+  onMount(() => {
+    if (!streaming && element) {
+      observer = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
+          visible = true;
+          observer.disconnect();
+        }
+      }, { rootMargin: '200px' });
+      observer.observe(element);
+    }
+  });
+
+  onDestroy(() => {
+    observer?.disconnect();
+  });
 
   const fileOpLanguages = ['write_file', 'edit_file', 'delete_file', 'rename_file', 'list_files'];
 
@@ -96,7 +118,7 @@
   }
 </script>
 
-<div class="chat-msg {role}" class:streaming>
+<div bind:this={element} class="chat-msg {role}" class:streaming class:visible>
   <div class="chat-msg-header">
     <span class="chat-msg-role">{roleLabel}</span>
     {#if time}
@@ -190,6 +212,12 @@
   .chat-msg {
     padding: 12px 24px;
     animation: msgFadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 80px;
+  }
+
+  .chat-msg.visible {
+    contain-intrinsic-size: auto 80px;
   }
 
   .chat-msg-header {
