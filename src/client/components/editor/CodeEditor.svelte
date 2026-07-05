@@ -1,7 +1,7 @@
 <script>
   import EditorTabs from './EditorTabs.svelte';
-  import { fileContents, activeTab, currentFile, currentFileContent } from '$stores/files.store.js';
-  import { createEventDispatcher, tick } from 'svelte';
+  import { fileContents, activeTab, currentFile, currentFileContent, scrollToLine } from '$stores/files.store.js';
+  import { createEventDispatcher, tick, afterUpdate } from 'svelte';
   import { t } from '$lib/i18n.js';
 
   const dispatch = createEventDispatcher();
@@ -10,6 +10,7 @@
   let gutter;
   let scrollContainer;
   let content = '';
+  let pendingScroll = null;
 
   $: if ($activeTab) {
     content = $fileContents[$activeTab] || '';
@@ -17,6 +18,28 @@
     content = '';
   }
   $: lineCount = content === '' ? 0 : content.split('\n').length;
+
+  // Watch scrollToLine store for click-to-jump from diff cards
+  $: if ($scrollToLine && $activeTab === $scrollToLine.filePath) {
+    pendingScroll = $scrollToLine.line;
+    scrollToLine.set(null);
+  }
+
+  afterUpdate(() => {
+    if (pendingScroll && textarea) {
+      const lineHeight = 20.8;
+      textarea.focus();
+      textarea.scrollTop = (pendingScroll - 1) * lineHeight - 60;
+      // Move cursor to start of target line
+      const lines = content.split('\n');
+      let pos = 0;
+      for (let i = 0; i < pendingScroll - 1 && i < lines.length; i++) {
+        pos += lines[i].length + 1;
+      }
+      textarea.setSelectionRange(pos, pos);
+      pendingScroll = null;
+    }
+  });
 
   function handleInput() {
     if ($activeTab) {

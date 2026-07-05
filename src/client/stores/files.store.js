@@ -9,6 +9,7 @@ export const currentFile = writable(null);
 export const currentFileContent = writable('');
 export const openTabs = writable([]);
 export const activeTab = writable(null);
+export const scrollToLine = writable(null);
 
 export const allFilePaths = derived(fileTree, ($tree) => {
   const paths = [];

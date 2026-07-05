@@ -272,14 +272,32 @@ export function createWsHandler(deps) {
           const added = changes.filter(c => c.added).reduce((s, c) => s + (c.count || 0), 0);
           const removed = changes.filter(c => c.removed).reduce((s, c) => s + (c.count || 0), 0);
 
-          results.push({
-            filePath,
-            changes: changes.map(c => ({
+          // Compute line numbers for each diff chunk
+          let newLineNum = 1;
+          let oldLineNum = 1;
+          const changesWithLines = changes.map(c => {
+            const chunk = {
               count: c.count,
               added: c.added || false,
               removed: c.removed || false,
-              value: c.value
-            })),
+              value: c.value,
+              startLine: newLineNum
+            };
+            if (c.removed) {
+              chunk.oldStartLine = oldLineNum;
+              oldLineNum += c.count;
+            } else if (c.added) {
+              newLineNum += c.count;
+            } else {
+              newLineNum += c.count;
+              oldLineNum += c.count;
+            }
+            return chunk;
+          });
+
+          results.push({
+            filePath,
+            changes: changesWithLines,
             fromVersion: oldId,
             toVersion: newId,
             summary: `+${added} -${removed} in ${filePath}`
@@ -303,10 +321,11 @@ export function createWsHandler(deps) {
           [newId, session.id, filePath, curData.content, newHash, Buffer.byteLength(curData.content, 'utf-8'), Date.now(), 'post-exec']
         );
 
-        const added = curData.content.split('\n').filter(l => l.trim()).length;
+        const lines = curData.content.split('\n');
+        const added = lines.filter(l => l.trim()).length;
         results.push({
           filePath,
-          changes: [{ count: 1, added: true, value: curData.content }],
+          changes: [{ count: lines.length, added: true, value: curData.content, startLine: 1 }],
           fromVersion: null,
           toVersion: newId,
           summary: `+${added} lines (new file) in ${filePath}`

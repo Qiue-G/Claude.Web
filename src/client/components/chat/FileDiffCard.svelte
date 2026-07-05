@@ -2,6 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import { get } from 'svelte/store';
   import { sessionToken } from '$stores/session.store.js';
+  import { scrollToLine } from '$stores/files.store.js';
   import { t } from '$lib/i18n.js';
 
   $: _t = $t;
@@ -21,7 +22,6 @@
     revertError = '';
     try {
       const token = get(sessionToken);
-      // POST /api/session/{sessionId}/rollback/{versionId}/{filePath}
       const url = `/api/session/${sessionId}/rollback/${diff.fromVersion}/${diff.filePath}`;
       const res = await fetch(url, {
         method: 'POST',
@@ -43,6 +43,15 @@
   function handleOpen() {
     dispatch('open', { filePath: diff.filePath });
   }
+
+  function jumpToFile(line) {
+    if (line) {
+      scrollToLine.set({ filePath: diff.filePath, line });
+      dispatch('open', { filePath: diff.filePath });
+    } else {
+      handleOpen();
+    }
+  }
 </script>
 
 <div class="file-diff-card">
@@ -55,14 +64,25 @@
   <div class="diff-body">
     {#if diff.changes?.length}
       {#each diff.changes as change}
-        {#if change.added}
-          <div class="diff-line added">
+        {#if change.removed}
+          <div class="diff-line removed" onclick={() => change.oldStartLine && jumpToFile(change.oldStartLine)} role="button" tabindex="-1" title="跳转到第 {change.oldStartLine} 行">
+            <span class="line-num">{change.oldStartLine}</span>
+            <span class="line-num-sep">-</span>
+            <span class="line-prefix">-</span>
+            <span class="line-content">{change.value}</span>
+          </div>
+        {:else if change.added}
+          <div class="diff-line added" onclick={() => change.startLine && jumpToFile(change.startLine)} role="button" tabindex="-1" title="跳转到第 {change.startLine} 行">
+            <span class="line-num">{change.startLine}</span>
+            <span class="line-num-sep">+</span>
             <span class="line-prefix">+</span>
             <span class="line-content">{change.value}</span>
           </div>
-        {:else if change.removed}
-          <div class="diff-line removed">
-            <span class="line-prefix">-</span>
+        {:else}
+          <div class="diff-line context" onclick={() => change.startLine && jumpToFile(change.startLine)} role="button" tabindex="-1" title="跳转到第 {change.startLine} 行">
+            <span class="line-num">{change.startLine}</span>
+            <span class="line-num-sep"></span>
+            <span class="line-prefix"></span>
             <span class="line-content">{change.value}</span>
           </div>
         {/if}
@@ -114,7 +134,7 @@
   }
 
   .diff-body {
-    max-height: 300px;
+    max-height: 400px;
     overflow-y: auto;
     font-family: monospace;
     font-size: 12px;
@@ -123,24 +143,55 @@
 
   .diff-line {
     display: flex;
-    padding: 0 12px;
+    padding: 0 4px 0 8px;
     min-height: 20px;
     white-space: pre-wrap;
     word-break: break-all;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+
+  .diff-line:hover {
+    filter: brightness(1.1);
   }
 
   .diff-line.added {
-    background: rgba(34, 197, 94, 0.1);
+    background: rgba(34, 197, 94, 0.12);
   }
 
   .diff-line.removed {
-    background: rgba(239, 68, 68, 0.1);
+    background: rgba(239, 68, 68, 0.12);
+  }
+
+  .diff-line.context {
+    background: transparent;
+    opacity: 0.75;
+  }
+
+  .line-num {
+    width: 32px;
+    flex-shrink: 0;
+    text-align: right;
+    color: var(--text-dim);
+    font-size: 11px;
+    padding-right: 4px;
+    user-select: none;
+  }
+
+  .line-num-sep {
+    width: 12px;
+    flex-shrink: 0;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 11px;
+    user-select: none;
   }
 
   .line-prefix {
-    width: 16px;
+    width: 14px;
     flex-shrink: 0;
     text-align: center;
+    font-weight: bold;
     user-select: none;
   }
 
@@ -148,13 +199,22 @@
     color: #22c55e;
   }
 
+  .diff-line.added .line-num-sep {
+    color: #22c55e;
+  }
+
   .diff-line.removed .line-prefix {
+    color: #ef4444;
+  }
+
+  .diff-line.removed .line-num-sep {
     color: #ef4444;
   }
 
   .line-content {
     white-space: pre-wrap;
     word-break: break-all;
+    flex: 1;
   }
 
   .diff-empty {
