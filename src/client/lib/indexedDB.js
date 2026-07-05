@@ -117,6 +117,22 @@ export async function clear(storeName) {
 }
 
 /**
+ * 批量写入（单个事务：先清空再写入所有数据）
+ */
+export async function putAll(storeName, items) {
+  return new Promise((resolve, reject) => {
+    const store = getStore(storeName, 'readwrite');
+    store.clear();
+    for (const item of items) {
+      store.put(item);
+    }
+    // 监听事务完成
+    store.transaction.oncomplete = () => resolve();
+    store.transaction.onerror = () => reject(store.transaction.error);
+  });
+}
+
+/**
  * 使用索引查询
  */
 export async function getByIndex(storeName, indexName, value) {

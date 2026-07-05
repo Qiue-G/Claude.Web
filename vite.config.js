@@ -8,7 +8,7 @@ export default defineConfig({
   build: {
     outDir: '../../public',
     emptyOutDir: true,
-    cssMinify: false,
+    cssMinify: true,
     minify: true
   },
   resolve: {

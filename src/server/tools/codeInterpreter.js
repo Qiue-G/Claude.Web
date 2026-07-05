@@ -8,6 +8,7 @@ import { buildSafeEnv } from '../lib/safeEnv.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PYTHON_CMD = process.platform === 'win32' ? 'python' : 'python3';
 const AST_CHECKER = path.join(__dirname, 'python_ast_checker.py');
+const DOCKER_SANDBOX = path.join(__dirname, 'dockerSandbox.py');
 
 // 全局并发控制（第5层）
 const MAX_CONCURRENT = 5;
@@ -80,9 +81,10 @@ function astSecurityCheck(code) {
 
 /**
  * 第8层：Docker 回退
- * 检测 Docker 是否可用，可用时在 Docker 容器中执行
+ * 优先使用独立 dockerSandbox.py 脚本，不可用时回退到内联 Docker 执行
  */
 async function tryDockerExecute(code) {
+  // 检测 Docker 是否可用
   try {
     const { execSync } = await import('child_process');
     execSync('docker --version', { stdio: 'ignore', timeout: 3000 });
@@ -90,7 +92,48 @@ async function tryDockerExecute(code) {
     return null; // Docker not available
   }
 
-  // Docker 可用，在容器中执行
+  // 优先使用独立沙箱脚本（支持文件挂载、非 root 用户等）
+  if (fs.existsSync(DOCKER_SANDBOX)) {
+    return new Promise((resolve) => {
+      const proc = spawn(PYTHON_CMD, [DOCKER_SANDBOX], {
+        timeout: 35000,
+        env: buildSafeEnv(),
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      let stdout = '';
+      let stderr = '';
+      const timeout = setTimeout(() => {
+        proc.kill();
+        resolve({ stdout, stderr: '[超时] Docker 沙箱执行超过 30 秒', exitCode: -1 });
+      }, 35000);
+
+      proc.stdout.on('data', d => {
+        if (stdout.length < MAX_OUTPUT) stdout += d.toString().slice(0, MAX_OUTPUT - stdout.length);
+      });
+      proc.stderr.on('data', d => {
+        if (stderr.length < MAX_OUTPUT) stderr += d.toString().slice(0, MAX_OUTPUT - stderr.length);
+      });
+      proc.on('close', () => {
+        clearTimeout(timeout);
+        try {
+          const result = JSON.parse(stdout.trim());
+          resolve(result);
+        } catch {
+          resolve({ stdout, stderr: stderr || 'Docker sandbox output parse failed', exitCode: -1 });
+        }
+      });
+      proc.on('error', () => {
+        clearTimeout(timeout);
+        resolve(null); // 回退到内联执行
+      });
+
+      proc.stdin.write(code);
+      proc.stdin.end();
+    });
+  }
+
+  // 回退：内联 Docker 执行
   return new Promise((resolve) => {
     const proc = spawn('docker', [
       'run', '--rm', '--network', 'none',
@@ -108,14 +151,10 @@ async function tryDockerExecute(code) {
     }, 30000);
 
     proc.stdout.on('data', d => {
-      if (stdout.length < MAX_OUTPUT) {
-        stdout += d.toString().slice(0, MAX_OUTPUT - stdout.length);
-      }
+      if (stdout.length < MAX_OUTPUT) stdout += d.toString().slice(0, MAX_OUTPUT - stdout.length);
     });
     proc.stderr.on('data', d => {
-      if (stderr.length < MAX_OUTPUT) {
-        stderr += d.toString().slice(0, MAX_OUTPUT - stderr.length);
-      }
+      if (stderr.length < MAX_OUTPUT) stderr += d.toString().slice(0, MAX_OUTPUT - stderr.length);
     });
     proc.on('close', code => {
       clearTimeout(timeout);

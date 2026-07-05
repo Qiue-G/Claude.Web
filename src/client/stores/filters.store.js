@@ -2,7 +2,8 @@
  * Filters store — 管理过滤器配置状态
  */
 
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
+import { getWs } from '$lib/websocket.js';
 
 /** 原始过滤器配置（从 /api/config 获取） */
 export const filtersConfig = writable({});
@@ -50,12 +51,10 @@ export const filterMeta = derived(filtersConfig, ($cfg) => {
 
 /** 将当前过滤器配置通过 WebSocket 发送到后端 */
 function sendFilterConfigToBackend(cfg) {
-  import('$lib/websocket.js').then(({ getWs }) => {
-    const ws = getWs();
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'update_filters', config: cfg }));
-    }
-  });
+  const ws = getWs();
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'update_filters', config: cfg }));
+  }
 }
 
 /** 更新过滤器配置 */

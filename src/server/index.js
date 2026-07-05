@@ -36,6 +36,7 @@ import { createSwaggerRouter } from './swagger.js';
 import { createUserRouter } from './auth/userRoutes.js';
 import { AppError } from './lib/AppError.js';
 import { logger } from './lib/logger.js';
+import { ActivityLog } from './collab/activityLog.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = pathDirname(__filename);
@@ -131,6 +132,9 @@ const { sessions, createSession, getSession, deleteSession, loadSessions } = cre
 
 // ===== Message Store (persisted to SQLite) =====
 const messageStore = createMessageStore({ db, monitor, saveDb });
+
+// ===== Activity Log (T5) =====
+const activityLog = new ActivityLog({ db });
 
 // ===== MCP Manager =====
 const mcpConfigs = [];
@@ -451,6 +455,7 @@ app.use(['/api/tools', '/api/config', '/api/models'], (req, res, next) => {
 });
 
 // ===== Session API ====
+app.set('activityLog', activityLog);
 app.use('/api/session', createSessionRouter({
   createSession, getSession, deleteSession, sessions, sessionProcesses, sessionProxies, messageStore,
   checkRateLimit, RATE_WINDOW, RATE_MAX_CREATE, MAX_SESSIONS, DEFAULTS, db
@@ -544,7 +549,7 @@ wss.on('connection', createWsHandler({
   getSession, sessions, sessionProcesses, sessionProxies, sessionClients, wsProcCount,
   broadcastToSession, spawnCli, maskSensitive, stripAnsi,
   checkRateLimit, ALLOWED_ORIGINS, RATE_WINDOW, RATE_MAX_INPUT,
-  messageStore, mcpManager, rag, agentConfig, processPool, db
+  messageStore, mcpManager, rag, agentConfig, processPool, db, activityLog
 }));
 
 async function gracefulShutdown(signal) {

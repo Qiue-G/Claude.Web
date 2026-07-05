@@ -9,6 +9,7 @@
  */
 import { isConnected, connectionStatus, sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
 import { messages, addMessage, appendToLastAssistant, isWaiting, isTyping, setMessages, prependMessages } from '$stores/chat.store.js';
+import { filtersConfig } from '$stores/filters.store.js';
 import { stripAnsi } from '$lib/utils.js';
 import { t } from '$lib/i18n.js';
 import { get } from 'svelte/store';
@@ -272,12 +273,12 @@ function handleServerMessage(msg) {
       reconnectAttempts = 0;
       flushPendingMessages();
       // 连接就绪时，将当前过滤器配置同步到后端
-      import('$stores/filters.store.js').then(({ filtersConfig }) => {
+      {
         const cfg = get(filtersConfig);
         if (cfg && Object.keys(cfg).length > 0) {
           ws.send(JSON.stringify({ type: 'update_filters', config: cfg }));
         }
-      });
+      }
       _readyCalled = true;
       _onReadyCallback?.();
       if (get(isWaiting)) {

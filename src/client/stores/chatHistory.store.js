@@ -52,10 +52,7 @@ async function saveSessionsAsync(sessions) {
   try {
     await db.initDB();
     const trimmed = sessions.length > MAX_SESSIONS ? sessions.slice(0, MAX_SESSIONS) : sessions;
-    await db.clear(db.STORES.CHAT_SESSIONS);
-    for (const session of trimmed) {
-      await db.put(db.STORES.CHAT_SESSIONS, session);
-    }
+    await db.putAll(db.STORES.CHAT_SESSIONS, trimmed);
   } catch (error) {
     console.error('Failed to save to IndexedDB, falling back to localStorage:', error);
     saveSessions(sessions);

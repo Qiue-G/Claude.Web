@@ -332,5 +332,20 @@ export function createSessionRouter(deps) {
     res.json({ success: true, sessionId });
   }));
 
+  // GET /api/session/:id/activity — 获取会话活动时间线
+  router.get('/:id/activity', asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+
+    // activityLog 通过 wsHandler deps 传入，这里从 req.app 获取
+    const activityLog = req.app.get('activityLog');
+    if (!activityLog) {
+      return res.json({ activities: [] });
+    }
+
+    const activities = activityLog.getSessionActivity(id, limit);
+    res.json({ activities });
+  }));
+
   return router;
 }

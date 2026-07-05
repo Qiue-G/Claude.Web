@@ -8,6 +8,7 @@ import { runFilters } from '../runtime/filterPipeline.js';
 import { buildFilterList } from '../runtime/filters/index.js';
 import { loadPipelines, runPipelines } from '../pipelines/index.js';
 import { YDocManager } from '../collab/ydocManager.js';
+import { ActivityLog } from '../collab/activityLog.js';
 import * as Y from 'yjs';
 
 /**
@@ -77,6 +78,9 @@ export function createWsHandler(deps) {
   const ydocManager = new YDocManager({
     docsDir: deps.docsDir || './ydocs'
   });
+
+  // ===== 活动时间线记录器 (T5) =====
+  const activityLog = deps.activityLog || new ActivityLog({ db: deps.db });
 
   // ===== 版本历史辅助函数 (T5) =====
   function rowsToVersions(rows) {
@@ -278,6 +282,12 @@ export function createWsHandler(deps) {
           // 保存用户消息
           if (messageStore && originalPrompt && originalPrompt.trim()) {
             await messageStore.saveMessage(sessionId, { role: 'user', content: originalPrompt });
+
+            // 记录消息发送活动
+            activityLog.log(sessionId, 'message_send', {
+              actor: ws._username || 'anonymous',
+              message: originalPrompt.slice(0, 100) + (originalPrompt.length > 100 ? '...' : '')
+            });
           }
 
           // ===== 工具审批流程 =====
@@ -653,6 +663,9 @@ export function createWsHandler(deps) {
             color: message.color || ''
           });
 
+          // 保存用户名到 ws 对象（断开时使用）
+          ws._username = message.username || 'anonymous';
+
           // 设置 session 广播器（如果尚未设置）
           const state = Y.encodeStateAsUpdate(ydocManager.getOrCreateDoc(sessionId));
           ydocManager.registerBroadcaster(sessionId, (update) => {
@@ -673,6 +686,12 @@ export function createWsHandler(deps) {
           broadcastToSession(sessionId, {
             type: 'presence',
             clients: ydocManager.getActiveClients(sessionId)
+          });
+
+          // 记录用户加入活动
+          activityLog.log(sessionId, 'user_join', {
+            actor: message.username || 'anonymous',
+            message: `joined the session`
           });
 
         } else if (message.type === 'yjs_update') {
@@ -870,6 +889,12 @@ export function createWsHandler(deps) {
         if (ws._clientId) {
           ydocManager.removeClient(sessionId, ws._clientId);
         }
+
+        // 记录用户离开活动
+        activityLog.log(sessionId, 'user_leave', {
+          actor: ws._username || 'anonymous',
+          message: `left the session`
+        });
 
         const clients = sessionClients.get(sessionId);
         if (clients) {
