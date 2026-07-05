@@ -335,6 +335,7 @@ function handleServerMessage(msg) {
           addMessage('system', '', { type: 'file_diff', ...diff });
         }
       }
+      window.dispatchEvent(new CustomEvent('files-changed'));
       break;
     case 'error':
       isWaiting.set(false);
