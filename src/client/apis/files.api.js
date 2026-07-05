@@ -19,6 +19,10 @@ export async function deleteFileApi(sessionId, filePath, token, csrfToken) {
   return api.delete(`/api/files/${sessionId}/${encodeURIComponent(filePath)}`, { token, csrfToken });
 }
 
+export async function renameFile(sessionId, oldPath, newPath, token, csrfToken) {
+  return api.put(`/api/files/${sessionId}/rename`, { oldPath, newPath }, { token, csrfToken });
+}
+
 // Alias for backwards compatibility
 export const deleteFile = deleteFileApi;
 

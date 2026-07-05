@@ -329,6 +329,28 @@ export function createFileRouter(deps) {
     });
   }));
 
+  // ===== Rename File =====
+  router.put('/:sessionId/rename', asyncHandler(async (req, res) => {
+    const session = validateSession(req);
+    const { oldPath, newPath } = req.body;
+    if (!oldPath || !newPath) throw new AppError(400, 'oldPath and newPath are required');
+
+    const fullOldPath = resolveFilePath(session, oldPath);
+    const fullNewPath = resolveFilePath(session, newPath);
+
+    // Ensure parent directory exists
+    const newDir = pathDirname(fullNewPath);
+    if (!existsSync(newDir)) await mkdir(newDir, { recursive: true });
+
+    try {
+      await (await import('fs/promises')).rename(fullOldPath, fullNewPath);
+    } catch (err) {
+      throw new AppError(500, `Rename failed: ${err.message}`);
+    }
+
+    res.json({ success: true, oldPath, newPath });
+  }));
+
   // ===== Delete File =====
   router.delete('/:sessionId/*', asyncHandler(async (req, res) => {
     const session = validateSession(req);

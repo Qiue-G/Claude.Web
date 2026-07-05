@@ -125,7 +125,7 @@
   import { onlineUsers, collabClient as collabClientStore } from '$stores/collab.store.js';
   import { enabledTools } from '$stores/tools.store.js';
   import { createSession as apiCreateSession, validateSession } from '$apis/session.api.js';
-  import { writeFile, readFile, getFileTree } from '$apis/files.api.js';
+  import { writeFile, readFile, getFileTree, deleteFileApi, renameFile } from '$apis/files.api.js';
   import FileHistoryPanel from '$components/files/FileHistoryPanel.svelte';
   import { sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
   import { get } from 'svelte/store';
@@ -409,6 +409,55 @@
   function handleTabClose(e) {
     const path = e.detail;
     closeTab(path);
+  }
+
+  async function handleFileDelete(e) {
+    const item = e.detail;
+    const sid = get(sessionId);
+    const tok = get(sessionToken);
+    const csrf = get(csrfToken);
+    try {
+      await deleteFileApi(sid, item.path, tok, csrf);
+      showToast(`${item.name} 已删除`, 'success');
+      loadFileTree(sid, tok);
+    } catch (err) {
+      showToast(`删除失败: ${err.message}`, 'error');
+    }
+  }
+
+  async function handleFileRename(e) {
+    const { oldItem, newPath } = e.detail;
+    const sid = get(sessionId);
+    const tok = get(sessionToken);
+    const csrf = get(csrfToken);
+    try {
+      await renameFile(sid, oldItem.path, newPath, tok, csrf);
+      showToast(`已重命名为 ${newPath}`, 'success');
+      loadFileTree(sid, tok);
+    } catch (err) {
+      showToast(`重命名失败: ${err.message}`, 'error');
+    }
+  }
+
+  async function handleFileUpload(e) {
+    const files = e.detail;
+    const sid = get(sessionId);
+    const tok = get(sessionToken);
+    const csrf = get(csrfToken);
+    let successCount = 0;
+    for (const file of files) {
+      try {
+        const content = await file.text();
+        await writeFile(sid, file.name, content, tok, csrf);
+        successCount++;
+      } catch (err) {
+        showToast(`上传 ${file.name} 失败: ${err.message}`, 'error');
+      }
+    }
+    if (successCount > 0) {
+      showToast(`已上传 ${successCount} 个文件`, 'success');
+      loadFileTree(sid, tok);
+    }
   }
 
   function handleEditorChange(e) {
@@ -704,7 +753,7 @@
     {/if}
     {#if !isMobile && !isTablet && $fileSidebarOpen}
       <div class="sidebar">
-        <FileTree on:fileSelect={handleFileSelect} />
+        <FileTree on:fileSelect={handleFileSelect} on:fileDelete={handleFileDelete} on:fileRename={handleFileRename} on:fileUpload={handleFileUpload} />
         {#if $currentFile}
           <FileHistoryPanel filePath={$currentFile} on:rollback={handleFileSelect} />
         {/if}
@@ -741,7 +790,7 @@
         <div class="drawer-header">
           <button class="drawer-close-btn" onclick={closeDrawerFile} aria-label="关闭文件侧边栏">✕</button>
         </div>
-        <FileTree on:fileSelect={handleFileSelect} />
+        <FileTree on:fileSelect={handleFileSelect} on:fileDelete={handleFileDelete} on:fileRename={handleFileRename} on:fileUpload={handleFileUpload} />
         {#if $currentFile}
           <FileHistoryPanel filePath={$currentFile} on:rollback={handleFileSelect} />
         {/if}
