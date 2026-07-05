@@ -1,86 +1,43 @@
 <script>
   import Icon from '$components/common/Icon.svelte';
-  import hljs from 'highlight.js/lib/core';
   import { t } from '$lib/i18n.js';
-  import { escapeHtml } from '$lib/utils.js';
   import { sendBashCommand } from '$lib/websocket.js';
-  
-  // 注册常用语言
-  import javascript from 'highlight.js/lib/languages/javascript';
-  import typescript from 'highlight.js/lib/languages/typescript';
-  import python from 'highlight.js/lib/languages/python';
-  import java from 'highlight.js/lib/languages/java';
-  import cpp from 'highlight.js/lib/languages/cpp';
-  import csharp from 'highlight.js/lib/languages/csharp';
-  import go from 'highlight.js/lib/languages/go';
-  import rust from 'highlight.js/lib/languages/rust';
-  import php from 'highlight.js/lib/languages/php';
-  import ruby from 'highlight.js/lib/languages/ruby';
-  import swift from 'highlight.js/lib/languages/swift';
-  import kotlin from 'highlight.js/lib/languages/kotlin';
-  import sql from 'highlight.js/lib/languages/sql';
-  import bash from 'highlight.js/lib/languages/bash';
-  import json from 'highlight.js/lib/languages/json';
-  import xml from 'highlight.js/lib/languages/xml';
-  import css from 'highlight.js/lib/languages/css';
-  import markdown from 'highlight.js/lib/languages/markdown';
-  import yaml from 'highlight.js/lib/languages/yaml';
-  import dockerfile from 'highlight.js/lib/languages/dockerfile';
-
-  hljs.registerLanguage('javascript', javascript);
-  hljs.registerLanguage('js', javascript);
-  hljs.registerLanguage('typescript', typescript);
-  hljs.registerLanguage('ts', typescript);
-  hljs.registerLanguage('python', python);
-  hljs.registerLanguage('py', python);
-  hljs.registerLanguage('java', java);
-  hljs.registerLanguage('cpp', cpp);
-  hljs.registerLanguage('c', cpp);
-  hljs.registerLanguage('csharp', csharp);
-  hljs.registerLanguage('cs', csharp);
-  hljs.registerLanguage('go', go);
-  hljs.registerLanguage('rust', rust);
-  hljs.registerLanguage('php', php);
-  hljs.registerLanguage('ruby', ruby);
-  hljs.registerLanguage('rb', ruby);
-  hljs.registerLanguage('swift', swift);
-  hljs.registerLanguage('kotlin', kotlin);
-  hljs.registerLanguage('kt', kotlin);
-  hljs.registerLanguage('sql', sql);
-  hljs.registerLanguage('bash', bash);
-  hljs.registerLanguage('sh', bash);
-  hljs.registerLanguage('json', json);
-  hljs.registerLanguage('xml', xml);
-  hljs.registerLanguage('html', xml);
-  hljs.registerLanguage('css', css);
-  hljs.registerLanguage('markdown', markdown);
-  hljs.registerLanguage('md', markdown);
-  hljs.registerLanguage('yaml', yaml);
-  hljs.registerLanguage('yml', yaml);
-  hljs.registerLanguage('dockerfile', dockerfile);
+  import { highlightCode } from '$lib/shiki.js';
 
   export let code = '';
   export let language = '';
 
   let copied = false;
   let lineCount = 0;
-  let highlightedCode = '';
+  let highlightedHtml = '';  // shiki-generated HTML
+  let loading = true;        // true until first highlight completes
 
-  $: {
-    if (code) {
-      lineCount = code.split('\n').length;
-      try {
-        if (language && hljs.getLanguage(language)) {
-          highlightedCode = hljs.highlight(code, { language }).value;
-        } else {
-          highlightedCode = hljs.highlightAuto(code).value;
-        }
-      } catch (e) {
-        highlightedCode = escapeHtml(code);
+  // On mount and when code changes, highlight asynchronously
+  $: if (code) {
+    lineCount = code.split('\n').length;
+    highlightAsync(code, language);
+  } else {
+    highlightedHtml = '';
+    lineCount = 0;
+  }
+
+  let highlightCounter = 0;
+  async function highlightAsync(c, lang) {
+    const ticket = ++highlightCounter;
+    // Show loading state only on first render (not during streaming updates)
+    if (!highlightedHtml) loading = true;
+    try {
+      const html = await highlightCode(c, lang);
+      // Only apply if this is still the latest request
+      if (ticket === highlightCounter) {
+        highlightedHtml = html;
+        loading = false;
       }
-    } else {
-      highlightedCode = '';
-      lineCount = 0;
+    } catch (e) {
+      if (ticket === highlightCounter) {
+        highlightedHtml = '';
+        loading = false;
+      }
     }
   }
 
@@ -129,7 +86,11 @@
       </button>
     </div>
   </div>
-  <pre><code>{@html highlightedCode}</code></pre>
+  {#if highlightedHtml && !loading}
+    {@html highlightedHtml}
+  {:else}
+    <pre><code>{code}</code></pre>
+  {/if}
 </div>
 
 <style>
@@ -183,6 +144,24 @@
   .code-lang { display: flex; align-items: center; gap: 8px; }
   .code-lines { color: var(--text-muted); font-size: 10px; }
 
+  /* Shiki-generated <pre> styling */
+  :global(.code-block pre.shiki) {
+    margin: 0;
+    padding: 12px 16px;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.6;
+    background: transparent !important;
+  }
+
+  :global(.code-block pre.shiki code) {
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+  }
+
+  /* Fallback pre styling (when shiki isn't ready) */
   pre {
     margin: 0;
     padding: 12px 16px;
@@ -190,49 +169,5 @@
     font-family: var(--font-mono);
     font-size: 13px;
     line-height: 1.6;
-  }
-
-  /* highlight.js 主题 - 响应主题切换 */
-  :global(.hljs) {
-    color: var(--text-primary);
-  }
-  :global(.hljs-keyword),
-  :global(.hljs-selector-tag),
-  :global(.hljs-title),
-  :global(.hljs-section) {
-    color: var(--amber-bright);
-  }
-  :global(.hljs-string),
-  :global(.hljs-attr) {
-    color: var(--green);
-  }
-  :global(.hljs-number),
-  :global(.hljs-literal),
-  :global(.hljs-symbol) {
-    color: var(--cyan);
-  }
-  :global(.hljs-comment),
-  :global(.hljs-quote) {
-    color: var(--text-dim);
-    font-style: italic;
-  }
-  :global(.hljs-function),
-  :global(.hljs-built_in) {
-    color: var(--blue);
-  }
-  :global(.hljs-class) {
-    color: var(--amber);
-  }
-  :global(.hljs-variable),
-  :global(.hljs-template-variable) {
-    color: var(--red);
-  }
-  :global(.hljs-tag),
-  :global(.hljs-name) {
-    color: var(--red);
-  }
-  :global(.hljs-type),
-  :global(.hljs-params) {
-    color: var(--cyan);
   }
 </style>
