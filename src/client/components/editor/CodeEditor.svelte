@@ -200,7 +200,7 @@
   .editor-scroll {
     display: flex;
     height: 100%;
-    overflow: auto;
+    overflow: hidden;
     align-items: flex-start;
   }
 
