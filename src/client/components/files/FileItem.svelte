@@ -37,9 +37,13 @@
 </div>
 
 {#if item.type === 'directory' && isOpen && item.children}
-  {#each item.children as child}
-    <svelte:self item={child} depth={depth + 1} {isActive} on:select />
-  {/each}
+  {#if item.children.length === 0}
+    <div class="empty-dir" style="padding-left: {depth * 16 + 36}px">空目录</div>
+  {:else}
+    {#each item.children as child}
+      <svelte:self item={child} depth={depth + 1} {isActive} on:select />
+    {/each}
+  {/if}
 {/if}
 
 <style>
@@ -81,5 +85,12 @@
   .tree-label {
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .empty-dir {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 2px 0;
   }
 </style>
