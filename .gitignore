@@ -7,6 +7,14 @@ docs/
 
 workspace/
 screenshots/
+test-screenshots/
 .DS_Store
 *.log
 .reasonix/
+
+# 构建产物
+public/assets/
+public/index.html
+
+# 运行时数据
+ydocs/
