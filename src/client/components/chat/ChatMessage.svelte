@@ -38,7 +38,7 @@
   $: roleLabel = role === 'user' ? 'You' : role === 'assistant' ? 'Assistant' : 'System';
 
   // 懒渲染：只有 streaming（最新消息）或进入视口后才解析内容
-  $: parsedParts = (visible || streaming) ? parseContent(content) : [];
+  $: parsedParts = parseContent(content);
 
   onMount(() => {
     if (!streaming && element) {
