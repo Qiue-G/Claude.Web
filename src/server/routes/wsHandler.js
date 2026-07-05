@@ -509,7 +509,9 @@ export function createWsHandler(deps) {
             // Detect file changes after command execution
             if (bashSession) {
               try {
-                const changedFiles = await detectChangedFiles(bashSession, preExecSnapshot, db);
+                const changedFiles = (await detectChangedFiles(bashSession, preExecSnapshot, db)).filter(
+                  f => !f.filePath.endsWith('.claude.json')
+                );
                 if (changedFiles.length > 0) {
                   broadcastToSession(sessionId, { type: 'file_diff', diffs: changedFiles });
                 }
@@ -1072,8 +1074,10 @@ export function createWsHandler(deps) {
             broadcastToSession(sessionId, { type: 'exit', code });
             broadcastToSession(sessionId, { type: 'done' });
 
-            // Detect file changes and send diffs
-            const changedFiles = await detectChangedFiles(session, preExecSnapshot, db);
+            // Detect file changes and send diffs (filter out claude config)
+            const changedFiles = (await detectChangedFiles(session, preExecSnapshot, db)).filter(
+              f => !f.filePath.endsWith('.claude.json')
+            );
             if (changedFiles.length > 0) {
               broadcastToSession(sessionId, { type: 'file_diff', diffs: changedFiles });
             }
