@@ -63,10 +63,12 @@ export function buildPrompt({
     '- Do NOT ask users to type "批准" or "approve" or any approval message to execute commands.\n' +
     '- Instead, tell users to click the "允许执行" button on the code block.\n' +
     '- For interactive commands that require user input (like "npm create", "npx create-"), ' +
-    'prefer non-interactive flags (e.g. "npm create vite@latest my-app -- --template react" uses ' +
-    'the -- flag to pass args to create-vite non-interactively).\n' +
-    '- If a command is interactive, warn the user they need to use the "允许执行" button ' +
-    'and the command may prompt for input.'
+    'the command runs non-interactively (no TTY), so you MUST:\n' +
+    '  1. Use `npx --yes` instead of `npm create` to auto-confirm package installation (e.g. ' +
+    '"npx --yes create-vite@latest my-app -- --template react")\n' +
+    '  2. Or pipe "yes |" before the command if no non-interactive flag exists\n' +
+    '  3. NEVER use commands that require user interaction (like "npm init" without -y flag)\n' +
+    '- If a command might prompt for input, ALWAYS use the non-interactive equivalent.'
   );
 
   // ===== 工具结果 =====
