@@ -213,15 +213,15 @@ export function createWsHandler(deps) {
           }
         } else if (entry.isFile()) {
           const ext = path.extname(entry.name).toLowerCase();
-          // Only track source files (skip binaries)
-          if (['.js', '.jsx', '.ts', '.tsx', '.py', '.css', '.html', '.json', '.md', '.svelte', '.vue', '.cjs', '.mjs', '.yml', '.yaml', '.toml'].includes(ext)) {
-            try {
-              const content = await fs.readFile(fullPath, 'utf-8');
-              const crypto = await import('crypto');
-              const hash = crypto.createHash('sha256').update(content).digest('hex');
-              snapshot.set(path.relative(dirPath, fullPath), { hash, content });
-            } catch {}
-          }
+          // Track text files by trying UTF-8 read; skip binaries
+          try {
+            const content = await fs.readFile(fullPath, 'utf-8');
+            // Confirm it's text: skip if content has null bytes (binary)
+            if (content.includes('\0')) continue;
+            const crypto = await import('crypto');
+            const hash = crypto.createHash('sha256').update(content).digest('hex');
+            snapshot.set(path.relative(dirPath, fullPath), { hash, content });
+          } catch {} // skip binary/unreadable files
         }
       }
     } catch {}
