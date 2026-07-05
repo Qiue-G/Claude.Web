@@ -180,12 +180,19 @@
   function handleTouchEnd(e) {
     if (!isSwiping) return;
     const dx = e.changedTouches[0].clientX - touchStartX;
+    const windowW = window.innerWidth;
     if (dx > 60 && !drawerChatOpen) {
       // 右滑：打开聊天侧边栏（从左侧边缘触发）
       if (touchStartX < 40) openDrawerChat();
+    } else if (dx > 60 && drawerFileOpen) {
+      // 右滑：关闭文件侧边栏
+      closeDrawerFile();
     } else if (dx < -60 && drawerChatOpen) {
       // 左滑：关闭聊天侧边栏
       closeDrawerChat();
+    } else if (dx < -60 && !drawerFileOpen) {
+      // 左滑：打开文件侧边栏（从右侧边缘触发）
+      if (touchStartX > windowW - 40) openDrawerFile();
     }
     isSwiping = false;
   }
@@ -821,7 +828,8 @@
   <InstallPrompt />
   <LoginModal show={showLoginModal} onclose={handleCloseLogin} onlogin={handleLoginSuccess} />
   {#if $isAuthenticated}
-    <div class="user-badge" style="position: fixed; bottom: 8px; right: 8px; z-index: 999;">
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div class="user-badge" style="position: fixed; bottom: {isMobile || isTablet ? 'calc(52px + 8px)' : '8px'}; right: 8px; z-index: 999;" role="presentation">
       <button class="toolbar-btn" onclick={() => showUserMenu = !showUserMenu}
         title={$authUser?.username || 'User'}
         style="width: 28px; height: 28px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 50%; font-size: 11px; cursor: pointer; color: var(--text-primary);">
@@ -838,7 +846,7 @@
       {/if}
     </div>
   {:else}
-    <div class="login-badge" style="position: fixed; bottom: 8px; right: 8px; z-index: 999;">
+    <div class="login-badge" style="position: fixed; bottom: {isMobile || isTablet ? 'calc(52px + 8px)' : '8px'}; right: 8px; z-index: 999;">
       <button class="toolbar-btn" onclick={handleOpenLogin}
         title="登录 / 注册"
         style="width: 28px; height: 28px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 50%; font-size: 11px; cursor: pointer; color: var(--text-primary);">

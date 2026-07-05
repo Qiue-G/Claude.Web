@@ -149,6 +149,8 @@
     background: var(--bg-toolbar);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .toolbar-left,

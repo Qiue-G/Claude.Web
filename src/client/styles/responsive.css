@@ -202,6 +202,13 @@
   }
 }
 
+/* === PWA standalone 模式：隐藏安装提示 === */
+@media (display-mode: standalone) {
+  .install-banner {
+    display: none !important;
+  }
+}
+
 /* === 100vh fix for mobile browsers === */
 @supports (-webkit-touch-callout: none) {
   .app {

@@ -314,7 +314,7 @@
 <style>
   .chat-input-bar {
     position: relative;
-    padding: 12px 24px;
+    padding: 12px 24px calc(12px + env(safe-area-inset-bottom, 0px));
     border-top: 1px solid var(--border);
     background: var(--bg-toolbar);
     flex-shrink: 0;

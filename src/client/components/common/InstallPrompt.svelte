@@ -56,7 +56,7 @@
 <style>
   .install-banner {
     position: fixed;
-    bottom: 64px;
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
     left: 50%;
     transform: translateX(-50%);
     background: var(--bg-raised);
