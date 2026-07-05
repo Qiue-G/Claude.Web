@@ -604,6 +604,9 @@
         sessionId.set(null);
         sessionToken.set(null);
         csrfToken.set(null);
+        // 同步清理 localStorage 中的过期凭据，防止 sendInput 死循环恢复
+        localStorage.removeItem('sessionId');
+        localStorage.removeItem('sessionToken');
         // 不清除 savedModels/activeModelId，方便用户一键重新连接
         if ($activeModelId && $savedModels.length > 0) {
           const m = $savedModels.find(m => m.id === $activeModelId);

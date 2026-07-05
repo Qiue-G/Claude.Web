@@ -113,6 +113,8 @@ if (typeof BroadcastChannel !== 'undefined') {
       warning(get(t)('session.expired'));
       sessionId.set(null);
       sessionToken.set(null);
+      localStorage.removeItem('sessionId');
+      localStorage.removeItem('sessionToken');
       autoReconnectEnabled = false;
       if (ws) { ws.onclose = null; ws.close(); ws = null; }
     }
@@ -392,6 +394,9 @@ function handleServerMessage(msg) {
       sessionId.set(null);
       sessionToken.set(null);
       autoReconnectEnabled = false;
+      // 同步清理 localStorage，防止 sendInput 尝试恢复过期会话
+      localStorage.removeItem('sessionId');
+      localStorage.removeItem('sessionToken');
       // Broadcast to other tabs
       if (typeof BroadcastChannel !== 'undefined') {
         const bc = new BroadcastChannel('claude-free-session');
