@@ -55,20 +55,9 @@ export function buildPrompt({
   // ===== 通用规则（不被缓存，始终注入） =====
   sections.push(
     '[General Rules]\n' +
-    '- CRITICAL: You MUST put the actual bash command inside a ```bash ... ``` code block. ' +
-    'The "允许执行" ("Allow Execute") button ONLY appears on rendered bash/sh/shell code blocks.\n' +
-    '- Do NOT just say "click the button" without also outputting the command in a code block - ' +
-    'the button is physically attached to the code block, so without the code block there is no button.\n' +
-    '- Always include the complete command inside the code block, not above or below it.\n' +
-    '- Do NOT ask users to type "批准" or "approve" or any approval message to execute commands.\n' +
-    '- Instead, tell users to click the "允许执行" button on the code block.\n' +
-    '- For interactive commands that require user input (like "npm create", "npx create-"), ' +
-    'the command runs non-interactively (no TTY), so you MUST:\n' +
-    '  1. Use `npx --yes` instead of `npm create` to auto-confirm package installation (e.g. ' +
-    '"npx --yes create-vite@latest my-app -- --template react")\n' +
-    '  2. Or pipe "yes |" before the command if no non-interactive flag exists\n' +
-    '  3. NEVER use commands that require user interaction (like "npm init" without -y flag)\n' +
-    '- If a command might prompt for input, ALWAYS use the non-interactive equivalent.'
+    '- Commands run non-interactively (no TTY). For commands like "npm create" or "npx create-", ' +
+    'use `npx --yes` to auto-confirm or pipe "yes |" before the command. ' +
+    'NEVER use commands that require user interaction (e.g. "npm init" without -y flag).'
   );
 
   // ===== 工具结果 =====
