@@ -8,6 +8,7 @@
   export let isActive = false;
   export let sessionId = '';
   export let token = '';
+  export let searchQuery = '';
 
   const dispatch = createEventDispatcher();
 
@@ -23,6 +24,29 @@
   let loaded = false;
   let loading = false;
   let localChildren = [];
+
+  // 搜索匹配：自身是否匹配
+  $: isNameMatch = searchQuery && item.name.toLowerCase().includes(searchQuery);
+
+  // 搜索时过滤子节点
+  $: filteredChildren = searchQuery
+    ? localChildren.filter(child => {
+        if (child.name.toLowerCase().includes(searchQuery)) return true;
+        // 如果是目录，保留（由子组件决定是否显示匹配的孙节点）
+        return child.type === 'directory';
+      })
+    : localChildren;
+
+  // 搜索时自动展开匹配的目录
+  $: if (searchQuery && item.type === 'directory') {
+    const hasMatching = localChildren.some(c => c.name.toLowerCase().includes(searchQuery));
+    if (hasMatching) isOpen = true;
+  }
+
+  // 搜索恢复时折叠
+  $: if (!searchQuery && isOpen && isNameMatch === false) {
+    // 不自动折叠，保持用户手动状态
+  }
 
   async function toggle() {
     if (item.type === 'directory') {
@@ -159,11 +183,11 @@
 {#if item.type === 'directory' && isOpen}
   {#if loading}
     <div class="empty-dir" style="padding-left: {depth * 16 + 36}px">加载中...</div>
-  {:else if localChildren.length === 0}
-    <div class="empty-dir" style="padding-left: {depth * 16 + 36}px">空目录</div>
+  {:else if filteredChildren.length === 0}
+    <div class="empty-dir" style="padding-left: {depth * 16 + 36}px">{searchQuery ? '无匹配' : '空目录'}</div>
   {:else}
-    {#each localChildren as child}
-      <svelte:self item={child} depth={depth + 1} {isActive} {sessionId} {token}
+    {#each filteredChildren as child}
+      <svelte:self item={child} depth={depth + 1} {isActive} {sessionId} {token} {searchQuery}
         on:select on:delete on:rename />
     {/each}
   {/if}

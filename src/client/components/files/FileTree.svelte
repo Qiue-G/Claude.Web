@@ -12,6 +12,7 @@
 
   let dragOver = false;
   let dragEnterCount = 0;
+  let searchQuery = '';
 
   function handleSelect(e) {
     const item = e.detail;
@@ -77,6 +78,17 @@
   <div class="panel-header">
     {$t('files.title')}
   </div>
+  <div class="search-box">
+    <input
+      type="text"
+      class="search-input"
+      placeholder={$t('files.search')}
+      bind:value={searchQuery}
+    />
+    {#if searchQuery}
+      <button class="search-clear" on:click={() => searchQuery = ''}>×</button>
+    {/if}
+  </div>
   <div class="file-tree" class:drag-over={dragOver}>
     {#if $fileTree.length === 0}
       <div class="empty-state">
@@ -90,6 +102,7 @@
           {sessionId}
           {token}
           isActive={$currentFile === item.path}
+          searchQuery={searchQuery.toLowerCase().trim()}
           on:select={handleSelect}
           on:delete={handleDelete}
           on:rename={handleRename}
@@ -125,6 +138,53 @@
     color: var(--text-muted);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
+  }
+
+  .search-box {
+    position: relative;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .search-input {
+    width: 100%;
+    padding: 5px 24px 5px 8px;
+    font-size: 13px;
+    font-family: inherit;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-primary);
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.15s ease;
+  }
+
+  .search-input:focus {
+    border-color: var(--accent);
+  }
+
+  .search-input::placeholder {
+    color: var(--text-muted);
+  }
+
+  .search-clear {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+  }
+
+  .search-clear:hover {
+    color: var(--text-primary);
   }
 
   .file-tree {
