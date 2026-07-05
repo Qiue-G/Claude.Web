@@ -220,6 +220,42 @@ export function createWsHandler(deps) {
     return results;
   }
 
+  /**
+ * 将 AI 输出中的内联 CLI 命令（`npm create vite`）转换为 ```bash 代码块
+ * 这样前端 CodeBlock 组件可以渲染出"允许执行"按钮
+ */
+function transformInlineCommands(text) {
+  const cliPrefixes = [
+    'npm', 'npx', 'yarn', 'pnpm', 'bun',
+    'git', 'node', 'python', 'pip', 'pip3',
+    'curl', 'wget', 'docker', 'docker-compose',
+    'cargo', 'go', 'make', 'cmake',
+    'brew', 'apt', 'apt-get', 'yum', 'dnf',
+    'code', 'gh', 'aws', 'gcloud', 'vercel', 'netlify',
+    'vite', 'vue', 'nuxt', 'ng', 'nx',
+    'create-vite', 'create-react-app', 'create-next-app',
+    'npx --yes', 'npx create-'
+  ];
+
+  function isCliCommand(cmd) {
+    const trimmed = cmd.trim();
+    for (const prefix of cliPrefixes) {
+      if (trimmed === prefix || trimmed.startsWith(prefix + ' ')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // 替换行内代码 `command` → ```bash\ncommand\n``` 如果是 CLI 命令
+  return text.replace(/`([^`]+)`/g, (match, cmd) => {
+    if (isCliCommand(cmd)) {
+      return '```bash\n' + cmd.trim() + '\n```';
+    }
+    return match;
+  });
+}
+
   return function handleConnection(ws, req) {
     const {
       getSession, sessions, sessionProcesses, sessionProxies, sessionClients, wsProcCount,
@@ -700,6 +736,16 @@ export function createWsHandler(deps) {
                   });
                   assistantBuffer = outputFilterCtx.content;
                 }
+              }
+            }
+
+            // === 内联命令转换：将行内 CLI 命令（`npm create vite`）转为 ```bash 代码块 ===
+            if (assistantBuffer.trim() && !outputFilterAborted) {
+              const transformed = transformInlineCommands(assistantBuffer);
+              if (transformed !== assistantBuffer) {
+                assistantBuffer = transformed;
+                // 通知客户端用修正后的内容替换最后一条 assistant 消息
+                broadcastToSession(sessionId, { type: 'content_update', content: assistantBuffer });
               }
             }
 
