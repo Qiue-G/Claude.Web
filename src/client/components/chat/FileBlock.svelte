@@ -322,6 +322,7 @@
     font-size: 13px;
     line-height: 1.6;
     overflow-x: auto;
+    overflow-y: hidden;
     color: var(--text-secondary);
   }
 
@@ -363,6 +364,7 @@
     font-size: 13px;
     line-height: 1.6;
     overflow-x: auto;
+    overflow-y: hidden;
   }
 
   pre.diff-content.removed {
