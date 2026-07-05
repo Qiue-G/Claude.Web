@@ -17,7 +17,7 @@ test('buildPrompt keeps stable sections via toolResults', () => {
 test('buildPrompt omits empty sections', () => {
   const prompt = buildPrompt({ userMessage: 'Only user' });
 
-  assert.match(prompt, /^\[General Rules\]/);
+  assert.match(prompt, /^\[User Message\]/);
   assert.ok(prompt.endsWith('[User Message]\nOnly user'));
 });
 

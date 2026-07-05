@@ -52,14 +52,6 @@ export function buildPrompt({
     sections.push(prefixText);
   }
 
-  // ===== 通用规则（不被缓存，始终注入） =====
-  sections.push(
-    '[General Rules]\n' +
-    '- Commands run non-interactively (no TTY). For commands like "npm create" or "npx create-", ' +
-    'use `npx --yes` to auto-confirm or pipe "yes |" before the command. ' +
-    'NEVER use commands that require user interaction (e.g. "npm init" without -y flag).'
-  );
-
   // ===== 工具结果 =====
   appendToolResultSections(sections, toolResults);
 
