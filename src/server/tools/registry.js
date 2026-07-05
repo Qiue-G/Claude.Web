@@ -8,14 +8,6 @@ const TOOL_DEFINITIONS = [
     configured: () => true
   },
   {
-    id: 'code_interpreter',
-    label: 'Code Interpreter',
-    description: '执行 Python 代码并返回结果',
-    icon: 'inbox',
-    instruction: 'You can execute Python code for calculations and data analysis. When useful, provide executable Python code in a fenced python code block.',
-    configured: () => true
-  },
-  {
     id: 'image_generation',
     label: 'Image Generation',
     description: '根据文本描述生成图片',

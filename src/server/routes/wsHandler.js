@@ -647,8 +647,10 @@ export function createWsHandler(deps) {
           // Build prompt with MCP tool instructions too
           let toolInstructions = getToolInstructions(approvedTools || []);
 
-          // 始终注入 write_file / edit_file 工具指令（Kun 风格：默认启用，无需审批）
+          // 始终注入默认工具指令（Kun 风格：默认启用，无需审批）
           toolInstructions += '\n' + [
+            'You can execute Python code for calculations and data analysis. When useful, provide executable Python code in a fenced python code block.',
+            '',
             'You can write files directly to disk using Node.js fs.writeFile. Use this instead of bash echo/redirect when creating or overwriting files. Output in the following format:',
             '',
             '```write_file',
@@ -742,7 +744,6 @@ export function createWsHandler(deps) {
 
           // ===== 代码解释器：缓冲完整输出，关闭时检测 Python 代码块 =====
           let codeInterpreterBuffer = '';
-          const hasCodeInterpreter = tools.includes('code_interpreter');
           // 累积 AI 输出，关闭时保存完整消息
           let assistantBuffer = '';
 
@@ -751,7 +752,7 @@ export function createWsHandler(deps) {
             clean = maskSensitive(clean, session.apiKey);
             if (clean.trim()) {
               assistantBuffer += clean;
-              if (hasCodeInterpreter) codeInterpreterBuffer += clean;
+              codeInterpreterBuffer += clean;
               const MAX_WS_MSG = 1024 * 1024;
               const data = clean.length > MAX_WS_MSG ? clean.substring(0, MAX_WS_MSG) + '\n[output truncated]' : clean;
               broadcastToSession(sessionId, { type: 'output', data });
@@ -762,7 +763,7 @@ export function createWsHandler(deps) {
             let errStr = chunk.toString();
             errStr = maskSensitive(errStr, session.apiKey);
             assistantBuffer += errStr;
-            if (hasCodeInterpreter) codeInterpreterBuffer += errStr;
+            codeInterpreterBuffer += errStr;
             console.error('[STDERR] ' + maskSensitive(errStr.substring(0, 200), session.apiKey));
             const MAX_WS_ERR = 1024 * 1024;
             const data = errStr.length > MAX_WS_ERR ? errStr.substring(0, MAX_WS_ERR) + '\n[output truncated]' : errStr;
@@ -786,7 +787,7 @@ export function createWsHandler(deps) {
             if (proxy) { proxy.kill(); sessionProxies.delete(sessionId); }
 
             // ===== 代码解释器：执行 Python 代码块 =====
-            if (hasCodeInterpreter && codeInterpreterBuffer.trim()) {
+            if (codeInterpreterBuffer.trim()) {
               const blocks = extractPythonBlocks(codeInterpreterBuffer);
               if (blocks.length > 0) {
                 for (let i = 0; i < blocks.length; i++) {
