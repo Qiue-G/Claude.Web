@@ -19,6 +19,14 @@ import { requireAuth } from '../auth/authMiddleware.js';
 export function createSessionRouter(deps) {
   const { createSession, getSession, deleteSession, sessions, sessionProcesses, sessionProxies, messageStore, checkRateLimit, RATE_WINDOW, RATE_MAX_CREATE, MAX_SESSIONS, DEFAULTS, db } = deps;
   const VALID_PROVIDERS = ['openrouter', 'anthropic', 'openai', 'deepseek'];
+
+  function parseCoauthors(session) {
+    try {
+      const c = JSON.parse(session.coauthors || '[]');
+      return Array.isArray(c) ? c : [];
+    } catch { return []; }
+  }
+
   const router = Router();
 
   router.post('/', asyncHandler(async (req, res) => {
@@ -67,8 +75,7 @@ export function createSessionRouter(deps) {
     const session = getSession(req.params.id, token);
     if (!session) throw new AppError(401, 'Invalid session or token');
     // 解析 coauthors
-    let coauthors = [];
-    try { coauthors = JSON.parse(session.coauthors || '[]'); if (!Array.isArray(coauthors)) coauthors = []; } catch (_) {}
+    const coauthors = parseCoauthors(session);
     res.json({
       sessionId: session.id,
       model: session.model,
@@ -195,8 +202,7 @@ export function createSessionRouter(deps) {
     const inviteeUsername = userRows[0].values[0][1];
 
     // 解析当前协作者列表
-    let coauthors = [];
-    try { coauthors = JSON.parse(session.coauthors || '[]'); if (!Array.isArray(coauthors)) coauthors = []; } catch (_) {}
+    const coauthors = parseCoauthors(session);
 
     // 检查是否已存在
     if (coauthors.some(c => c.username === inviteeUsername)) {
@@ -244,8 +250,7 @@ export function createSessionRouter(deps) {
     }
 
     const username = req.params.username;
-    let coauthors = [];
-    try { coauthors = JSON.parse(session.coauthors || '[]'); if (!Array.isArray(coauthors)) coauthors = []; } catch (_) {}
+    const coauthors = parseCoauthors(session);
 
     const idx = coauthors.findIndex(c => c.username === username);
     if (idx === -1) {
@@ -279,8 +284,7 @@ export function createSessionRouter(deps) {
     const session = getSession(req.params.id);
     if (!session) throw new AppError(401, 'Invalid session');
 
-    let coauthors = [];
-    try { coauthors = JSON.parse(session.coauthors || '[]'); if (!Array.isArray(coauthors)) coauthors = []; } catch (_) {}
+    const coauthors = parseCoauthors(session);
 
     res.json({ collaborators: coauthors });
   }));
@@ -303,8 +307,7 @@ export function createSessionRouter(deps) {
     if (!session) throw new AppError(404, 'Session not found');
 
     // 解析协作者列表
-    let coauthors = [];
-    try { coauthors = JSON.parse(session.coauthors || '[]'); if (!Array.isArray(coauthors)) coauthors = []; } catch (_) {}
+    const coauthors = parseCoauthors(session);
 
     // 检查是否已经是协作者
     const isOwner = session.owner_id === req.user.id;

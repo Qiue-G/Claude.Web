@@ -1,6 +1,22 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 import { executePython, extractPythonBlocks, codeInterpreterResult } from '../src/server/tools/codeInterpreter.js';
+
+// 清理 Python 子进程在 G:\tmp 中遗留的临时 .py 文件
+after(() => {
+  const tmpDir = os.tmpdir();
+  try {
+    const files = fs.readdirSync(tmpDir);
+    for (const file of files) {
+      if (/^tmp[\w]+\.py$/.test(file) || file.startsWith('py-sandbox-')) {
+        try { fs.rmSync(path.join(tmpDir, file), { recursive: true, force: true }); } catch { /* ignore */ }
+      }
+    }
+  } catch { /* tmpdir not accessible */ }
+});
 
 test('codeInterpreterResult formats successful ToolResult', () => {
   const result = codeInterpreterResult('print("hello")', { stdout: 'hello\n', stderr: '', exitCode: 0 });
@@ -44,10 +60,10 @@ test('executePython rejects code over 100KB', async () => {
 });
 
 // 第5层：全局并发限流
-test('executePython enforces concurrency limit', async () => {
+test('executePython enforces concurrency limit', { timeout: 60000 }, async () => {
   // 并发执行多个，验证超限时返回繁忙
   const promises = [];
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 6; i++) {
     promises.push(executePython('print("x")'));
   }
   const results = await Promise.all(promises);

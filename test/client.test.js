@@ -164,3 +164,52 @@ test('session store writable values can be updated', () => {
   sessionStore.isConnected.set(false);
   sessionStore.connectionStatus.set('disconnected');
 });
+
+// ====================================================================
+// Markdown 渲染 XSS 防护测试（ChatMessage.svelte 中的 marked renderer）
+// ====================================================================
+
+test('marked renderer strips javascript: URLs from links', async () => {
+  const marked = await import('marked');
+  const { escapeHtml } = await import('../src/client/lib/utils.js');
+
+  // 与 ChatMessage.svelte 相同的 renderer 逻辑
+  const renderer = new marked.Renderer();
+  renderer.link = ({ href, text: linkText }) => {
+    if (href && /^(javascript|data|vbscript):/i.test(href)) {
+      return escapeHtml(linkText || href);
+    }
+    return `<a href="${href}" rel="noopener noreferrer">${linkText}</a>`;
+  };
+
+  // 测试 javascript: URL 被转义（renderer 返回 escapeHtml 文本，不含 href）
+  const jsResult = marked.marked('[click](javascript:alert(1))', { renderer });
+  assert.ok(!jsResult.includes('href="javascript:'), 'javascript: URL should not be in href');
+  assert.ok(jsResult.includes('click'), 'Link text should be preserved');
+
+  // 测试 data: URL 被转义
+  const dataResult = marked.marked('[data](data:text/html,alert(1))', { renderer });
+  assert.ok(!dataResult.includes('href="data:'), 'data: URL should not be in href');
+
+  // 测试 vbscript: URL 被转义
+  const vbResult = marked.marked('[vb](vbscript:msgbox(1))', { renderer });
+  assert.ok(!vbResult.includes('href="vbscript:'), 'vbscript: URL should not be in href');
+
+  // 测试正常 URL 不受影响
+  const safeResult = marked.marked('[safe](https://example.com)', { renderer });
+  assert.ok(safeResult.includes('href="https://example.com"'), 'Normal URL should be preserved');
+  assert.ok(safeResult.includes('>safe<'), 'Link text should be preserved');
+
+  // 测试 javascript: URL 不区分大小写
+  const upperResult = marked.marked('[click2](JAVASCRIPT:alert(1))', { renderer });
+  assert.ok(!upperResult.includes('href="JAVASCRIPT:'), 'Uppercase javascript: URL should be stripped');
+
+  // 测试混合大小写
+  const mixedResult = marked.marked('[click3](JavaScriPt:alert(1))', { renderer });
+  assert.ok(!mixedResult.includes('href="JavaScriPt:'), 'Mixed case javascript: URL should be stripped');
+
+  // 测试危险 URL 的 link text 不被渲染为可点击链接
+  for (const result of [jsResult, dataResult, vbResult, upperResult, mixedResult]) {
+    assert.ok(!result.includes('<a'), 'Dangerous URLs should not produce <a> tags');
+  }
+});

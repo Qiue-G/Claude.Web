@@ -177,23 +177,27 @@ function executeWithLimits(code, cwd) {
     let cmd;
     let args;
 
+    // 将代码写入临时文件后执行（所有平台），避免：
+    // 1. Windows 下 python -c 在 G:\tmp 创建泄露的临时文件
+    // 2. shell 注入风险
+    // 临时文件在 cwd(py-sandbox-*) 内，由调用方 cleanup 自动删除
+    const tmpFile = path.join(cwd, `_exec_${Date.now()}.py`);
+    fs.writeFileSync(tmpFile, code, 'utf-8');
+
     if (process.platform === 'linux') {
-      // Linux: 将代码写入临时文件后执行，避免 shell 注入风险
-      // 临时文件在 tmpDir(cwd) 内，由执行后的 cleanup 自动删除
-      const tmpFile = path.join(cwd, `_exec_${Date.now()}.py`);
-      fs.writeFileSync(tmpFile, code, 'utf-8');
       cmd = '/bin/sh';
       args = ['-c', `ulimit -v 262144 -u 50 -f 10240; exec ${PYTHON_CMD} "${tmpFile}"`];
     } else {
       // Windows: 不设置 ulimit，仅使用超时 + 临时目录隔离
       cmd = PYTHON_CMD;
-      args = ['-c', code];
+      args = [tmpFile];
     }
 
     const proc = spawn(cmd, args, {
       timeout: 15000,
       cwd,
-      env: buildSafeEnv(),
+      // 覆盖 TMP/TEMP 指向沙箱目录，使 Python 的临时文件也在沙箱内，随沙箱一起清理
+      env: buildSafeEnv({ TMP: cwd, TEMP: cwd }),
       // Linux detached=true 使子进程拥有独立进程组，便于清理（第3层）
       ...(process.platform === 'linux' ? { detached: true } : {}),
     });
