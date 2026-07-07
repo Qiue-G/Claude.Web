@@ -362,7 +362,22 @@
     try {
       const result = await listDirectory(sid, '', tok);
       if (result && result.items) {
-        fileTree.set(result.items);
+        fileTree.update(currentTree => {
+          const currentMap = new Map();
+          for (const item of currentTree) {
+            currentMap.set(item.path, item);
+          }
+          const newItems = [];
+          for (const newItem of result.items) {
+            const existing = currentMap.get(newItem.path);
+            if (existing && existing.type === 'directory' && existing.children && existing.children.length > 0) {
+              newItems.push({ ...newItem, children: existing.children });
+            } else {
+              newItems.push(newItem);
+            }
+          }
+          return newItems;
+        });
       }
     } catch (err) {
       console.error('Failed to load file tree:', err.message);
