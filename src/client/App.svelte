@@ -519,7 +519,7 @@
     } else if ($isWaiting) {
       // 非审批期间的等待：启动超时
       if (!sendTimeout) {
-        const timeoutMs = 90000;
+        const timeoutMs = 300000;
         sendTimeout = setTimeout(() => {
           isWaiting.set(false);
           isTyping.set(false);
