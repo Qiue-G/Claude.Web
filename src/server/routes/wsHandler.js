@@ -967,6 +967,7 @@ export function createWsHandler(deps) {
 
           let codeInterpreterBuffer = '';
           let assistantBuffer = '';
+          let toolUseByIndex = new Map();
 
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
@@ -993,16 +994,52 @@ export function createWsHandler(deps) {
               try {
                 const chunk = JSON.parse(dataStr);
 
-                if (chunk.type === 'content_block_delta') {
+                if (chunk.type === 'content_block_start') {
+                  if (chunk.content_block?.type === 'tool_use') {
+                    toolUseByIndex.set(chunk.index, {
+                      id: chunk.content_block.id,
+                      name: chunk.content_block.name,
+                      inputJson: ''
+                    });
+                  }
+                } else if (chunk.type === 'content_block_delta') {
                   if (chunk.delta?.text) {
                     const text = chunk.delta.text;
                     assistantBuffer += text;
                     codeInterpreterBuffer += text;
                     broadcastToSession(sessionId, { type: 'output', data: text });
                   }
+                  if (chunk.delta?.type === 'input_json_delta' && chunk.delta?.partial_json) {
+                    const entry = toolUseByIndex.get(chunk.index);
+                    if (entry) {
+                      entry.inputJson += chunk.delta.partial_json;
+                    }
+                  }
                 }
               } catch (e) {
                 console.error('[STREAM PARSE ERROR]', e.message);
+              }
+            }
+          }
+
+          // ===== Function Calling: 执行流式收集到的工具调用 =====
+          let usedToolCalling = false;
+          if (toolUseByIndex.size > 0) {
+            usedToolCalling = true;
+            const resolvedSessionDir = path.resolve(session.dir);
+            for (const [index, toolUse] of toolUseByIndex) {
+              let input;
+              try {
+                input = JSON.parse(toolUse.inputJson);
+              } catch (e) {
+                broadcastToSession(sessionId, { type: 'output', data: `\n[${toolUse.name} 参数解析失败] ${e.message}\n原始参数: ${toolUse.inputJson}\n` });
+                continue;
+              }
+              try {
+                const result = await executeToolCall(toolUse.name, input, session);
+                broadcastToSession(sessionId, { type: 'output', data: `\n[${toolUse.name}] ${result}\n` });
+              } catch (e) {
+                broadcastToSession(sessionId, { type: 'output', data: `\n[${toolUse.name} 失败] ${e.message}\n` });
               }
             }
           }
@@ -1029,8 +1066,8 @@ export function createWsHandler(deps) {
             }
           }
 
-          // ===== Write File Tool：提取 write_file / edit_file 代码块并直接写入 =====
-            if (assistantBuffer.trim()) {
+          // ===== Write File Tool：提取 write_file / edit_file 代码块并直接写入（仅当未使用标准 Function Calling 时） =====
+          if (!usedToolCalling && assistantBuffer.trim()) {
               const writeBlocks = extractWriteFileBlocks(assistantBuffer);
               const editBlocks = extractEditFileBlocks(assistantBuffer);
 

@@ -65,7 +65,7 @@ export async function hybridSearch(vectorStore, embedder, collection, query, opt
     // 通道A：BM25 全文搜索
     (async () => {
       try {
-        return vectorStore.searchBm25(collection, effectiveQuery, topK);
+        return await vectorStore.searchBm25(collection, effectiveQuery, topK);
       } catch {
         return [];
       }
@@ -75,7 +75,7 @@ export async function hybridSearch(vectorStore, embedder, collection, query, opt
     (async () => {
       try {
         const [queryEmb] = await embedder.embedQuery(effectiveQuery);
-        return vectorStore.searchVector(collection, queryEmb, topK);
+        return await vectorStore.searchVector(collection, queryEmb, topK);
       } catch {
         return [];
       }
@@ -291,7 +291,7 @@ async function generateHypotheticalDoc(query, hydeConfig) {
 //   内容富化
 // ════════════════════════════════════════════
 
-function enrichResults(results) {
+export function enrichResults(results) {
   return results.map(r => {
     const meta = r.metadata || {};
     const prefixParts = [];
@@ -310,7 +310,7 @@ function enrichResults(results) {
 //   RRF 融合（三通道：BM25 + 向量 + HyDE）
 // ════════════════════════════════════════════
 
-function reciprocalRankFusion(bm25Results, vectorResults, hydeResults = [], { topK, bm25Weight }) {
+export function reciprocalRankFusion(bm25Results, vectorResults, hydeResults = [], { topK, bm25Weight }) {
   const seenHashes = new Set();
   const scoreMap = new Map();
 

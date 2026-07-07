@@ -25,9 +25,9 @@ export class YDocManager {
    */
   constructor(options = {}) {
     this.docsDir = options.docsDir || './ydocs';
-    this.heartbeatInterval = options.heartbeatInterval || 30000;
-    this.persistInterval = options.persistInterval || 30000;
-    this.inactiveTimeout = options.inactiveTimeout || 30000;
+    this.heartbeatInterval = options.heartbeatInterval ?? 30000;
+    this.persistInterval = options.persistInterval ?? 30000;
+    this.inactiveTimeout = options.inactiveTimeout ?? 30000;
 
     /** @type {Map<string, Y.Doc>} */
     this._docs = new Map();
@@ -309,11 +309,15 @@ export class YDocManager {
       this._heartbeatTimer = null;
     }
 
-    // 持久化并清理所有文档
-    for (const sessionId of this._docs.keys()) {
+    // 收集所有 sessionId 再迭代，避免在迭代中修改 Map
+    const allSessions = Array.from(this._docs.keys());
+    for (const sessionId of allSessions) {
       this.persistDoc(sessionId);
       this.cleanup(sessionId);
     }
+
+    // 清理客户端级状态（不在 session 级 cleanup 范围内）
+    this._clientActivity.clear();
     logger.info('YDocManager destroyed');
   }
 

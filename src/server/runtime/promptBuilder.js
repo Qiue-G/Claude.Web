@@ -8,7 +8,67 @@ const TOOL_SECTION_TITLES = {
   rag_search: 'Knowledge Base Results'
 };
 
-const DEFAULT_TOOLS = [];
+const DEFAULT_TOOLS = [
+  {
+    name: 'write_file',
+    description: 'Write or overwrite a file with the specified content. Creates parent directories if they do not exist. Use this for creating new files or completely rewriting existing files.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Relative file path from the workspace root' },
+        content: { type: 'string', description: 'Full file content to write' }
+      },
+      required: ['path', 'content']
+    }
+  },
+  {
+    name: 'edit_file',
+    description: 'Edit an existing file by searching for a specific text string and replacing it. Use for targeted edits instead of rewriting the entire file.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Relative file path from the workspace root' },
+        searchStr: { type: 'string', description: 'The exact text to search for (must be unique in the file)' },
+        replaceStr: { type: 'string', description: 'The replacement text' }
+      },
+      required: ['path', 'searchStr', 'replaceStr']
+    }
+  },
+  {
+    name: 'delete_file',
+    description: 'Delete a file at the specified path.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Relative file path from the workspace root' }
+      },
+      required: ['path']
+    }
+  },
+  {
+    name: 'rename_file',
+    description: 'Rename or move a file from one path to another.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Current relative file path' },
+        newPath: { type: 'string', description: 'New relative file path' }
+      },
+      required: ['path', 'newPath']
+    }
+  },
+  {
+    name: 'list_files',
+    description: 'List all files in a directory recursively, showing relative paths.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Directory path relative to workspace root (default: root)' }
+      },
+      required: []
+    }
+  }
+];
 
 function sectionTitleForTool(tool) {
   return TOOL_SECTION_TITLES[tool] || String(tool || 'Tool Result').replace(/_/g, ' ');
