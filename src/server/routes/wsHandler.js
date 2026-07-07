@@ -847,49 +847,8 @@ export function createWsHandler(deps) {
           // Build prompt with MCP tool instructions too
           let toolInstructions = getToolInstructions(approvedTools || []);
 
-          // 始终注入默认工具指令（Kun 风格：默认启用，无需审批）
-          toolInstructions += '\n' + [
-            'You can execute Python code for calculations and data analysis. When useful, provide executable Python code in a fenced python code block.',
-            '',
-            'You can write files directly to disk using Node.js fs.writeFile. Use this instead of bash echo/redirect when creating or overwriting files. Output in the following format:',
-            '',
-            '```write_file',
-            'path: relative/file/path',
-            'language: file_extension',
-            '',
-            'The file content goes here...',
-            '```',
-            '',
-            'You can edit existing files using search-and-replace. Output in the following format:',
-            '',
-            '```edit_file',
-            'path: relative/file/path',
-            '<<<<<<< SEARCH',
-            'old content to replace',
-            '=======',
-            'new content to replace with',
-            '>>>>>>>',
-            '```',
-            '',
-            'You can delete files. Output in the following format:',
-            '',
-            '```delete_file',
-            'path: relative/file/path',
-            '```',
-            '',
-            'You can rename/move files. Output in the following format:',
-            '',
-            '```rename_file',
-            'path: old/relative/file/path',
-            'newPath: new/relative/file/path',
-            '```',
-            '',
-            'You can list files in a directory. Output in the following format:',
-            '',
-            '```list_files',
-            'path: optional/sub/directory (omit path: to list root)',
-            '```'
-          ].join('\n');
+          // 基础工具指令（仅限 Python 代码块，文件操作指令在后面根据标准 FC 是否启用动态注入）
+          toolInstructions += '\nYou can execute Python code for calculations and data analysis. When useful, provide executable Python code in a fenced python code block.';
 
           if (mcpManager && mcpManager.isConnected()) {
             const mcpTools = await mcpManager.listTools();
@@ -954,6 +913,63 @@ export function createWsHandler(deps) {
 
           prompt = promptResult.prompt;
           const toolsForModel = promptResult.tools;
+
+          // 根据是否使用标准 Function Calling，动态注入不同的文件操作指令到系统提示中
+          if (!toolsForModel || toolsForModel.length === 0) {
+            // 不使用标准 FC 时，用代码块格式（正则解析 fallback）
+            prompt += '\n\n' + [
+              'You can write files directly to disk using Node.js fs.writeFile. Use this instead of bash echo/redirect when creating or overwriting files. Output in the following format:',
+              '',
+              '```write_file',
+              'path: relative/file/path',
+              'language: file_extension',
+              '',
+              'The file content goes here...',
+              '```',
+              '',
+              'You can edit existing files using search-and-replace. Output in the following format:',
+              '',
+              '```edit_file',
+              'path: relative/file/path',
+              '<<<<<<< SEARCH',
+              'old content to replace',
+              '=======',
+              'new content to replace with',
+              '>>>>>>>',
+              '```',
+              '',
+              'You can delete files. Output in the following format:',
+              '',
+              '```delete_file',
+              'path: relative/file/path',
+              '```',
+              '',
+              'You can rename/move files. Output in the following format:',
+              '',
+              '```rename_file',
+              'path: old/relative/file/path',
+              'newPath: new/relative/file/path',
+              '```',
+              '',
+              'You can list files in a directory. Output in the following format:',
+              '',
+              '```list_files',
+              'path: optional/sub/directory (omit path: to list root)',
+              '```'
+            ].join('\n');
+          } else {
+            // 使用标准 FC 时，仅告知 AI 可用的工具（工具 schema 通过 API tools 参数传递）
+            prompt += '\n\n' + [
+              'You have access to the following file operations as standard tools that you should call via the function/tool calling mechanism:',
+              '  - write_file: Write or overwrite a file',
+              '  - edit_file: Edit an existing file using search-and-replace',
+              '  - delete_file: Delete a file',
+              '  - rename_file: Rename or move a file',
+              '  - list_files: List files in a directory',
+              '',
+              'When you need to create, edit, delete, rename, or list files, call the appropriate tool. The tool will be executed automatically and you will see the result.'
+            ].join('\n');
+          }
 
           console.log('[INPUT] prompt length: ' + (prompt ? prompt.length : 0) + ', tools: [' + (toolsForModel || []).map(t => t.name).join(',') + ']');
 
