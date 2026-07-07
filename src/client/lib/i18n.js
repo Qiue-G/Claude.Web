@@ -53,7 +53,7 @@ const translations = {
     'chat.edit': '编辑',
     'chat.clear': '清空对话',
     'chat.welcome': '欢迎使用 Free Code',
-    'chat.suggestion1': '帮我创建一个 React 项目，使用 write_file 格式创建所有文件',
+    'chat.suggestion1': '帮我创建一个 React 项目',
     'chat.suggestion2': '解释当前项目结构',
     'chat.suggestion3': '帮我修复一个 bug',
     'chat.suggestion4': '查看帮助',
