@@ -961,6 +961,8 @@ export function createWsHandler(deps) {
             if (assistantBuffer.trim()) {
               const writeBlocks = extractWriteFileBlocks(assistantBuffer);
               const editBlocks = extractEditFileBlocks(assistantBuffer);
+              console.log('[DEBUG] write_file blocks found:', writeBlocks.length);
+              console.log('[DEBUG] assistantBuffer sample:', assistantBuffer.substring(0, 500));
 
               const resolvedSessionDir = path.resolve(session.dir);
               for (const block of writeBlocks) {
