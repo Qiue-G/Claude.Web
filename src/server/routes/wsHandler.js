@@ -307,6 +307,7 @@ let processSeqId = 0;
  * @param {Map} deps.wsProcCount
  * @param {function} deps.broadcastToSession
  * @param {function} deps.spawnCli
+ * @param {function} deps.callModelWithTools
  * @param {function} deps.maskSensitive
  * @param {function} deps.stripAnsi
  * @param {function} deps.checkRateLimit
@@ -510,7 +511,7 @@ export function createWsHandler(deps) {
   return function handleConnection(ws, req) {
     const {
       getSession, sessions, sessionProcesses, sessionProxies, sessionClients, wsProcCount,
-      broadcastToSession, spawnCli, maskSensitive, stripAnsi,
+      broadcastToSession, spawnCli, callModelWithTools, maskSensitive, stripAnsi,
       checkRateLimit, ALLOWED_ORIGINS, RATE_WINDOW, RATE_MAX_INPUT,
       messageStore, mcpManager, rag, agentConfig, db
     } = deps;
@@ -954,7 +955,7 @@ export function createWsHandler(deps) {
           prompt = promptResult.prompt;
           const toolsForModel = promptResult.tools;
 
-          console.log('[INPUT] prompt length: ' + (prompt ? prompt.length : 0) + ', tools: [' + tools.join(',') + ']');
+          console.log('[INPUT] prompt length: ' + (prompt ? prompt.length : 0) + ', tools: [' + (toolsForModel || []).map(t => t.name).join(',') + ']');
 
           wsProcCount.set(sessionId, (wsProcCount.get(sessionId) || 0) + 1);
           isInputMessage = true;

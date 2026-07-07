@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { buildPrompt } from '../src/server/runtime/promptBuilder.js';
 
 test('buildPrompt keeps stable sections via toolResults', () => {
-  const prompt = buildPrompt({
+  const { prompt } = buildPrompt({
     toolInstructions: 'Tool A',
     toolResults: [{ tool: 'web_search', ok: true, content: 'Result A' }],
     userMessage: 'Hello world'
@@ -15,14 +15,14 @@ test('buildPrompt keeps stable sections via toolResults', () => {
 });
 
 test('buildPrompt omits empty sections', () => {
-  const prompt = buildPrompt({ userMessage: 'Only user' });
+  const { prompt } = buildPrompt({ userMessage: 'Only user' });
 
   assert.match(prompt, /^\[User Message\]/);
   assert.ok(prompt.endsWith('[User Message]\nOnly user'));
 });
 
 test('buildPrompt includes toolResults in stable order before user message', () => {
-  const prompt = buildPrompt({
+  const { prompt } = buildPrompt({
     toolInstructions: 'Tool instruction',
     toolResults: [
       { tool: 'web_search', ok: true, content: 'Search result' },
@@ -39,7 +39,7 @@ test('buildPrompt includes toolResults in stable order before user message', () 
 });
 
 test('buildPrompt skips empty toolResults', () => {
-  const prompt = buildPrompt({
+  const { prompt } = buildPrompt({
     toolResults: [
       { tool: 'file_analysis', ok: true, content: '' }
     ],
@@ -51,7 +51,7 @@ test('buildPrompt skips empty toolResults', () => {
 });
 
 test('buildPrompt includes conversation history before user message', () => {
-  const prompt = buildPrompt({
+  const { prompt } = buildPrompt({
     userMessage: 'Third message',
     history: [
       { role: 'user', content: 'First message' },
@@ -67,7 +67,7 @@ test('buildPrompt includes conversation history before user message', () => {
 });
 
 test('buildPrompt handles empty history gracefully', () => {
-  const prompt = buildPrompt({ userMessage: 'Hello', history: [] });
+  const { prompt } = buildPrompt({ userMessage: 'Hello', history: [] });
   assert.doesNotMatch(prompt, /\[Conversation History\]/);
   assert.match(prompt, /\[User Message\]\nHello/);
 });
