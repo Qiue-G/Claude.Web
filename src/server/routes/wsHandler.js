@@ -967,8 +967,8 @@ export function createWsHandler(deps) {
 
           let codeInterpreterBuffer = '';
           let assistantBuffer = '';
-          let toolUseBuffer = [];
-          let currentToolUse = null;
+          const toolUseByIndex = new Map();
+          const toolUseBuffer = [];
 
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
@@ -1003,22 +1003,22 @@ export function createWsHandler(deps) {
                     broadcastToSession(sessionId, { type: 'output', data: text });
                   } else if (chunk.delta?.input_json_delta) {
                     const partialJson = chunk.delta.input_json_delta;
-                    if (currentToolUse) {
-                      currentToolUse.inputJson += partialJson;
+                    const idx = chunk.index;
+                    if (idx != null && toolUseByIndex.has(idx)) {
+                      toolUseByIndex.get(idx).inputJson += partialJson;
                     }
                   }
                 } else if (chunk.type === 'content_block_start') {
                   if (chunk.content_block?.type === 'tool_use') {
-                    currentToolUse = {
+                    const toolUse = {
                       id: chunk.content_block.id,
                       name: chunk.content_block.name,
                       inputJson: ''
                     };
-                    toolUseBuffer.push(currentToolUse);
+                    toolUseByIndex.set(chunk.index, toolUse);
+                    toolUseBuffer.push(toolUse);
                     broadcastToSession(sessionId, { type: 'output', data: `\n[工具调用] ${chunk.content_block.name}(...)\n` });
                   }
-                } else if (chunk.type === 'content_block_stop') {
-                  currentToolUse = null;
                 }
               } catch (e) {
                 console.error('[STREAM PARSE ERROR]', e.message);
