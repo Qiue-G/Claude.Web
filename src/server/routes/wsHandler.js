@@ -836,11 +836,6 @@ export function createWsHandler(deps) {
             }
           }
 
-          // === 特殊处理：创建项目请求自动增强 ===
-          if (userMessageForPrompt.includes('创建') && userMessageForPrompt.includes('React')) {
-            userMessageForPrompt += '\n\n请使用 write_file 格式创建以下文件：package.json、vite.config.js、src/main.jsx、src/App.jsx、src/index.css、index.html。不要只描述文件，要真正创建它们。';
-          }
-
           // === Agent 钩子：修改用户提示 ===
           const hooksCtx = runHooks('onUserPrompt', { prompt: userMessageForPrompt }, pluginsConfig);
           userMessageForPrompt = hooksCtx.prompt;
