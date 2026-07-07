@@ -213,6 +213,69 @@ async function spawnCli(session, prompt, agentConfig, sessionClients, sessionPro
   }
 }
 
+async function callModelWithTools(session, prompt, tools, agentConfig, sessionClients, sessionProxies) {
+  if (globalProcessCount >= GLOBAL_PROCESS_LIMIT) {
+    throw new Error('Server busy. Global process limit (' + GLOBAL_PROCESS_LIMIT + ') reached. Try again later.');
+  }
+  globalProcessCount++;
+  let processCountActive = true;
+  const releaseProcessSlot = () => {
+    if (!processCountActive) return;
+    processCountActive = false;
+    globalProcessCount--;
+  };
+
+  try {
+    let baseUrl = process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
+
+    if (session.provider === 'openrouter' || session.provider === 'deepseek') {
+      const { process: proxy, port } = await startProxy(session, agentConfig, sessionClients, sessionProxies);
+      sessionProxies.set(session.id, proxy);
+      baseUrl = 'http://127.0.0.1:' + port;
+      logger.info('Model API URL', { url: baseUrl });
+    }
+
+    const model = session.provider === 'openrouter'
+      ? resolveOpenRouterModel(session.model || agentConfig.defaults?.model, agentConfig)
+      : (session.model || agentConfig.defaults?.model || 'deepseek-chat');
+
+    const body = {
+      model: model,
+      max_tokens: 4096,
+      temperature: 0.7,
+      stream: true,
+      system: prompt,
+      messages: [{ role: 'user', content: [{ type: 'text', text: '' }] }]
+    };
+
+    if (tools && tools.length > 0) {
+      body.tools = tools;
+    }
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.apiKey || ''}`
+    };
+
+    const response = await fetch(`${baseUrl}/v1/messages`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(PROCESS_TIMEOUT)
+    });
+
+    return { response, releaseProcessSlot };
+  } catch (e) {
+    releaseProcessSlot();
+    const proxy = sessionProxies.get(session.id);
+    if (proxy) {
+      try { proxy.kill(); } catch (_) {}
+      sessionProxies.delete(session.id);
+    }
+    throw e;
+  }
+}
+
 export {
   stripAnsi,
   maskSensitive,
@@ -220,6 +283,7 @@ export {
   notifyModelUpdate,
   startProxy,
   spawnCli,
+  callModelWithTools,
   resolveOpenRouterModel,
   getFallbackModel,
   modelStats,

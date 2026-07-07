@@ -16,6 +16,7 @@ const sessionClients = new Map();
 const {
   broadcastToSession: _broadcastToSession,
   spawnCli: _spawnCli,
+  callModelWithTools: _callModelWithTools,
   maskSensitive,
   stripAnsi,
   modelStats
@@ -26,6 +27,9 @@ const broadcastToSession = (sessionId, message) => _broadcastToSession(sessionCl
 
 // Bind extra params into spawnCli
 const spawnCli = (session, prompt) => _spawnCli(session, prompt, deps.agentConfig, sessionClients, sessionProxies);
+
+// Bind extra params into callModelWithTools
+const callModelWithTools = (session, prompt, tools) => _callModelWithTools(session, prompt, tools, deps.agentConfig, sessionClients, sessionProxies);
 
 // ===== Create Express app =====
 const app = createApp({
@@ -58,6 +62,7 @@ wss.on('connection', createWsHandler({
   wsProcCount,
   broadcastToSession,
   spawnCli,
+  callModelWithTools,
   maskSensitive,
   stripAnsi,
   checkRateLimit: deps.checkRateLimit,

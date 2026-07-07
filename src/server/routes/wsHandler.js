@@ -184,6 +184,71 @@ function extractListFilesBlocks(text) {
   return blocks;
 }
 
+async function executeToolCall(toolName, input, session) {
+  const resolvedSessionDir = path.resolve(session.dir);
+
+  switch (toolName) {
+    case 'write_file': {
+      const { path: filePath, content } = input;
+      const fullPath = path.resolve(session.dir, filePath);
+      if (!isPathInDir(fullPath, resolvedSessionDir)) {
+        throw new Error(`路径 ${filePath} 不在允许的工作目录内`);
+      }
+      await fs.mkdir(path.dirname(fullPath), { recursive: true });
+      await fs.writeFile(fullPath, content, 'utf-8');
+      return `文件已写入: ${filePath} (${content.length} 字符)`;
+    }
+    case 'edit_file': {
+      const { path: filePath, searchStr, replaceStr } = input;
+      const fullPath = path.resolve(session.dir, filePath);
+      if (!isPathInDir(fullPath, resolvedSessionDir)) {
+        throw new Error(`路径 ${filePath} 不在允许的工作目录内`);
+      }
+      const currentContent = await fs.readFile(fullPath, 'utf-8');
+      if (!currentContent.includes(searchStr)) {
+        throw new Error(`未找到匹配的原文`);
+      }
+      const newContent = currentContent.replace(searchStr, replaceStr);
+      if (newContent === currentContent) {
+        throw new Error(`替换后内容无变化`);
+      }
+      await fs.writeFile(fullPath, newContent, 'utf-8');
+      return `文件已编辑: ${filePath}`;
+    }
+    case 'delete_file': {
+      const { path: filePath } = input;
+      const fullPath = path.resolve(session.dir, filePath);
+      if (!isPathInDir(fullPath, resolvedSessionDir)) {
+        throw new Error(`路径 ${filePath} 不在允许的工作目录内`);
+      }
+      await fs.unlink(fullPath);
+      return `文件已删除: ${filePath}`;
+    }
+    case 'rename_file': {
+      const { path: oldPath, newPath } = input;
+      const oldFullPath = path.resolve(session.dir, oldPath);
+      const newFullPath = path.resolve(session.dir, newPath);
+      if (!isPathInDir(oldFullPath, resolvedSessionDir) || !isPathInDir(newFullPath, resolvedSessionDir)) {
+        throw new Error(`路径不在允许的工作目录内`);
+      }
+      await fs.mkdir(path.dirname(newFullPath), { recursive: true });
+      await fs.rename(oldFullPath, newFullPath);
+      return `文件已重命名: ${oldPath} → ${newPath}`;
+    }
+    case 'list_files': {
+      const { path: dirPath = '' } = input;
+      const fullDirPath = path.resolve(session.dir, dirPath);
+      if (!isPathInDir(fullDirPath, resolvedSessionDir)) {
+        throw new Error(`路径 ${dirPath} 不在允许的工作目录内`);
+      }
+      const files = await listFilesRecursive(fullDirPath, session.dir);
+      return `目录列表:\n${files.join('\n')}`;
+    }
+    default:
+      throw new Error(`未知工具: ${toolName}`);
+  }
+}
+
 /**
  * Recursively list files in a directory, returning relative paths.
  */
@@ -875,7 +940,7 @@ export function createWsHandler(deps) {
             }
           }
 
-          prompt = buildPrompt({
+          const promptResult = buildPrompt({
             toolInstructions,
             activeToolIds: approvedTools || [],
             toolResults,
@@ -883,77 +948,115 @@ export function createWsHandler(deps) {
             history: messageStore ? (await messageStore.loadMessages(sessionId)).slice(0, -1) : [],
             enableCompaction: true,
             maxHistoryChars: 8000,
+            enableTools: true,
           });
+
+          prompt = promptResult.prompt;
+          const toolsForModel = promptResult.tools;
 
           console.log('[INPUT] prompt length: ' + (prompt ? prompt.length : 0) + ', tools: [' + tools.join(',') + ']');
 
           wsProcCount.set(sessionId, (wsProcCount.get(sessionId) || 0) + 1);
           isInputMessage = true;
-          // Take file snapshot before command execution
           const preExecSnapshot = await takeFileSnapshot(session.dir);
-          const proc = await spawnCli(session, prompt);
-          proc._procSeq = ++processSeqId;
-          sessionProcesses.set(sessionId, proc);
 
-          // ===== 代码解释器：缓冲完整输出，关闭时检测 Python 代码块 =====
+          const { response, releaseProcessSlot } = await callModelWithTools(session, prompt, toolsForModel);
+          const requestId = ++processSeqId;
+          sessionProcesses.set(sessionId, { _procSeq: requestId });
+
           let codeInterpreterBuffer = '';
-          // 累积 AI 输出，关闭时保存完整消息
           let assistantBuffer = '';
+          let toolUseBuffer = [];
+          let currentToolUse = null;
 
-          proc.stdout.on('data', (chunk) => {
-            let clean = stripAnsi(chunk.toString());
-            clean = maskSensitive(clean, session.apiKey);
-            if (clean.trim()) {
-              assistantBuffer += clean;
-              codeInterpreterBuffer += clean;
-              const MAX_WS_MSG = 1024 * 1024;
-              const data = clean.length > MAX_WS_MSG ? clean.substring(0, MAX_WS_MSG) + '\n[output truncated]' : clean;
-              broadcastToSession(sessionId, { type: 'output', data });
-            }
-          });
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
 
-          proc.stderr.on('data', (chunk) => {
-            let errStr = chunk.toString();
-            errStr = maskSensitive(errStr, session.apiKey);
-            assistantBuffer += errStr;
-            codeInterpreterBuffer += errStr;
-            console.error('[STDERR] ' + maskSensitive(errStr.substring(0, 200), session.apiKey));
-            const MAX_WS_ERR = 1024 * 1024;
-            const data = errStr.length > MAX_WS_ERR ? errStr.substring(0, MAX_WS_ERR) + '\n[output truncated]' : errStr;
-            broadcastToSession(sessionId, { type: 'stderr', data });
-          });
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-          proc.on('close', async (code) => {
-            console.log('[DONE] exit code ' + code);
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
 
-            // 检测是否已被新进程替代：如果是旧进程的 close，跳过所有副作用
-            const currentProc = sessionProcesses.get(sessionId);
-            if (currentProc !== proc) {
-              return;
-            }
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed || !trimmed.startsWith('data: ')) continue;
 
-            sessionProcesses.delete(sessionId);
-            wsProcCount.set(sessionId, Math.max(0, (wsProcCount.get(sessionId) || 0) - 1));
+              const dataStr = trimmed.slice(6);
+              if (dataStr === '[DONE]') {
+                broadcastToSession(sessionId, { type: 'output', data: '\n' });
+                continue;
+              }
 
-            // Kill proxy too
-            const proxy = sessionProxies.get(sessionId);
-            if (proxy) { proxy.kill(); sessionProxies.delete(sessionId); }
+              try {
+                const chunk = JSON.parse(dataStr);
 
-            // ===== 代码解释器：执行 Python 代码块 =====
-            if (codeInterpreterBuffer.trim()) {
-              const blocks = extractPythonBlocks(codeInterpreterBuffer);
-              if (blocks.length > 0) {
-                for (let i = 0; i < blocks.length; i++) {
-                  broadcastToSession(sessionId, { type: 'output', data: `\n[执行 Python 代码块 ${i + 1}/${blocks.length}...]\n` });
-                  const result = await executePython(blocks[i]);
-                  let output = `\n[代码块 ${i + 1} 执行完毕]`;
-                  if (result.stdout) output += `\n输出:\n${result.stdout}`;
-                  if (result.stderr) output += `\n错误:\n${result.stderr}`;
-                  if (result.exitCode !== 0) output += `\n退出码: ${result.exitCode}`;
-                  broadcastToSession(sessionId, { type: 'output', data: output + '\n' });
+                if (chunk.type === 'content_block_delta') {
+                  if (chunk.delta?.text) {
+                    const text = chunk.delta.text;
+                    assistantBuffer += text;
+                    codeInterpreterBuffer += text;
+                    broadcastToSession(sessionId, { type: 'output', data: text });
+                  } else if (chunk.delta?.input_json_delta) {
+                    const partialJson = chunk.delta.input_json_delta;
+                    if (currentToolUse) {
+                      currentToolUse.inputJson += partialJson;
+                    }
+                  }
+                } else if (chunk.type === 'content_block_start') {
+                  if (chunk.content_block?.type === 'tool_use') {
+                    currentToolUse = {
+                      id: chunk.content_block.id,
+                      name: chunk.content_block.name,
+                      inputJson: ''
+                    };
+                    toolUseBuffer.push(currentToolUse);
+                    broadcastToSession(sessionId, { type: 'output', data: `\n[工具调用] ${chunk.content_block.name}(...)\n` });
+                  }
+                } else if (chunk.type === 'content_block_stop') {
+                  currentToolUse = null;
                 }
+              } catch (e) {
+                console.error('[STREAM PARSE ERROR]', e.message);
               }
             }
+          }
+
+          releaseProcessSlot();
+          sessionProcesses.delete(sessionId);
+          wsProcCount.set(sessionId, Math.max(0, (wsProcCount.get(sessionId) || 0) - 1));
+
+          const proxy = sessionProxies.get(sessionId);
+          if (proxy) { proxy.kill(); sessionProxies.delete(sessionId); }
+
+          if (codeInterpreterBuffer.trim()) {
+            const blocks = extractPythonBlocks(codeInterpreterBuffer);
+            if (blocks.length > 0) {
+              for (let i = 0; i < blocks.length; i++) {
+                broadcastToSession(sessionId, { type: 'output', data: `\n[执行 Python 代码块 ${i + 1}/${blocks.length}...]\n` });
+                const result = await executePython(blocks[i]);
+                let output = `\n[代码块 ${i + 1} 执行完毕]`;
+                if (result.stdout) output += `\n输出:\n${result.stdout}`;
+                if (result.stderr) output += `\n错误:\n${result.stderr}`;
+                if (result.exitCode !== 0) output += `\n退出码: ${result.exitCode}`;
+                broadcastToSession(sessionId, { type: 'output', data: output + '\n' });
+              }
+            }
+          }
+
+          for (const toolUse of toolUseBuffer) {
+            try {
+              const input = JSON.parse(toolUse.inputJson);
+              const toolResult = await executeToolCall(toolUse.name, input, session);
+              broadcastToSession(sessionId, { type: 'output', data: `\n[工具结果] ${toolUse.name}: ${toolResult}\n` });
+            } catch (e) {
+              console.error('[TOOL EXEC ERROR]', toolUse.name, e.message);
+              broadcastToSession(sessionId, { type: 'output', data: `\n[工具错误] ${toolUse.name}: ${e.message}\n` });
+            }
+          }
 
             // ===== Write File Tool：提取 write_file / edit_file 代码块并直接写入 =====
             if (assistantBuffer.trim()) {
@@ -1055,67 +1158,55 @@ export function createWsHandler(deps) {
               }
             }
 
-            // === Pipelines: 输出管道 (用户自定义脚本) ===
-            if (pipelines.length > 0 && assistantBuffer.trim()) {
-              const pipeResult = await runPipelines('output', assistantBuffer, {
+          // === Pipelines: 输出管道 (用户自定义脚本) ===
+          if (pipelines.length > 0 && assistantBuffer.trim()) {
+            const pipeResult = await runPipelines('output', assistantBuffer, {
+              session,
+              context: { filterOptions: filtersConfig }
+            }, pipelines);
+            if (pipeResult.content !== assistantBuffer) {
+              assistantBuffer = pipeResult.content;
+            }
+          }
+
+          // === Filters: 输出过滤器 (profanity, formatGuard) ===
+          let outputFilterAborted = false;
+          if (filterPipeline.length > 0 && assistantBuffer.trim()) {
+            const outputFilters = filterPipeline.filter((f) => f.type === 'output' || !f.type);
+            if (outputFilters.length > 0) {
+              const outputFilterCtx = await runFilters('output', assistantBuffer, {
                 session,
                 context: { filterOptions: filtersConfig }
-              }, pipelines);
-              if (pipeResult.content !== assistantBuffer) {
-                assistantBuffer = pipeResult.content;
+              }, outputFilters);
+              if (outputFilterCtx.aborted) {
+                outputFilterAborted = true;
+                broadcastToSession(sessionId, {
+                  type: 'output',
+                  data: '\n[输出已被过滤器阻断: ' + outputFilterCtx.reason + ']\n'
+                });
+              } else if (outputFilterCtx.content !== assistantBuffer) {
+                broadcastToSession(sessionId, {
+                  type: 'output',
+                  data: '\n[输出已通过过滤器处理]\n'
+                });
+                assistantBuffer = outputFilterCtx.content;
               }
             }
+          }
 
-            // === Filters: 输出过滤器 (profanity, formatGuard) ===
-            let outputFilterAborted = false;
-            if (filterPipeline.length > 0 && assistantBuffer.trim()) {
-              const outputFilters = filterPipeline.filter((f) => f.type === 'output' || !f.type);
-              if (outputFilters.length > 0) {
-                const outputFilterCtx = await runFilters('output', assistantBuffer, {
-                  session,
-                  context: { filterOptions: filtersConfig }
-                }, outputFilters);
-                if (outputFilterCtx.aborted) {
-                  outputFilterAborted = true;
-                  // 阻断内容不保存，且告知客户端
-                  broadcastToSession(sessionId, {
-                    type: 'output',
-                    data: '\n[输出已被过滤器阻断: ' + outputFilterCtx.reason + ']\n'
-                  });
-                } else if (outputFilterCtx.content !== assistantBuffer) {
-                  broadcastToSession(sessionId, {
-                    type: 'output',
-                    data: '\n[输出已通过过滤器处理]\n'
-                  });
-                  assistantBuffer = outputFilterCtx.content;
-                }
-              }
-            }
+          broadcastToSession(sessionId, { type: 'exit', code: 0 });
+          broadcastToSession(sessionId, { type: 'done' });
 
-            broadcastToSession(sessionId, { type: 'exit', code });
-            broadcastToSession(sessionId, { type: 'done' });
+          const changedFiles = (await detectChangedFiles(session, preExecSnapshot, db)).filter(
+            f => !f.filePath.endsWith('.claude.json')
+          );
+          if (changedFiles.length > 0) {
+            broadcastToSession(sessionId, { type: 'file_diff', diffs: changedFiles });
+          }
 
-            // Detect file changes and send diffs (filter out claude config)
-            const changedFiles = (await detectChangedFiles(session, preExecSnapshot, db)).filter(
-              f => !f.filePath.endsWith('.claude.json')
-            );
-            if (changedFiles.length > 0) {
-              broadcastToSession(sessionId, { type: 'file_diff', diffs: changedFiles });
-            }
-
-            // 保存助理消息（仅在未阻断时保存）
-            if (messageStore && assistantBuffer.trim() && !outputFilterAborted) {
-              await messageStore.saveMessage(sessionId, { role: 'assistant', content: assistantBuffer.trim() });
-            }
-          });
-
-          proc.on('error', (err) => {
-            console.error('[ERROR] ' + err.message);
-            wsProcCount.set(sessionId, Math.max(0, (wsProcCount.get(sessionId) || 0) - 1));
-            if (ws.readyState === ws.OPEN) {
-              ws.send(JSON.stringify({ type: 'error', message: 'Failed to start CLI' }));
-            }
-          });
+          if (messageStore && assistantBuffer.trim() && !outputFilterAborted) {
+            await messageStore.saveMessage(sessionId, { role: 'assistant', content: assistantBuffer.trim() });
+          }
         } else if (message.type === 'parallel_start') {
           // ===== 并行模型调用 =====
           const session = getSession(sessionId);

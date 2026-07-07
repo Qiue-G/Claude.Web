@@ -8,6 +8,68 @@ const TOOL_SECTION_TITLES = {
   rag_search: 'Knowledge Base Results'
 };
 
+const DEFAULT_TOOLS = [
+  {
+    name: 'write_file',
+    description: 'Write or overwrite a file. Use this for creating new files or replacing entire file content.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Relative file path' },
+        content: { type: 'string', description: 'File content' },
+        language: { type: 'string', description: 'File language/extension' }
+      },
+      required: ['path', 'content']
+    }
+  },
+  {
+    name: 'edit_file',
+    description: 'Edit an existing file using search-and-replace. Use this for modifying parts of a file.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Relative file path' },
+        searchStr: { type: 'string', description: 'Old content to search for and replace' },
+        replaceStr: { type: 'string', description: 'New content to replace with' }
+      },
+      required: ['path', 'searchStr', 'replaceStr']
+    }
+  },
+  {
+    name: 'delete_file',
+    description: 'Delete a file.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Relative file path' }
+      },
+      required: ['path']
+    }
+  },
+  {
+    name: 'rename_file',
+    description: 'Rename or move a file.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Old relative file path' },
+        newPath: { type: 'string', description: 'New relative file path' }
+      },
+      required: ['path', 'newPath']
+    }
+  },
+  {
+    name: 'list_files',
+    description: 'List files in a directory.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Optional subdirectory path, omit to list root' }
+      }
+    }
+  }
+];
+
 function sectionTitleForTool(tool) {
   return TOOL_SECTION_TITLES[tool] || String(tool || 'Tool Result').replace(/_/g, ' ');
 }
@@ -41,6 +103,7 @@ export function buildPrompt({
   history = [],
   enableCompaction = false,
   maxHistoryChars = 8000,
+  enableTools = true,
 } = {}) {
   const sections = [];
 
@@ -76,7 +139,13 @@ export function buildPrompt({
   // ===== 用户消息 =====
   sections.push(`[User Message]\n${String(userMessage || '').trim()}`);
 
-  return sections.join('\n\n');
+  const prompt = sections.join('\n\n');
+  
+  if (enableTools) {
+    return { prompt, tools: DEFAULT_TOOLS };
+  }
+  
+  return { prompt, tools: [] };
 }
 
 /**
