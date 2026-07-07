@@ -232,10 +232,11 @@ function translateStreamChunk(orChunk) {
 
       if (tc.id) {
         // 首个 chunk：发送 content_block_start
+        const initialArgs = tc.function?.arguments || '';
         toolCallBuffers.set(idx, {
           id: tc.id,
           name: tc.function?.name || '',
-          arguments: tc.function?.arguments || ''
+          arguments: initialArgs
         });
         results.push({
           type: 'content_block_start',
@@ -247,6 +248,14 @@ function translateStreamChunk(orChunk) {
             input: {}
           }
         });
+        // 如果首个 chunk 已包含 arguments，立即发送 input_json_delta
+        if (initialArgs) {
+          results.push({
+            type: 'content_block_delta',
+            index: aiIdx,
+            delta: { type: 'input_json_delta', partial_json: initialArgs }
+          });
+        }
       } else {
         // 后续 chunk：累积 arguments 并发送 input_json_delta
         const buf = toolCallBuffers.get(idx);
