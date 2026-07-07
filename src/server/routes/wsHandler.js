@@ -785,8 +785,6 @@ export function createWsHandler(deps) {
           toolInstructions += '\n' + [
             'You can execute Python code for calculations and data analysis. When useful, provide executable Python code in a fenced python code block.',
             '',
-            '**IMPORTANT**: When the user asks you to create a project (React, Vue, Node.js, etc.), you MUST use the write_file format to create actual files on disk. Do NOT describe files or provide them as text only. Create real files that the user can see in the file explorer.',
-            '',
             'You can write files directly to disk using Node.js fs.writeFile. Use this instead of bash echo/redirect when creating or overwriting files. Output in the following format:',
             '',
             '```write_file',
