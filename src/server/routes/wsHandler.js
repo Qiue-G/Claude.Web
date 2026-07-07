@@ -1050,11 +1050,14 @@ export function createWsHandler(deps) {
 
           for (const toolUse of toolUseBuffer) {
             try {
+              if (!toolUse.inputJson || toolUse.inputJson.trim() === '') {
+                throw new Error('Empty input JSON');
+              }
               const input = JSON.parse(toolUse.inputJson);
               const toolResult = await executeToolCall(toolUse.name, input, session);
               broadcastToSession(sessionId, { type: 'output', data: `\n[工具结果] ${toolUse.name}: ${toolResult}\n` });
             } catch (e) {
-              console.error('[TOOL EXEC ERROR]', toolUse.name, e.message);
+              console.error('[TOOL EXEC ERROR]', toolUse.name, e.message, 'inputJson:', JSON.stringify(toolUse.inputJson?.slice(0, 200)));
               broadcastToSession(sessionId, { type: 'output', data: `\n[工具错误] ${toolUse.name}: ${e.message}\n` });
             }
           }
