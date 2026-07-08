@@ -44,6 +44,7 @@ RUN set -e; \
       printf '\n// BUILD-TIME EXPORTS for prompt extraction\nexport { getSimpleIntroSection,getSimpleSystemSection,getSimpleDoingTasksSection,getSimpleToneAndStyleSection,getOutputEfficiencySection };\n' >> /free-code/src/constants/prompts.ts \
       && cp /app/scripts/dump-static-prompts.ts /free-code/scripts/dump-static-prompts.ts \
       && cd /free-code \
+      && printf '\n// BUILD-TIME MACRO definition for prompt extraction\nglobalThis.MACRO = { VERSION: "0.0.0", BUILD_TIME: "2000-01-01T00:00:00.000Z", PACKAGE_URL: "free-code", ISSUES_EXPLAINER: "Report issues at github.com/paoloanzn/free-code", FEEDBACK_CHANNEL: "github", VERSION_CHANGELOG: "local build", NATIVE_PACKAGE_URL: undefined };\n' | cat - /free-code/src/constants/prompts.ts > /tmp/prompts-patched.ts && mv /tmp/prompts-patched.ts /free-code/src/constants/prompts.ts \
       && bun run /free-code/scripts/dump-static-prompts.ts \
       && echo "[INFO] Static prompts extracted successfully"; \
     else \
