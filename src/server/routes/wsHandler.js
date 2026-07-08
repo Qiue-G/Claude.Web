@@ -847,8 +847,49 @@ export function createWsHandler(deps) {
           // Build prompt with MCP tool instructions too
           let toolInstructions = getToolInstructions(approvedTools || []);
 
-          // 基础工具指令（仅限 Python 代码块，文件操作指令在后面根据标准 FC 是否启用动态注入）
-          toolInstructions += '\nYou can execute Python code for calculations and data analysis. When useful, provide executable Python code in a fenced python code block.';
+          // 始终注入默认工具指令（Kun 风格：默认启用，无需审批）
+          toolInstructions += '\n' + [
+            'You can execute Python code for calculations and data analysis. When useful, provide executable Python code in a fenced python code block.',
+            '',
+            'You can write files directly to disk using Node.js fs.writeFile. Use this instead of bash echo/redirect when creating or overwriting files. Output in the following format:',
+            '',
+            '```write_file',
+            'path: relative/file/path',
+            'language: file_extension',
+            '',
+            'The file content goes here...',
+            '```',
+            '',
+            'You can edit existing files using search-and-replace. Output in the following format:',
+            '',
+            '```edit_file',
+            'path: relative/file/path',
+            '<<<<<<< SEARCH',
+            'old content to replace',
+            '=======',
+            'new content to replace with',
+            '>>>>>>>',
+            '```',
+            '',
+            'You can delete files. Output in the following format:',
+            '',
+            '```delete_file',
+            'path: relative/file/path',
+            '```',
+            '',
+            'You can rename/move files. Output in the following format:',
+            '',
+            '```rename_file',
+            'path: old/relative/file/path',
+            'newPath: new/relative/file/path',
+            '```',
+            '',
+            'You can list files in a directory. Output in the following format:',
+            '',
+            '```list_files',
+            'path: optional/sub/directory (omit path: to list root)',
+            '```'
+          ].join('\n');
 
           if (mcpManager && mcpManager.isConnected()) {
             const mcpTools = await mcpManager.listTools();
@@ -914,63 +955,6 @@ export function createWsHandler(deps) {
           prompt = promptResult.prompt;
           const toolsForModel = promptResult.tools;
 
-          // 根据是否使用标准 Function Calling，动态注入不同的文件操作指令到系统提示中
-          if (!toolsForModel || toolsForModel.length === 0) {
-            // 不使用标准 FC 时，用代码块格式（正则解析 fallback）
-            prompt += '\n\n' + [
-              'You can write files directly to disk using Node.js fs.writeFile. Use this instead of bash echo/redirect when creating or overwriting files. Output in the following format:',
-              '',
-              '```write_file',
-              'path: relative/file/path',
-              'language: file_extension',
-              '',
-              'The file content goes here...',
-              '```',
-              '',
-              'You can edit existing files using search-and-replace. Output in the following format:',
-              '',
-              '```edit_file',
-              'path: relative/file/path',
-              '<<<<<<< SEARCH',
-              'old content to replace',
-              '=======',
-              'new content to replace with',
-              '>>>>>>>',
-              '```',
-              '',
-              'You can delete files. Output in the following format:',
-              '',
-              '```delete_file',
-              'path: relative/file/path',
-              '```',
-              '',
-              'You can rename/move files. Output in the following format:',
-              '',
-              '```rename_file',
-              'path: old/relative/file/path',
-              'newPath: new/relative/file/path',
-              '```',
-              '',
-              'You can list files in a directory. Output in the following format:',
-              '',
-              '```list_files',
-              'path: optional/sub/directory (omit path: to list root)',
-              '```'
-            ].join('\n');
-          } else {
-            // 使用标准 FC 时，仅告知 AI 可用的工具（工具 schema 通过 API tools 参数传递）
-            prompt += '\n\n' + [
-              'You have access to the following file operations as standard tools that you should call via the function/tool calling mechanism:',
-              '  - write_file: Write or overwrite a file',
-              '  - edit_file: Edit an existing file using search-and-replace',
-              '  - delete_file: Delete a file',
-              '  - rename_file: Rename or move a file',
-              '  - list_files: List files in a directory',
-              '',
-              'When you need to create, edit, delete, rename, or list files, call the appropriate tool. The tool will be executed automatically and you will see the result.'
-            ].join('\n');
-          }
-
           console.log('[INPUT] prompt length: ' + (prompt ? prompt.length : 0) + ', tools: [' + (toolsForModel || []).map(t => t.name).join(',') + ']');
 
           wsProcCount.set(sessionId, (wsProcCount.get(sessionId) || 0) + 1);
@@ -983,7 +967,6 @@ export function createWsHandler(deps) {
 
           let codeInterpreterBuffer = '';
           let assistantBuffer = '';
-          let toolUseByIndex = new Map();
 
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
@@ -1010,52 +993,16 @@ export function createWsHandler(deps) {
               try {
                 const chunk = JSON.parse(dataStr);
 
-                if (chunk.type === 'content_block_start') {
-                  if (chunk.content_block?.type === 'tool_use') {
-                    toolUseByIndex.set(chunk.index, {
-                      id: chunk.content_block.id,
-                      name: chunk.content_block.name,
-                      inputJson: ''
-                    });
-                  }
-                } else if (chunk.type === 'content_block_delta') {
+                if (chunk.type === 'content_block_delta') {
                   if (chunk.delta?.text) {
                     const text = chunk.delta.text;
                     assistantBuffer += text;
                     codeInterpreterBuffer += text;
                     broadcastToSession(sessionId, { type: 'output', data: text });
                   }
-                  if (chunk.delta?.type === 'input_json_delta' && chunk.delta?.partial_json) {
-                    const entry = toolUseByIndex.get(chunk.index);
-                    if (entry) {
-                      entry.inputJson += chunk.delta.partial_json;
-                    }
-                  }
                 }
               } catch (e) {
                 console.error('[STREAM PARSE ERROR]', e.message);
-              }
-            }
-          }
-
-          // ===== Function Calling: 执行流式收集到的工具调用 =====
-          let usedToolCalling = false;
-          if (toolUseByIndex.size > 0) {
-            usedToolCalling = true;
-            const resolvedSessionDir = path.resolve(session.dir);
-            for (const [index, toolUse] of toolUseByIndex) {
-              let input;
-              try {
-                input = JSON.parse(toolUse.inputJson);
-              } catch (e) {
-                broadcastToSession(sessionId, { type: 'output', data: `\n[${toolUse.name} 参数解析失败] ${e.message}\n原始参数: ${toolUse.inputJson}\n` });
-                continue;
-              }
-              try {
-                const result = await executeToolCall(toolUse.name, input, session);
-                broadcastToSession(sessionId, { type: 'output', data: `\n[${toolUse.name}] ${result}\n` });
-              } catch (e) {
-                broadcastToSession(sessionId, { type: 'output', data: `\n[${toolUse.name} 失败] ${e.message}\n` });
               }
             }
           }
@@ -1082,8 +1029,8 @@ export function createWsHandler(deps) {
             }
           }
 
-          // ===== Write File Tool：提取 write_file / edit_file 代码块并直接写入（仅当未使用标准 Function Calling 时） =====
-          if (!usedToolCalling && assistantBuffer.trim()) {
+          // ===== Write File Tool：提取 write_file / edit_file 代码块并直接写入 =====
+          if (assistantBuffer.trim()) {
               const writeBlocks = extractWriteFileBlocks(assistantBuffer);
               const editBlocks = extractEditFileBlocks(assistantBuffer);
 
