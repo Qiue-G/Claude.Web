@@ -1,6 +1,6 @@
 import { getOrBuildPrefix } from '../../cache/immutablePrefix.js';
 import { compactHistory } from '../../cache/contextCompactor.js';
-import { buildSystemPromptPrefix } from './systemPrompts.js';
+import { buildBackendSystemPromptPrefix } from './backendPromptLoader.js';
 
 const TOOL_SECTION_TITLES = {
   file_analysis: 'File Analysis',
@@ -10,6 +10,11 @@ const TOOL_SECTION_TITLES = {
 };
 
 const DEFAULT_TOOLS = [];
+
+/** 最小 fallback 提示词（仅在无后端 JSON 且无 systemPrompts.js 时使用） */
+function loadFallbackPrefix() {
+  return `You are an interactive agent that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.`;
+}
 
 function sectionTitleForTool(tool) {
   return TOOL_SECTION_TITLES[tool] || String(tool || 'Tool Result').replace(/_/g, ' ');
@@ -49,7 +54,12 @@ export function buildPrompt({
   const sections = [];
 
   // ===== 系统提示词前缀（身份、行为、规范） =====
-  sections.push(buildSystemPromptPrefix());
+  // 优先使用后端 free-code 提取的提示词，不可用时回退到本地硬编码
+  let systemPrefix = buildBackendSystemPromptPrefix();
+  if (!systemPrefix) {
+    systemPrefix = loadFallbackPrefix();
+  }
+  sections.push(systemPrefix);
 
   // ===== 工具指令 =====
   if (toolInstructions && toolInstructions.trim()) {

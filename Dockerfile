@@ -20,6 +20,7 @@ RUN npm ci
 
 # Copy app files
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 COPY vite.config.js svelte.config.js ./
 
 # Build frontend (creates public/ directory with production assets)
@@ -35,6 +36,31 @@ RUN set -e; \
       && echo "[INFO] free-code built successfully"; \
     else \
       echo "[WARN] free-code clone failed, continuing without CLI features"; \
+    fi
+
+# Extract static prompts from free-code for backend prompt loader
+RUN set -e; \
+    if [ -d "/free-code/src" ]; then \
+      printf '\n// BUILD-TIME EXPORTS for prompt extraction\nexport { getSimpleIntroSection,getSimpleSystemSection,getSimpleDoingTasksSection,getSimpleToneAndStyleSection,getOutputEfficiencySection };\n' >> /free-code/src/constants/prompts.ts \
+      && cp /app/scripts/dump-static-prompts.ts /free-code/scripts/dump-static-prompts.ts \
+      && cd /free-code \
+      && bun build /free-code/scripts/dump-static-prompts.ts \
+         --outfile /tmp/prompt-extractor.js \
+         --target bun \
+         --format esm \
+         --packages bundle \
+         --define 'process.env.USER_TYPE="external"' \
+         --define 'MACRO.VERSION="0.0.0"' \
+         --define 'MACRO.BUILD_TIME="2000-01-01T00:00:00.000Z"' \
+         --define 'MACRO.PACKAGE_URL="free-code"' \
+         --define 'MACRO.ISSUES_EXPLAINER="Report issues at github.com/paoloanzn/free-code"' \
+         --define 'MACRO.FEEDBACK_CHANNEL="github"' \
+         --define 'MACRO.VERSION_CHANGELOG="local build"' \
+         --define 'MACRO.NATIVE_PACKAGE_URL="undefined"' 2>/dev/null \
+      && bun run /tmp/prompt-extractor.js \
+      && echo "[INFO] Static prompts extracted successfully"; \
+    else \
+      echo "[WARN] free-code not available, skipping prompt extraction"; \
     fi
 
 # Copy optional files into /free-code (only if directory has content)
