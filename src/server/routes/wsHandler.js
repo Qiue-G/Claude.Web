@@ -4,6 +4,7 @@ import { searchWeb } from '../tools/webSearch.js';
 import { analyzeFilesFromPromptContext, stripFileBlocksFromPrompt } from '../tools/fileAnalysis.js';
 import { buildPrompt } from '../runtime/promptBuilder.js';
 import { getToolInstructions, isBuiltinTool, isMcpTool, parseMcpToolId } from '../tools/registry.js';
+import { getFileToolInstructions, extractAndExecuteFileTools, isPathInDir } from '../tools/fileTools.js';
 import { runHooks } from '../runtime/hooksRunner.js';
 import { runFilters } from '../runtime/filterPipeline.js';
 import { buildFilterList } from '../runtime/filters/index.js';
@@ -40,244 +41,6 @@ function formatRagResults(results, query) {
     parts.push(`${i + 1}.${headings}${filename}${score}\n   ${r.text.substring(0, 500)}`);
   }
   return parts.join('\n\n');
-}
-
-/**
- * Extract write_file fenced blocks from AI output.
- * Format:
- * ```write_file
- * path: relative/file/path
- * language: txt
- *
- * file content here
- * ```
- */
-function extractWriteFileBlocks(text) {
-  const blocks = [];
-  const regex = /```write_file\n?([\s\S]*?)```/g;
-  let match;
-  while ((match = regex.exec(text)) !== null) {
-    const block = match[1].trim();
-    const lines = block.split('\n');
-    // Find path: line
-    const pathIdx = lines.findIndex(l => l.startsWith('path:'));
-    if (pathIdx === -1) continue;
-    const filePath = lines[pathIdx].slice(5).trim();
-    // Content is everything after the metadata lines (path:, language:, etc.)
-    const contentLines = lines.slice(pathIdx + 1).filter((l, i, arr) => {
-      // Skip blank lines only at the beginning of content
-      if (i === 0 && l.trim() === '') return false;
-      return true;
-    });
-    // Re-filter: skip leading blank lines
-    let start = 0;
-    while (start < contentLines.length && contentLines[start].trim() === '') start++;
-    const content = contentLines.slice(start).join('\n');
-    blocks.push({ path: filePath, content });
-  }
-  return blocks;
-}
-
-/**
- * Extract edit_file fenced blocks from AI output.
- * Format:
- * ```edit_file
- * path: relative/file/path
- * <<<<<<< SEARCH
- * old content
- * =======
- * new content
- * >>>>>>>
- * ```
- */
-function extractEditFileBlocks(text) {
-  const blocks = [];
-  const regex = /```edit_file\n?([\s\S]*?)```/g;
-  let match;
-  while ((match = regex.exec(text)) !== null) {
-    const block = match[1].trim();
-    const lines = block.split('\n');
-    const pathIdx = lines.findIndex(l => l.startsWith('path:'));
-    if (pathIdx === -1) continue;
-    const filePath = lines[pathIdx].slice(5).trim();
-    // Find SEARCH/REPLACE markers
-    const searchStart = lines.findIndex(l => l.includes('<<<<<<< SEARCH') || l.includes('<<<<<<<'));
-    const divider = lines.findIndex(l => l.startsWith('======='));
-    const replaceEnd = lines.findIndex(l => l.startsWith('>>>>>>>'));
-    if (searchStart === -1 || divider === -1 || replaceEnd === -1) continue;
-    const searchStr = lines.slice(searchStart + 1, divider).join('\n').trim();
-    const replaceStr = lines.slice(divider + 1, replaceEnd).join('\n').trim();
-    if (!searchStr) continue;
-    blocks.push({ path: filePath, searchStr, replaceStr });
-  }
-  return blocks;
-}
-
-/**
- * Extract delete_file fenced blocks from AI output.
- * Format:
- * ```delete_file
- * path: relative/file/path
- * ```
- */
-function extractDeleteFileBlocks(text) {
-  const blocks = [];
-  const regex = /```delete_file\n?([\s\S]*?)```/g;
-  let match;
-  while ((match = regex.exec(text)) !== null) {
-    const block = match[1].trim();
-    const lines = block.split('\n');
-    const pathIdx = lines.findIndex(l => l.startsWith('path:'));
-    if (pathIdx === -1) continue;
-    const filePath = lines[pathIdx].slice(5).trim();
-    if (!filePath) continue;
-    blocks.push({ path: filePath });
-  }
-  return blocks;
-}
-
-/**
- * Extract rename_file fenced blocks from AI output.
- * Format:
- * ```rename_file
- * path: old/relative/file/path
- * newPath: new/relative/file/path
- * ```
- */
-function extractRenameFileBlocks(text) {
-  const blocks = [];
-  const regex = /```rename_file\n?([\s\S]*?)```/g;
-  let match;
-  while ((match = regex.exec(text)) !== null) {
-    const block = match[1].trim();
-    const lines = block.split('\n');
-    const pathIdx = lines.findIndex(l => l.startsWith('path:'));
-    if (pathIdx === -1) continue;
-    const oldPath = lines[pathIdx].slice(5).trim();
-    const newPathIdx = lines.findIndex(l => l.startsWith('newPath:'));
-    if (newPathIdx === -1) continue;
-    const newPath = lines[newPathIdx].slice(8).trim();
-    if (!oldPath || !newPath) continue;
-    blocks.push({ path: oldPath, newPath });
-  }
-  return blocks;
-}
-
-/**
- * Extract list_files fenced blocks from AI output.
- * Format:
- * ```list_files
- * path: optional/sub/directory
- * ```
- */
-function extractListFilesBlocks(text) {
-  const blocks = [];
-  const regex = /```list_files\n?([\s\S]*?)```/g;
-  let match;
-  while ((match = regex.exec(text)) !== null) {
-    const block = match[1].trim();
-    const lines = block.split('\n');
-    const pathIdx = lines.findIndex(l => l.startsWith('path:'));
-    const dirPath = pathIdx !== -1 ? lines[pathIdx].slice(5).trim() : '';
-    blocks.push({ path: dirPath || '.' });
-  }
-  return blocks;
-}
-
-async function executeToolCall(toolName, input, session) {
-  const resolvedSessionDir = path.resolve(session.dir);
-
-  switch (toolName) {
-    case 'write_file': {
-      const { path: filePath, content } = input;
-      const fullPath = path.resolve(session.dir, filePath);
-      if (!isPathInDir(fullPath, resolvedSessionDir)) {
-        throw new Error(`路径 ${filePath} 不在允许的工作目录内`);
-      }
-      await fs.mkdir(path.dirname(fullPath), { recursive: true });
-      await fs.writeFile(fullPath, content, 'utf-8');
-      return `文件已写入: ${filePath} (${content.length} 字符)`;
-    }
-    case 'edit_file': {
-      const { path: filePath, searchStr, replaceStr } = input;
-      const fullPath = path.resolve(session.dir, filePath);
-      if (!isPathInDir(fullPath, resolvedSessionDir)) {
-        throw new Error(`路径 ${filePath} 不在允许的工作目录内`);
-      }
-      const currentContent = await fs.readFile(fullPath, 'utf-8');
-      if (!currentContent.includes(searchStr)) {
-        throw new Error(`未找到匹配的原文`);
-      }
-      const newContent = currentContent.replace(searchStr, replaceStr);
-      if (newContent === currentContent) {
-        throw new Error(`替换后内容无变化`);
-      }
-      await fs.writeFile(fullPath, newContent, 'utf-8');
-      return `文件已编辑: ${filePath}`;
-    }
-    case 'delete_file': {
-      const { path: filePath } = input;
-      const fullPath = path.resolve(session.dir, filePath);
-      if (!isPathInDir(fullPath, resolvedSessionDir)) {
-        throw new Error(`路径 ${filePath} 不在允许的工作目录内`);
-      }
-      await fs.unlink(fullPath);
-      return `文件已删除: ${filePath}`;
-    }
-    case 'rename_file': {
-      const { path: oldPath, newPath } = input;
-      const oldFullPath = path.resolve(session.dir, oldPath);
-      const newFullPath = path.resolve(session.dir, newPath);
-      if (!isPathInDir(oldFullPath, resolvedSessionDir) || !isPathInDir(newFullPath, resolvedSessionDir)) {
-        throw new Error(`路径不在允许的工作目录内`);
-      }
-      await fs.mkdir(path.dirname(newFullPath), { recursive: true });
-      await fs.rename(oldFullPath, newFullPath);
-      return `文件已重命名: ${oldPath} → ${newPath}`;
-    }
-    case 'list_files': {
-      const { path: dirPath = '' } = input;
-      const fullDirPath = path.resolve(session.dir, dirPath);
-      if (!isPathInDir(fullDirPath, resolvedSessionDir)) {
-        throw new Error(`路径 ${dirPath} 不在允许的工作目录内`);
-      }
-      const files = await listFilesRecursive(fullDirPath, session.dir);
-      return `目录列表:\n${files.join('\n')}`;
-    }
-    default:
-      throw new Error(`未知工具: ${toolName}`);
-  }
-}
-
-/**
- * Recursively list files in a directory, returning relative paths.
- */
-async function listFilesRecursive(dirPath, basePath) {
-  const entries = await fs.readdir(dirPath, { withFileTypes: true });
-  const results = [];
-  for (const entry of entries) {
-    const fullPath = path.join(dirPath, entry.name);
-    const relPath = path.relative(basePath, fullPath);
-    if (entry.isDirectory()) {
-      results.push(relPath + '/');
-      const sub = await listFilesRecursive(fullPath, basePath);
-      results.push(...sub);
-    } else {
-      const stat = await fs.stat(fullPath);
-      const size = stat.size > 1024 ? `${(stat.size / 1024).toFixed(1)} KB` : `${stat.size} B`;
-      results.push(`${relPath} (${size})`);
-    }
-  }
-  return results.sort();
-}
-
-/**
- * 安全检查：路径是否在允许的工作目录内
- * 使用 path.sep 防止路径前缀绕过（如 /workspace/session_evil 绕过 /workspace/session）
- */
-function isPathInDir(filePath, allowedDir) {
-  const resolvedDir = path.resolve(allowedDir) + path.sep;
-  return filePath === path.resolve(allowedDir) || filePath.startsWith(resolvedDir);
 }
 
 export function applyPreToolUseHook(toolName, args, pluginsConfig = {}) {
@@ -848,48 +611,10 @@ export function createWsHandler(deps) {
           let toolInstructions = getToolInstructions(approvedTools || []);
 
           // 始终注入默认工具指令（Kun 风格：默认启用，无需审批）
-          toolInstructions += '\n' + [
-            'You can execute Python code for calculations and data analysis. When useful, provide executable Python code in a fenced python code block.',
-            '',
-            'You can write files directly to disk using Node.js fs.writeFile. Use this instead of bash echo/redirect when creating or overwriting files. Output in the following format:',
-            '',
-            '```write_file',
-            'path: relative/file/path',
-            'language: file_extension',
-            '',
-            'The file content goes here...',
-            '```',
-            '',
-            'You can edit existing files using search-and-replace. Output in the following format:',
-            '',
-            '```edit_file',
-            'path: relative/file/path',
-            '<<<<<<< SEARCH',
-            'old content to replace',
-            '=======',
-            'new content to replace with',
-            '>>>>>>>',
-            '```',
-            '',
-            'You can delete files. Output in the following format:',
-            '',
-            '```delete_file',
-            'path: relative/file/path',
-            '```',
-            '',
-            'You can rename/move files. Output in the following format:',
-            '',
-            '```rename_file',
-            'path: old/relative/file/path',
-            'newPath: new/relative/file/path',
-            '```',
-            '',
-            'You can list files in a directory. Output in the following format:',
-            '',
-            '```list_files',
-            'path: optional/sub/directory (omit path: to list root)',
-            '```'
-          ].join('\n');
+          // Python 代码解释器指令
+          toolInstructions += '\n' + 'You can execute Python code for calculations and data analysis. When useful, provide executable Python code in a fenced python code block.';
+          // 文件操作工具指令（从 fileTools.js 获取）
+          toolInstructions += '\n\n' + getFileToolInstructions();
 
           if (mcpManager && mcpManager.isConnected()) {
             const mcpTools = await mcpManager.listTools();
@@ -1029,105 +754,17 @@ export function createWsHandler(deps) {
             }
           }
 
-          // ===== Write File Tool：提取 write_file / edit_file 代码块并直接写入 =====
+          // ===== File Tools：提取并执行文件操作工具代码块 =====
           if (assistantBuffer.trim()) {
-              const writeBlocks = extractWriteFileBlocks(assistantBuffer);
-              const editBlocks = extractEditFileBlocks(assistantBuffer);
-
-              const resolvedSessionDir = path.resolve(session.dir);
-              for (const block of writeBlocks) {
-                const fullPath = path.resolve(session.dir, block.path);
-                // 安全检查：必须在工作目录内（使用 path.sep 防止路径前缀绕过）
-                if (!isPathInDir(fullPath, resolvedSessionDir)) {
-                  broadcastToSession(sessionId, { type: 'output', data: `\n[Write File 拒绝] 路径 ${block.path} 不在允许的工作目录内\n` });
-                  continue;
-                }
-                try {
-                  await fs.mkdir(path.dirname(fullPath), { recursive: true });
-                  await fs.writeFile(fullPath, block.content, 'utf-8');
-                  broadcastToSession(sessionId, { type: 'output', data: `\n[文件已写入] ${block.path} (${block.content.length} 字符)\n` });
-                } catch (err) {
-                  broadcastToSession(sessionId, { type: 'output', data: `\n[文件写入失败] ${block.path}: ${err.message}\n` });
-                }
-              }
-
-              for (const block of editBlocks) {
-                const fullPath = path.resolve(session.dir, block.path);
-                if (!isPathInDir(fullPath, resolvedSessionDir)) {
-                  broadcastToSession(sessionId, { type: 'output', data: `\n[Edit File 拒绝] 路径 ${block.path} 不在允许的工作目录内\n` });
-                  continue;
-                }
-                try {
-                  const currentContent = await fs.readFile(fullPath, 'utf-8');
-                  if (!currentContent.includes(block.searchStr)) {
-                    broadcastToSession(sessionId, { type: 'output', data: `\n[编辑失败] ${block.path}: 未找到匹配的原文\n` });
-                    continue;
-                  }
-                  const newContent = currentContent.replace(block.searchStr, block.replaceStr);
-                  if (newContent === currentContent) {
-                    broadcastToSession(sessionId, { type: 'output', data: `\n[编辑失败] ${block.path}: 替换后内容无变化\n` });
-                    continue;
-                  }
-                  await fs.writeFile(fullPath, newContent, 'utf-8');
-                  broadcastToSession(sessionId, { type: 'output', data: `\n[文件已编辑] ${block.path}\n` });
-                } catch (err) {
-                  broadcastToSession(sessionId, { type: 'output', data: `\n[文件编辑失败] ${block.path}: ${err.message}\n` });
-                }
-              }
-
-              // ===== File Management Tools：提取 delete_file / rename_file / list_files 代码块并执行 =====
-              const deleteBlocks = extractDeleteFileBlocks(assistantBuffer);
-              const renameBlocks = extractRenameFileBlocks(assistantBuffer);
-              const listBlocks = extractListFilesBlocks(assistantBuffer);
-
-              for (const block of deleteBlocks) {
-                const fullPath = path.resolve(session.dir, block.path);
-                if (!isPathInDir(fullPath, resolvedSessionDir)) {
-                  broadcastToSession(sessionId, { type: 'output', data: `\n[Delete File 拒绝] 路径 ${block.path} 不在允许的工作目录内\n` });
-                  continue;
-                }
-                try {
-                  await fs.unlink(fullPath);
-                  broadcastToSession(sessionId, { type: 'output', data: `\n[文件已删除] ${block.path}\n` });
-                } catch (err) {
-                  broadcastToSession(sessionId, { type: 'output', data: `\n[文件删除失败] ${block.path}: ${err.message}\n` });
-                }
-              }
-
-              for (const block of renameBlocks) {
-                const oldFullPath = path.resolve(session.dir, block.path);
-                const newFullPath = path.resolve(session.dir, block.newPath);
-                if (!isPathInDir(oldFullPath, resolvedSessionDir) || !isPathInDir(newFullPath, resolvedSessionDir)) {
-                  broadcastToSession(sessionId, { type: 'output', data: `\n[Rename File 拒绝] 路径不在允许的工作目录内\n` });
-                  continue;
-                }
-                try {
-                  await fs.mkdir(path.dirname(newFullPath), { recursive: true });
-                  await fs.rename(oldFullPath, newFullPath);
-                  broadcastToSession(sessionId, { type: 'output', data: `\n[文件已重命名] ${block.path} → ${block.newPath}\n` });
-                } catch (err) {
-                  broadcastToSession(sessionId, { type: 'output', data: `\n[文件重命名失败] ${block.path}: ${err.message}\n` });
-                }
-              }
-
-              for (const block of listBlocks) {
-                const dirPath = path.resolve(session.dir, block.path);
-                if (!isPathInDir(dirPath, resolvedSessionDir)) {
-                  broadcastToSession(sessionId, { type: 'output', data: `\n[List Files 拒绝] 路径 ${block.path} 不在允许的工作目录内\n` });
-                  continue;
-                }
-                try {
-                  const files = await listFilesRecursive(dirPath, session.dir);
-                  let output = `\n[目录列表] ${block.path === '.' ? '/' : block.path}\n`;
-                  for (const f of files) {
-                    output += `  ${f}\n`;
-                  }
-                  broadcastToSession(sessionId, { type: 'output', data: output });
-                } catch (err) {
-                  broadcastToSession(sessionId, { type: 'output', data: `\n[目录列表失败] ${block.path}: ${err.message}\n` });
-                }
+            const fileToolResults = await extractAndExecuteFileTools(assistantBuffer, session);
+            for (const r of fileToolResults) {
+              if (r.ok) {
+                broadcastToSession(sessionId, { type: 'output', data: `\n[${r.tool}] ${r.result}\n` });
+              } else {
+                broadcastToSession(sessionId, { type: 'output', data: `\n[${r.tool} 失败] ${r.error}\n` });
               }
             }
+          }
 
           // === Pipelines: 输出管道 (用户自定义脚本) ===
           if (pipelines.length > 0 && assistantBuffer.trim()) {
