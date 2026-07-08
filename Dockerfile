@@ -48,7 +48,8 @@ RUN set -e; \
          --outfile /tmp/prompt-extractor.js \
          --target bun \
          --format esm \
-         --packages bundle \
+         --external 'path' \
+         --external 'fs' \
          --define 'process.env.USER_TYPE="external"' \
          --define 'MACRO.VERSION="0.0.0"' \
          --define 'MACRO.BUILD_TIME="2000-01-01T00:00:00.000Z"' \

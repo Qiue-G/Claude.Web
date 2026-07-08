@@ -37,6 +37,20 @@ function makeMockDeps(overrides = {}) {
   const sessions = new Map();
   const sessionClients = new Map();
 
+  // Minimal ReadableStream for callModelWithTools mock
+  function makeMockReadableStream() {
+    const encoder = new TextEncoder();
+    let controller;
+    const stream = new ReadableStream({
+      start(c) { controller = c; },
+      pull() {
+        controller.enqueue(encoder.encode('data: {"type":"message_stop"}\n\n'));
+        controller.close();
+      }
+    });
+    return stream;
+  }
+
   return {
     sessions,
     sessionClients,
@@ -50,6 +64,10 @@ function makeMockDeps(overrides = {}) {
       stderr: { on: () => {} },
       on: (ev, cb) => { if (ev === 'close') setTimeout(() => cb(0), 10); },
       kill: () => {}
+    }),
+    callModelWithTools: async () => ({
+      response: makeMockReadableStream(),
+      releaseProcessSlot: () => {}
     }),
     maskSensitive: (s) => s,
     stripAnsi: (s) => s,
