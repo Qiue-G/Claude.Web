@@ -1,5 +1,6 @@
 import { getOrBuildPrefix } from '../../cache/immutablePrefix.js';
 import { compactHistory } from '../../cache/contextCompactor.js';
+import { buildSystemPromptPrefix } from './systemPrompts.js';
 
 const TOOL_SECTION_TITLES = {
   file_analysis: 'File Analysis',
@@ -47,10 +48,13 @@ export function buildPrompt({
 } = {}) {
   const sections = [];
 
-  // ===== 系统指令（ImmutablePrefix 缓存） =====
+  // ===== 系统提示词前缀（身份、行为、规范） =====
+  sections.push(buildSystemPromptPrefix());
+
+  // ===== 工具指令 =====
   if (toolInstructions && toolInstructions.trim()) {
     const prefixText = getOrBuildPrefix(activeToolIds, () =>
-      `[System Instructions]\nYou have the following tools available:\n${toolInstructions.trim()}`
+      `[Tool Instructions]\nYou have the following tools available:\n${toolInstructions.trim()}`
     );
     sections.push(prefixText);
   }
