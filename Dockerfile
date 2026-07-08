@@ -50,6 +50,15 @@ RUN set -e; \
          --format esm \
          --external 'path' \
          --external 'fs' \
+         --external 'os' \
+         --external 'child_process' \
+         --external 'crypto' \
+         --external 'assert' \
+         --external 'buffer' \
+         --external 'events' \
+         --external 'stream' \
+         --external 'util' \
+         --external 'url' \
          --define 'process.env.USER_TYPE="external"' \
          --define 'MACRO.VERSION="0.0.0"' \
          --define 'MACRO.BUILD_TIME="2000-01-01T00:00:00.000Z"' \
@@ -57,7 +66,7 @@ RUN set -e; \
          --define 'MACRO.ISSUES_EXPLAINER="Report issues at github.com/paoloanzn/free-code"' \
          --define 'MACRO.FEEDBACK_CHANNEL="github"' \
          --define 'MACRO.VERSION_CHANGELOG="local build"' \
-         --define 'MACRO.NATIVE_PACKAGE_URL="undefined"' 2>/dev/null \
+         --define 'MACRO.NATIVE_PACKAGE_URL="undefined"' \
       && bun run /tmp/prompt-extractor.js \
       && echo "[INFO] Static prompts extracted successfully"; \
     else \
