@@ -38,6 +38,29 @@ RUN set -e; \
       echo "[WARN] free-code clone failed, continuing without CLI features"; \
     fi
 
+# Compile free-code tools for runtime use (glob, grep, etc.)
+RUN set -e; \
+    if [ -d "/free-code/src/tools" ] && [ -f "/free-code/src/utils/glob.js" ]; then \
+      apt-get install -y --no-install-recommends ripgrep \
+      && printf '%s\n' \
+        'import { glob } from "../utils/glob.js";' \
+        'import { getCwd } from "../utils/cwd.js";' \
+        '' \
+        'export async function globSearch(pattern, dir) {' \
+        '  const start = Date.now();' \
+        '  const cwd = dir || getCwd();' \
+        '  const result = await glob(pattern, cwd, { limit: 100, offset: 0 }, new AbortController().signal, { allow: true, cwd });' \
+        '  return { filenames: result.files, numFiles: result.files.length, truncated: result.truncated, durationMs: Date.now() - start };' \
+        '}' \
+        > /free-code/src/tools/web-bridge.ts \
+      && cd /free-code \
+      && mkdir -p /app/fc-tools \
+      && bun build ./src/tools/web-bridge.ts --outfile /app/fc-tools/tools.js --target bun 2>&1 \
+      && echo "[INFO] free-code tools compiled to /app/fc-tools/tools.js"; \
+    else \
+      echo "[WARN] free-code not fully available, skipping tool compilation"; \
+    fi
+
 # Extract static prompts from free-code for backend prompt loader
 RUN set -e; \
     if [ -d "/free-code/src" ]; then \

@@ -5,6 +5,7 @@ import { analyzeFilesFromPromptContext, stripFileBlocksFromPrompt } from '../too
 import { buildPrompt } from '../runtime/promptBuilder.js';
 import { getToolInstructions, isBuiltinTool, isMcpTool, parseMcpToolId } from '../tools/registry.js';
 import { getFileToolInstructions, extractAndExecuteFileTools, isPathInDir } from '../tools/fileTools.js';
+import { getFreeCodeToolInstructions, extractAndExecuteFreeCodeTools } from '../tools/freeCodeTools.js';
 import { runHooks } from '../runtime/hooksRunner.js';
 import { runFilters } from '../runtime/filterPipeline.js';
 import { buildFilterList } from '../runtime/filters/index.js';
@@ -615,6 +616,8 @@ export function createWsHandler(deps) {
           toolInstructions += '\n' + 'You can execute Python code for calculations and data analysis. When useful, provide executable Python code in a fenced python code block.';
           // 文件操作工具指令（从 fileTools.js 获取）
           toolInstructions += '\n\n' + getFileToolInstructions();
+          // free-code 工具指令（从 freeCodeTools.js 获取）
+          toolInstructions += '\n\n' + getFreeCodeToolInstructions();
 
           if (mcpManager && mcpManager.isConnected()) {
             const mcpTools = await mcpManager.listTools();
@@ -758,6 +761,16 @@ export function createWsHandler(deps) {
           if (assistantBuffer.trim()) {
             const fileToolResults = await extractAndExecuteFileTools(assistantBuffer, session);
             for (const r of fileToolResults) {
+              if (r.ok) {
+                broadcastToSession(sessionId, { type: 'output', data: `\n[${r.tool}] ${r.result}\n` });
+              } else {
+                broadcastToSession(sessionId, { type: 'output', data: `\n[${r.tool} 失败] ${r.error}\n` });
+              }
+            }
+
+            // ===== free-code Tools：提取并执行 free-code 工具代码块 =====
+            const freeCodeResults = await extractAndExecuteFreeCodeTools(assistantBuffer, session);
+            for (const r of freeCodeResults) {
               if (r.ok) {
                 broadcastToSession(sessionId, { type: 'output', data: `\n[${r.tool}] ${r.result}\n` });
               } else {
