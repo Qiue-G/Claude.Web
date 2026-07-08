@@ -9,7 +9,7 @@ test('buildPrompt keeps stable sections via toolResults', () => {
     userMessage: 'Hello world'
   });
 
-  assert.match(prompt, /^\[System Instructions\]/);
+  assert.match(prompt, /^You are an interactive agent/);
   assert.match(prompt, /\[Web Search Results\]\nResult A/);
   assert.ok(prompt.endsWith('[User Message]\nHello world'));
 });
@@ -17,7 +17,7 @@ test('buildPrompt keeps stable sections via toolResults', () => {
 test('buildPrompt omits empty sections', () => {
   const { prompt } = buildPrompt({ userMessage: 'Only user' });
 
-  assert.match(prompt, /^\[User Message\]/);
+  assert.match(prompt, /^You are an interactive agent/);
   assert.ok(prompt.endsWith('[User Message]\nOnly user'));
 });
 
@@ -32,7 +32,6 @@ test('buildPrompt includes toolResults in stable order before user message', () 
     userMessage: 'Question?'
   });
 
-  assert.ok(prompt.indexOf('[System Instructions]') < prompt.indexOf('[Web Search Results]'));
   assert.ok(prompt.indexOf('[Web Search Results]') < prompt.indexOf('[File Analysis]'));
   assert.ok(prompt.indexOf('[File Analysis]') < prompt.indexOf('[Code Interpreter]'));
   assert.ok(prompt.indexOf('[Code Interpreter]') < prompt.indexOf('[User Message]'));
