@@ -44,30 +44,7 @@ RUN set -e; \
       printf '\n// BUILD-TIME EXPORTS for prompt extraction\nexport { getSimpleIntroSection,getSimpleSystemSection,getSimpleDoingTasksSection,getSimpleToneAndStyleSection,getOutputEfficiencySection };\n' >> /free-code/src/constants/prompts.ts \
       && cp /app/scripts/dump-static-prompts.ts /free-code/scripts/dump-static-prompts.ts \
       && cd /free-code \
-      && bun build /free-code/scripts/dump-static-prompts.ts \
-         --outfile /tmp/prompt-extractor.js \
-         --target bun \
-         --format esm \
-         --external 'path' \
-         --external 'fs' \
-         --external 'os' \
-         --external 'child_process' \
-         --external 'crypto' \
-         --external 'assert' \
-         --external 'buffer' \
-         --external 'events' \
-         --external 'stream' \
-         --external 'util' \
-         --external 'url' \
-         --define 'process.env.USER_TYPE="external"' \
-         --define 'MACRO.VERSION="0.0.0"' \
-         --define 'MACRO.BUILD_TIME="2000-01-01T00:00:00.000Z"' \
-         --define 'MACRO.PACKAGE_URL="free-code"' \
-         --define 'MACRO.ISSUES_EXPLAINER="Report issues at github.com/paoloanzn/free-code"' \
-         --define 'MACRO.FEEDBACK_CHANNEL="github"' \
-         --define 'MACRO.VERSION_CHANGELOG="local build"' \
-         --define 'MACRO.NATIVE_PACKAGE_URL="undefined"' \
-      && bun run /tmp/prompt-extractor.js \
+      && bun run /free-code/scripts/dump-static-prompts.ts \
       && echo "[INFO] Static prompts extracted successfully"; \
     else \
       echo "[WARN] free-code not available, skipping prompt extraction"; \
