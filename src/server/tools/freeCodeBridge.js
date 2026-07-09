@@ -132,4 +132,83 @@ export async function grepSearch(pattern, dir, cwd, globFilter, outputMode) {
   return results;
 }
 
-export default { loadCompiledTools, globSearch, grepSearch };
+export default { loadCompiledTools, globSearch, grepSearch, bridgeWriteFile, bridgeReadFile, bridgeEditFile };
+
+// ===== 文件工具桥接 =====
+
+/**
+ * 写入文件 - 优先使用 free-code 编译版本，回退到原生实现
+ */
+export async function bridgeWriteFile(filePath, content, cwd) {
+  const fc = await loadCompiledTools();
+
+  if (fc && fc.writeFileTool) {
+    try {
+      return await fc.writeFileTool(filePath, content, cwd);
+    } catch (err) {
+      console.warn(`[freeCodeBridge] Compiled writeFileTool failed: ${err.message}, falling back`);
+    }
+  }
+
+  // 原生回退
+  const fs = await import('fs/promises');
+  const path = await import('path');
+  const fullPath = path.resolve(cwd, filePath);
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, content, 'utf-8');
+  return `文件已写入: ${filePath} (${content.length} 字符)`;
+}
+
+/**
+ * 读取文件 - 优先使用 free-code 编译版本，回退到原生实现
+ */
+export async function bridgeReadFile(filePath, cwd) {
+  const fc = await loadCompiledTools();
+
+  if (fc && fc.readFileTool) {
+    try {
+      return await fc.readFileTool(filePath, cwd);
+    } catch (err) {
+      console.warn(`[freeCodeBridge] Compiled readFileTool failed: ${err.message}, falling back`);
+    }
+  }
+
+  // 原生回退
+  const fs = await import('fs/promises');
+  const path = await import('path');
+  const fullPath = path.resolve(cwd, filePath);
+  const content = await fs.readFile(fullPath, 'utf-8');
+  const stat = await fs.stat(fullPath);
+  const size = stat.size > 1024 ? `${(stat.size / 1024).toFixed(1)} KB` : `${stat.size} B`;
+  return `文件内容 (${filePath}, ${size}):\n\`\`\`\n${content}\n\`\`\``;
+}
+
+/**
+ * 编辑文件（搜索替换）- 优先使用 free-code 编译版本，回退到原生实现
+ */
+export async function bridgeEditFile(filePath, oldString, newString, cwd) {
+  const fc = await loadCompiledTools();
+
+  if (fc && fc.editFileTool) {
+    try {
+      return await fc.editFileTool(filePath, oldString, newString, cwd);
+    } catch (err) {
+      console.warn(`[freeCodeBridge] Compiled editFileTool failed: ${err.message}, falling back`);
+    }
+  }
+
+  // 原生回退
+  const fs = await import('fs/promises');
+  const path = await import('path');
+  const fullPath = path.resolve(cwd, filePath);
+  let content = await fs.readFile(fullPath, 'utf-8');
+  if (!content.includes(oldString)) {
+    throw new Error(`未找到匹配的原文`);
+  }
+  const newContent = content.replace(oldString, newString);
+  if (newContent === content) {
+    throw new Error(`替换后内容无变化`);
+  }
+  await fs.writeFile(fullPath, newContent, 'utf-8');
+  return `文件已编辑: ${filePath}`;
+}

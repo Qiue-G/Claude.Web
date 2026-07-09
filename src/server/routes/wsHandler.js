@@ -6,6 +6,7 @@ import { buildPrompt } from '../runtime/promptBuilder.js';
 import { getToolInstructions, isBuiltinTool, isMcpTool, parseMcpToolId } from '../tools/registry.js';
 import { getFileToolInstructions, extractAndExecuteFileTools, isPathInDir, executeFileTool } from '../tools/fileTools.js';
 import { getFreeCodeToolInstructions, extractAndExecuteFreeCodeTools, executeGlob, executeGrep, executeTodoWrite } from '../tools/freeCodeTools.js';
+import { bridgeWriteFile, bridgeReadFile, bridgeEditFile } from '../tools/freeCodeBridge.js';
 import { runHooks } from '../runtime/hooksRunner.js';
 import { runFilters } from '../runtime/filterPipeline.js';
 import { buildFilterList } from '../runtime/filters/index.js';
@@ -280,13 +281,18 @@ async function executeToolUseBlock(tb, session, mcpManager) {
   const { name, input } = tb;
 
   switch (name) {
-    // ===== File Tools（代码围栏工具） =====
+    // ===== File Tools（桥接：优先 free-code 编译版，回退原生） =====
     case 'write_file':
+      return await bridgeWriteFile(input.file_path || input.path, input.content, session.dir);
+    case 'read_file':
+    case 'read':
+      return await bridgeReadFile(input.file_path || input.path, session.dir);
     case 'edit_file':
+    case 'edit':
+      return await bridgeEditFile(input.file_path || input.path, input.old_string || input.searchStr, input.new_string || input.replaceStr, session.dir);
     case 'delete_file':
     case 'rename_file':
     case 'list_files':
-    case 'read_file':
       return await executeFileTool(name, input, session);
 
     // ===== Free-code 工具 =====

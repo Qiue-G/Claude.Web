@@ -38,19 +38,50 @@ RUN set -e; \
       echo "[WARN] free-code clone failed, continuing without CLI features"; \
     fi
 
-# Compile free-code tools for runtime use (glob, grep, etc.)
+# Compile free-code tools for runtime use (glob, grep, file operations)
 RUN set -e; \
     if [ -d "/free-code/src/tools" ] && [ -f "/free-code/src/utils/glob.js" ]; then \
       apt-get install -y --no-install-recommends ripgrep \
       && printf '%s\n' \
         'import { glob } from "../utils/glob.js";' \
         'import { getCwd } from "../utils/cwd.js";' \
+        'import { writeFile as fsWriteFile, readFile as fsReadFile, mkdir, stat } from "fs/promises";' \
+        'import { resolve, dirname } from "path";' \
         '' \
         'export async function globSearch(pattern, dir) {' \
         '  const start = Date.now();' \
         '  const cwd = dir || getCwd();' \
         '  const result = await glob(pattern, cwd, { limit: 100, offset: 0 }, new AbortController().signal, { allow: true, cwd });' \
         '  return { filenames: result.files, numFiles: result.files.length, truncated: result.truncated, durationMs: Date.now() - start };' \
+        '}' \
+        '' \
+        'export async function writeFileTool(filePath, content, cwd) {' \
+        '  const fullPath = resolve(cwd || getCwd(), filePath);' \
+        '  await mkdir(dirname(fullPath), { recursive: true });' \
+        '  await fsWriteFile(fullPath, content, "utf-8");' \
+        '  return `文件已写入: ${filePath} (${content.length} 字符)`;' \
+        '}' \
+        '' \
+        'export async function readFileTool(filePath, cwd) {' \
+        '  const fullPath = resolve(cwd || getCwd(), filePath);' \
+        '  const content = await fsReadFile(fullPath, "utf-8");' \
+        '  const fileStat = await stat(fullPath);' \
+        '  const size = fileStat.size > 1024 ? `${(fileStat.size / 1024).toFixed(1)} KB` : `${fileStat.size} B`;' \
+        '  return `文件内容 (${filePath}, ${size}):\n\`\`\`\n${content}\n\`\`\``;' \
+        '}' \
+        '' \
+        'export async function editFileTool(filePath, oldString, newString, cwd) {' \
+        '  const fullPath = resolve(cwd || getCwd(), filePath);' \
+        '  let content = await fsReadFile(fullPath, "utf-8");' \
+        '  if (!content.includes(oldString)) {' \
+        '    throw new Error(`未找到匹配的原文`);' \
+        '  }' \
+        '  const newContent = content.replace(oldString, newString);' \
+        '  if (newContent === content) {' \
+        '    throw new Error(`替换后内容无变化`);' \
+        '  }' \
+        '  await fsWriteFile(fullPath, newContent, "utf-8");' \
+        '  return `文件已编辑: ${filePath}`;' \
         '}' \
         > /free-code/src/tools/web-bridge.ts \
       && cd /free-code \
