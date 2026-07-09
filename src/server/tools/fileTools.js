@@ -237,17 +237,21 @@ export async function executeFileTool(toolName, input, session) {
   switch (toolName) {
     case 'write_file': {
       const { path: filePath, content } = input;
+      if (!filePath) throw new Error('缺少路径参数');
+      if (content === undefined || content === null) throw new Error('缺少内容参数');
       const fullPath = path.resolve(session.dir, filePath);
       if (!isPathInDir(fullPath, resolvedSessionDir)) {
         throw new Error(`路径 ${filePath} 不在允许的工作目录内`);
       }
-      await fs.mkdir(path.dirname(fullPath), { recursive: true });
+      const dir = path.dirname(fullPath);
+      await fs.mkdir(dir, { recursive: true });
       await fs.writeFile(fullPath, content, 'utf-8');
       return `文件已写入: ${filePath} (${content.length} 字符)`;
     }
 
     case 'edit_file': {
       const { path: filePath, searchStr, replaceStr } = input;
+      if (!filePath) throw new Error('缺少路径参数');
       const fullPath = path.resolve(session.dir, filePath);
       if (!isPathInDir(fullPath, resolvedSessionDir)) {
         throw new Error(`路径 ${filePath} 不在允许的工作目录内`);
@@ -266,6 +270,7 @@ export async function executeFileTool(toolName, input, session) {
 
     case 'delete_file': {
       const { path: filePath } = input;
+      if (!filePath) throw new Error('缺少路径参数');
       const fullPath = path.resolve(session.dir, filePath);
       if (!isPathInDir(fullPath, resolvedSessionDir)) {
         throw new Error(`路径 ${filePath} 不在允许的工作目录内`);
@@ -276,6 +281,8 @@ export async function executeFileTool(toolName, input, session) {
 
     case 'rename_file': {
       const { path: oldPath, newPath } = input;
+      if (!oldPath) throw new Error('缺少原路径参数');
+      if (!newPath) throw new Error('缺少新路径参数');
       const oldFullPath = path.resolve(session.dir, oldPath);
       const newFullPath = path.resolve(session.dir, newPath);
       if (!isPathInDir(oldFullPath, resolvedSessionDir) || !isPathInDir(newFullPath, resolvedSessionDir)) {
@@ -298,6 +305,7 @@ export async function executeFileTool(toolName, input, session) {
 
     case 'read_file': {
       const { path: filePath } = input;
+      if (!filePath) throw new Error('缺少路径参数');
       const fullPath = path.resolve(session.dir, filePath);
       if (!isPathInDir(fullPath, resolvedSessionDir)) {
         throw new Error(`路径 ${filePath} 不在允许的工作目录内`);
