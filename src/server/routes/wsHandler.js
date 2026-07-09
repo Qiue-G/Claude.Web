@@ -762,10 +762,11 @@ async function executeToolUseBlock(tb, session, mcpManager) {
             enableTools: true,
           });
 
-          prompt = promptResult.prompt;
+          const systemPrompt = promptResult.systemPrompt;
+          const userMsg = promptResult.userMessage;
           const toolsForModel = promptResult.tools;
 
-          console.log('[INPUT] prompt length: ' + (prompt ? prompt.length : 0) + ', tools: [' + (toolsForModel || []).map(t => t.name).join(',') + ']');
+          console.log('[INPUT] systemPrompt length: ' + (systemPrompt ? systemPrompt.length : 0) + ', userMsg: "' + (userMsg || '').substring(0, 80) + '", tools: [' + (toolsForModel || []).map(t => t.name).join(',') + ']');
 
           wsProcCount.set(sessionId, (wsProcCount.get(sessionId) || 0) + 1);
           isInputMessage = true;
@@ -778,11 +779,13 @@ async function executeToolUseBlock(tb, session, mcpManager) {
 
           // ===== Tool Use 循环 =====
           // 支持多轮：模型请求 tool_use → 执行 → 发送结果 → 模型继续
+          // 关键修复：第一轮把用户消息放在 messages 数组里（role: 'user'），而不是嵌入 system prompt
           const MAX_TOOL_LOOPS = 10;
           for (let loopIdx = 0; loopIdx < MAX_TOOL_LOOPS; loopIdx++) {
-            const { response, releaseProcessSlot } = loopIdx === 0
-              ? await callModelWithTools(session, prompt, toolsForModel)
-              : await callModelWithMessages(session, prompt, toolUseMessages, toolsForModel);
+            const messagesForModel = loopIdx === 0
+              ? [{ role: 'user', content: [{ type: 'text', text: userMsg }] }]
+              : toolUseMessages;
+            const { response, releaseProcessSlot } = await callModelWithMessages(session, systemPrompt, messagesForModel, toolsForModel);
 
             const requestId = ++processSeqId;
             sessionProcesses.set(sessionId, { _procSeq: requestId });

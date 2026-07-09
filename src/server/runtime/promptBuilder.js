@@ -89,10 +89,7 @@ export function buildPrompt({
     }
   }
 
-  // ===== 用户消息 =====
-  sections.push(`[User Message]\n${String(userMessage || '').trim()}`);
-
-  const prompt = sections.join('\n\n');
+  const systemPrompt = sections.join('\n\n');
   
   if (enableTools) {
     // 从 activeToolIds 获取 Anthropic 格式工具 schema
@@ -100,10 +97,10 @@ export function buildPrompt({
     // 内置工具 schema（需审批的）
     const approvalSchemas = getToolSchemas(activeToolIds, { core: false, approval: true });
     const allSchemas = [...coreSchemas, ...approvalSchemas];
-    return { prompt, tools: allSchemas };
+    return { systemPrompt, tools: allSchemas, userMessage: String(userMessage || '').trim() };
   }
   
-  return { prompt, tools: [] };
+  return { systemPrompt, tools: [], userMessage: String(userMessage || '').trim() };
 }
 
 /**
