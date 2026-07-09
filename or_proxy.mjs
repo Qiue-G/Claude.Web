@@ -75,9 +75,12 @@ function classifyError(status, originalMessage) {
 
 // 流式翻译中追踪 tool_calls 的模块级状态
 const toolCallBuffers = new Map();
+// 暂存尚未收到参数的 tool_call（DeepSeek 可能先发 id 再发 arguments）
+const pendingToolCalls = new Map();
 
 function resetToolBuffers() {
   toolCallBuffers.clear();
+  pendingToolCalls.clear();
 }
 
 // --- Request: Anthropic tools → OpenAI functions ---
@@ -233,8 +236,19 @@ function translateStreamChunk(orChunk) {
       const aiIdx = 1 + idx;
 
       if (tc.id) {
-        // 首个 chunk：发送 content_block_start
-        const initialArgs = tc.function?.arguments || '';
+        const initialArgs = (tc.function?.arguments || '').trim();
+
+        // 空参数：暂存 pending，等待后续 chunk 带参数到达再发送 content_block_start
+        if (!initialArgs || initialArgs === '{}' || initialArgs === '[]') {
+          pendingToolCalls.set(idx, {
+            id: tc.id,
+            name: tc.function?.name || '',
+            arguments: initialArgs
+          });
+          continue;
+        }
+
+        // 有真实参数：正常发送 content_block_start
         toolCallBuffers.set(idx, {
           id: tc.id,
           name: tc.function?.name || '',
@@ -259,7 +273,32 @@ function translateStreamChunk(orChunk) {
           });
         }
       } else {
-        // 后续 chunk：累积 arguments 并发送 input_json_delta
+        // 后续 chunk：先检查 pending 中的 tool_call（参数刚刚到达）
+        const pending = pendingToolCalls.get(idx);
+        if (pending && tc.function?.arguments) {
+          pending.arguments += tc.function.arguments;
+          toolCallBuffers.set(idx, pending);
+          pendingToolCalls.delete(idx);
+          // 发送延迟的 content_block_start，然后立即发送 arguments delta
+          results.push({
+            type: 'content_block_start',
+            index: aiIdx,
+            content_block: {
+              type: 'tool_use',
+              id: pending.id,
+              name: pending.name,
+              input: {}
+            }
+          });
+          results.push({
+            type: 'content_block_delta',
+            index: aiIdx,
+            delta: { type: 'input_json_delta', partial_json: tc.function.arguments }
+          });
+          continue;
+        }
+
+        // 正常累积 arguments 并发送 input_json_delta
         const buf = toolCallBuffers.get(idx);
         if (buf && tc.function?.arguments) {
           buf.arguments += tc.function.arguments;
@@ -444,6 +483,8 @@ const server = createServer(async (req, res) => {
 
             const dataStr = trimmed.slice(6);
             if (dataStr === '[DONE]') {
+              // 丢弃 pending 中从未收到参数的 tool_call
+              pendingToolCalls.clear();
               // 发送 content_block_stop 给所有已追踪的 tool call
               for (const [idx] of toolCallBuffers) {
                 totalToolBlocks++;
