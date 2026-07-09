@@ -880,9 +880,10 @@ async function executeToolUseBlock(tb, session, mcpManager) {
               toolUseMessages.push({ role: 'assistant', content: assistantContent });
             }
 
-            // 处理本轮 tool_use 请求
-            if (roundToolBlocks.length > 0) {
-              for (const tb of roundToolBlocks) {
+            // 处理本轮 tool_use 请求（仅处理有参数的）
+            const validToolBlocks = roundToolBlocks.filter(tb => tb.input && typeof tb.input === 'object' && Object.keys(tb.input).length > 0);
+            if (validToolBlocks.length > 0) {
+              for (const tb of validToolBlocks) {
                 broadcastToSession(sessionId, { type: 'output', data: `\n[使用工具: ${tb.name}]\n` });
 
                 let toolResult;
