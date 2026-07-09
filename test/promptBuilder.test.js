@@ -3,26 +3,28 @@ import assert from 'node:assert/strict';
 import { buildPrompt } from '../src/server/runtime/promptBuilder.js';
 
 test('buildPrompt keeps stable sections via toolResults', () => {
-  const { prompt } = buildPrompt({
+  const { systemPrompt, userMessage, tools } = buildPrompt({
     toolInstructions: 'Tool A',
     toolResults: [{ tool: 'web_search', ok: true, content: 'Result A' }],
     userMessage: 'Hello world'
   });
 
-  assert.match(prompt, /^You are an interactive agent/);
-  assert.match(prompt, /\[Web Search Results\]\nResult A/);
-  assert.ok(prompt.endsWith('[User Message]\nHello world'));
+  assert.match(systemPrompt, /^You are an interactive agent/);
+  assert.match(systemPrompt, /\[Web Search Results\]\nResult A/);
+  assert.equal(userMessage, 'Hello world');
+  assert.ok(Array.isArray(tools));
 });
 
 test('buildPrompt omits empty sections', () => {
-  const { prompt } = buildPrompt({ userMessage: 'Only user' });
+  const { systemPrompt, userMessage, tools } = buildPrompt({ userMessage: 'Only user' });
 
-  assert.match(prompt, /^You are an interactive agent/);
-  assert.ok(prompt.endsWith('[User Message]\nOnly user'));
+  assert.match(systemPrompt, /^You are an interactive agent/);
+  assert.equal(userMessage, 'Only user');
+  assert.ok(Array.isArray(tools));
 });
 
-test('buildPrompt includes toolResults in stable order before user message', () => {
-  const { prompt } = buildPrompt({
+test('buildPrompt includes toolResults in stable order before tools section', () => {
+  const { systemPrompt } = buildPrompt({
     toolInstructions: 'Tool instruction',
     toolResults: [
       { tool: 'web_search', ok: true, content: 'Search result' },
@@ -32,25 +34,24 @@ test('buildPrompt includes toolResults in stable order before user message', () 
     userMessage: 'Question?'
   });
 
-  assert.ok(prompt.indexOf('[Web Search Results]') < prompt.indexOf('[File Analysis]'));
-  assert.ok(prompt.indexOf('[File Analysis]') < prompt.indexOf('[Code Interpreter]'));
-  assert.ok(prompt.indexOf('[Code Interpreter]') < prompt.indexOf('[User Message]'));
+  assert.ok(systemPrompt.indexOf('[Web Search Results]') < systemPrompt.indexOf('[File Analysis]'));
+  assert.ok(systemPrompt.indexOf('[File Analysis]') < systemPrompt.indexOf('[Code Interpreter]'));
 });
 
 test('buildPrompt skips empty toolResults', () => {
-  const { prompt } = buildPrompt({
+  const { systemPrompt, userMessage } = buildPrompt({
     toolResults: [
       { tool: 'file_analysis', ok: true, content: '' }
     ],
     userMessage: 'Hello'
   });
 
-  assert.doesNotMatch(prompt, /\[File Analysis\]/);
-  assert.match(prompt, /\[User Message\]\nHello/);
+  assert.doesNotMatch(systemPrompt, /\[File Analysis\]/);
+  assert.equal(userMessage, 'Hello');
 });
 
-test('buildPrompt includes conversation history before user message', () => {
-  const { prompt } = buildPrompt({
+test('buildPrompt includes conversation history before tools section', () => {
+  const { systemPrompt, userMessage } = buildPrompt({
     userMessage: 'Third message',
     history: [
       { role: 'user', content: 'First message' },
@@ -59,14 +60,15 @@ test('buildPrompt includes conversation history before user message', () => {
     ]
   });
 
-  assert.ok(prompt.indexOf('[Conversation History]') < prompt.indexOf('[User Message]'));
-  assert.match(prompt, /user: First message/);
-  assert.match(prompt, /assistant: First response/);
-  assert.match(prompt, /user: Second message/);
+  assert.ok(systemPrompt.indexOf('[Conversation History]') > -1);
+  assert.match(systemPrompt, /user: First message/);
+  assert.match(systemPrompt, /assistant: First response/);
+  assert.match(systemPrompt, /user: Second message/);
+  assert.equal(userMessage, 'Third message');
 });
 
 test('buildPrompt handles empty history gracefully', () => {
-  const { prompt } = buildPrompt({ userMessage: 'Hello', history: [] });
-  assert.doesNotMatch(prompt, /\[Conversation History\]/);
-  assert.match(prompt, /\[User Message\]\nHello/);
+  const { systemPrompt, userMessage } = buildPrompt({ userMessage: 'Hello', history: [] });
+  assert.doesNotMatch(systemPrompt, /\[Conversation History\]/);
+  assert.equal(userMessage, 'Hello');
 });
