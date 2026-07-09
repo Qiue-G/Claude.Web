@@ -792,10 +792,39 @@ async function executeToolUseBlock(tb, session, mcpManager) {
             let buf = '';
             let roundText = '';
             let roundToolBlocks = [];
+            let streamTimeout = null;
+            const STREAM_IDLE_TIMEOUT = 120000; // 2分钟无数据则超时
+
+            function resetStreamTimeout() {
+              if (streamTimeout) clearTimeout(streamTimeout);
+              streamTimeout = setTimeout(() => {
+                console.error(`[wsHandler] Stream idle timeout for session ${sessionId} after ${STREAM_IDLE_TIMEOUT}ms`);
+                streamTimeout = null;
+              }, STREAM_IDLE_TIMEOUT);
+              // 让 timeout 不阻止进程退出
+              if (streamTimeout && streamTimeout.unref) streamTimeout.unref();
+            }
+            resetStreamTimeout();
 
             while (true) {
-              const { done, value } = await reader.read();
+              const readPromise = reader.read();
+              const raceResult = await Promise.race([
+                readPromise,
+                new Promise(resolve => {
+                  const check = () => {
+                    if (streamTimeout === null) resolve({ timeout: true });
+                    else setTimeout(check, 100);
+                  };
+                  setTimeout(check, 100);
+                })
+              ]);
+              if (raceResult?.timeout) {
+                console.error(`[wsHandler] Breaking stream due to idle timeout for session ${sessionId}`);
+                break;
+              }
+              const { done, value } = await readPromise;
               if (done) break;
+              resetStreamTimeout();
 
               buf += decoder.decode(value, { stream: true });
               const lines = buf.split('\n');
@@ -848,6 +877,9 @@ async function executeToolUseBlock(tb, session, mcpManager) {
                 }
               }
             }
+
+            // 清理 stream 超时
+            if (streamTimeout) { clearTimeout(streamTimeout); streamTimeout = null; }
 
             releaseProcessSlot();
             sessionProcesses.delete(sessionId);
