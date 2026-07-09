@@ -40,7 +40,7 @@ function extractGlobBlocks(text) {
   return blocks;
 }
 
-async function executeGlob(input, session) {
+export async function executeGlob(input, session) {
   const { pattern, path: searchPath = '.' } = input;
   const resolvedSessionDir = path.resolve(session.dir);
   const fullPath = path.resolve(session.dir, searchPath);
@@ -116,7 +116,7 @@ function extractGrepBlocks(text) {
   return blocks;
 }
 
-async function executeGrep(input, session) {
+export async function executeGrep(input, session) {
   const { pattern, path: searchPath = '.', glob: globFilter, output = 'files_with_matches' } = input;
   const resolvedSessionDir = path.resolve(session.dir);
   const fullPath = path.resolve(session.dir, searchPath);
@@ -241,7 +241,7 @@ function extractTodoWriteBlocks(text) {
 // 任务列表存储（简化实现，实际应该持久化）
 const sessionTodoLists = new Map();
 
-async function executeTodoWrite(input, session) {
+export async function executeTodoWrite(input, session) {
   const { action, todos, updates } = input;
 
   if (action === 'create') {

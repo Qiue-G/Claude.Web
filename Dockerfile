@@ -74,6 +74,18 @@ RUN set -e; \
       echo "[WARN] free-code not available, skipping prompt extraction"; \
     fi
 
+# Extract tool schemas from free-code for backend tool loader
+RUN set -e; \
+    if [ -d "/free-code/src/tools" ]; then \
+      cp /app/scripts/dump-tool-schemas.ts /free-code/scripts/dump-tool-schemas.ts \
+      && cd /free-code \
+      && printf '\nglobalThis.MACRO = { VERSION: "0.0.0", BUILD_TIME: "2000-01-01T00:00:00.000Z", PACKAGE_URL: "free-code", ISSUES_EXPLAINER: "Report issues at github.com/paoloanzn/free-code", FEEDBACK_CHANNEL: "github", VERSION_CHANGELOG: "local build", NATIVE_PACKAGE_URL: undefined };\n' | cat - /free-code/src/constants/prompts.ts > /tmp/tool-prompt-patched.ts && mv /tmp/tool-prompt-patched.ts /free-code/src/constants/prompts.ts \
+      && bun run /free-code/scripts/dump-tool-schemas.ts \
+      && echo "[INFO] Tool schemas extracted successfully"; \
+    else \
+      echo "[WARN] free-code not available, skipping tool schema extraction"; \
+    fi
+
 # Copy optional files into /free-code (only if directory has content)
 COPY or_proxy.mjs /free-code/or_proxy.mjs
 COPY agent-config.json /free-code/agent-config.json

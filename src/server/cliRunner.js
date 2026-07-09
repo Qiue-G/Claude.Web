@@ -214,6 +214,18 @@ async function spawnCli(session, prompt, agentConfig, sessionClients, sessionPro
 }
 
 async function callModelWithTools(session, prompt, tools, agentConfig, sessionClients, sessionProxies) {
+  const { response, releaseProcessSlot } = await callModelWithMessages(
+    session, prompt, [{ role: 'user', content: [{ type: 'text', text: '' }] }], tools,
+    agentConfig, sessionClients, sessionProxies
+  );
+  return { response, releaseProcessSlot };
+}
+
+/**
+ * 支持多轮消息的模型调用（用于 tool_use 循环）
+ * 发送完整消息历史，包含 tool_use / tool_result 内容块
+ */
+async function callModelWithMessages(session, systemPrompt, messages, tools, agentConfig, sessionClients, sessionProxies) {
   if (globalProcessCount >= GLOBAL_PROCESS_LIMIT) {
     throw new Error('Server busy. Global process limit (' + GLOBAL_PROCESS_LIMIT + ') reached. Try again later.');
   }
@@ -244,8 +256,8 @@ async function callModelWithTools(session, prompt, tools, agentConfig, sessionCl
       max_tokens: 4096,
       temperature: 0.7,
       stream: true,
-      system: prompt,
-      messages: [{ role: 'user', content: [{ type: 'text', text: '' }] }]
+      system: systemPrompt,
+      messages: messages
     };
 
     if (tools && tools.length > 0) {
@@ -284,6 +296,7 @@ export {
   startProxy,
   spawnCli,
   callModelWithTools,
+  callModelWithMessages,
   resolveOpenRouterModel,
   getFallbackModel,
   modelStats,

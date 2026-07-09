@@ -4,8 +4,8 @@ import { searchWeb } from '../tools/webSearch.js';
 import { analyzeFilesFromPromptContext, stripFileBlocksFromPrompt } from '../tools/fileAnalysis.js';
 import { buildPrompt } from '../runtime/promptBuilder.js';
 import { getToolInstructions, isBuiltinTool, isMcpTool, parseMcpToolId } from '../tools/registry.js';
-import { getFileToolInstructions, extractAndExecuteFileTools, isPathInDir } from '../tools/fileTools.js';
-import { getFreeCodeToolInstructions, extractAndExecuteFreeCodeTools } from '../tools/freeCodeTools.js';
+import { getFileToolInstructions, extractAndExecuteFileTools, isPathInDir, executeFileTool } from '../tools/fileTools.js';
+import { getFreeCodeToolInstructions, extractAndExecuteFreeCodeTools, executeGlob, executeGrep, executeTodoWrite } from '../tools/freeCodeTools.js';
 import { runHooks } from '../runtime/hooksRunner.js';
 import { runFilters } from '../runtime/filterPipeline.js';
 import { buildFilterList } from '../runtime/filters/index.js';
@@ -272,10 +272,62 @@ export function createWsHandler(deps) {
     return results;
   }
 
+/**
+ * 执行 tool_use 块（Function Calling 模式）
+ * 将模型结构化工具调用分派到对应的执行器
+ */
+async function executeToolUseBlock(tb, session, mcpManager) {
+  const { name, input } = tb;
+
+  switch (name) {
+    // ===== File Tools（代码围栏工具） =====
+    case 'write_file':
+    case 'edit_file':
+    case 'delete_file':
+    case 'rename_file':
+    case 'list_files':
+    case 'read_file':
+      return await executeFileTool(name, input, session);
+
+    // ===== Free-code 工具 =====
+    case 'glob':
+      return await executeGlob(input, session);
+    case 'grep':
+      return await executeGrep(input, session);
+    case 'todo_write':
+      return await executeTodoWrite(input, session);
+
+    // ===== 内置工具 =====
+    case 'code_interpreter': {
+      const result = await executePython(input.code || '');
+      let output = '';
+      if (result.stdout) output += `输出:\n${result.stdout}`;
+      if (result.stderr) output += `错误:\n${result.stderr}`;
+      if (result.exitCode !== 0) output += `\n退出码: ${result.exitCode}`;
+      return output || '空输出';
+    }
+    case 'web_search': {
+      const results = await searchWeb(input.query);
+      return JSON.stringify(results, null, 2);
+    }
+
+    // ===== MCP 工具 =====
+    default:
+      if (name.startsWith('mcp_')) {
+        const parsed = parseMcpToolId(name);
+        if (parsed && mcpManager) {
+          return JSON.stringify(await mcpManager.callTool(parsed.serverName, parsed.toolName, input));
+        }
+        return 'MCP 工具不可用';
+      }
+      throw new Error(`未知工具: ${name}`);
+  }
+}
+
   return function handleConnection(ws, req) {
     const {
       getSession, sessions, sessionProcesses, sessionProxies, sessionClients, wsProcCount,
-      broadcastToSession, spawnCli, callModelWithTools, maskSensitive, stripAnsi,
+      broadcastToSession, spawnCli, callModelWithTools, callModelWithMessages, maskSensitive, stripAnsi,
       checkRateLimit, ALLOWED_ORIGINS, RATE_WINDOW, RATE_MAX_INPUT,
       messageStore, mcpManager, rag, agentConfig, db
     } = deps;
@@ -689,76 +741,158 @@ export function createWsHandler(deps) {
           isInputMessage = true;
           const preExecSnapshot = await takeFileSnapshot(session.dir);
 
-          const { response, releaseProcessSlot } = await callModelWithTools(session, prompt, toolsForModel);
-          const requestId = ++processSeqId;
-          sessionProcesses.set(sessionId, { _procSeq: requestId });
-
-          let codeInterpreterBuffer = '';
           let assistantBuffer = '';
+          let finalStopReason = null;
+          let toolUseBlocks = [];
+          let toolUseMessages = []; // 累积的多轮消息历史
 
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
-          let buffer = '';
+          // ===== Tool Use 循环 =====
+          // 支持多轮：模型请求 tool_use → 执行 → 发送结果 → 模型继续
+          const MAX_TOOL_LOOPS = 10;
+          for (let loopIdx = 0; loopIdx < MAX_TOOL_LOOPS; loopIdx++) {
+            const { response, releaseProcessSlot } = loopIdx === 0
+              ? await callModelWithTools(session, prompt, toolsForModel)
+              : await callModelWithMessages(session, prompt, toolUseMessages, toolsForModel);
 
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+            const requestId = ++processSeqId;
+            sessionProcesses.set(sessionId, { _procSeq: requestId });
 
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buf = '';
+            let roundText = '';
+            let roundToolBlocks = [];
 
-            for (const line of lines) {
-              const trimmed = line.trim();
-              if (!trimmed || !trimmed.startsWith('data: ')) continue;
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
 
-              const dataStr = trimmed.slice(6);
-              if (dataStr === '[DONE]') {
-                broadcastToSession(sessionId, { type: 'output', data: '\n' });
-                continue;
-              }
+              buf += decoder.decode(value, { stream: true });
+              const lines = buf.split('\n');
+              buf = lines.pop() || '';
 
-              try {
-                const chunk = JSON.parse(dataStr);
+              for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed || !trimmed.startsWith('data: ')) continue;
 
-                if (chunk.type === 'content_block_delta') {
-                  if (chunk.delta?.text) {
-                    const text = chunk.delta.text;
-                    assistantBuffer += text;
-                    codeInterpreterBuffer += text;
-                    broadcastToSession(sessionId, { type: 'output', data: text });
-                  }
+                const dataStr = trimmed.slice(6);
+                if (dataStr === '[DONE]') {
+                  broadcastToSession(sessionId, { type: 'output', data: '\n' });
+                  continue;
                 }
-              } catch (e) {
-                console.error('[STREAM PARSE ERROR]', e.message);
+
+                try {
+                  const chunk = JSON.parse(dataStr);
+
+                  if (chunk.type === 'content_block_start' && chunk.content_block?.type === 'tool_use') {
+                    // 模型开始请求使用工具
+                    const tb = {
+                      id: chunk.content_block.id,
+                      name: chunk.content_block.name,
+                      input: chunk.content_block.input || {},
+                      index: chunk.index
+                    };
+                    roundToolBlocks.push(tb);
+                  } else if (chunk.type === 'content_block_delta') {
+                    if (chunk.delta?.text) {
+                      roundText += chunk.delta.text;
+                      assistantBuffer += chunk.delta.text;
+                      broadcastToSession(sessionId, { type: 'output', data: chunk.delta.text });
+                    } else if (chunk.delta?.type === 'input_json_delta' && chunk.delta.partial_json) {
+                      // 累积 tool_use 的 JSON 参数
+                      const tb = roundToolBlocks.find(b => b.index === chunk.index);
+                      if (tb) {
+                        try {
+                          const partial = JSON.parse(chunk.delta.partial_json);
+                          Object.assign(tb.input, partial);
+                        } catch {
+                          // 不完整的 JSON 流片，下次再合并
+                        }
+                      }
+                    }
+                  } else if (chunk.type === 'message_delta') {
+                    finalStopReason = chunk.delta?.stop_reason;
+                  }
+                } catch (e) {
+                  console.error('[STREAM PARSE ERROR]', e.message);
+                }
               }
             }
-          }
 
-          releaseProcessSlot();
-          sessionProcesses.delete(sessionId);
-          wsProcCount.set(sessionId, Math.max(0, (wsProcCount.get(sessionId) || 0) - 1));
+            releaseProcessSlot();
+            sessionProcesses.delete(sessionId);
+            wsProcCount.set(sessionId, Math.max(0, (wsProcCount.get(sessionId) || 0) - 1));
 
-          const proxy = sessionProxies.get(sessionId);
-          if (proxy) { proxy.kill(); sessionProxies.delete(sessionId); }
+            // 清理 proxy（每个 loop 可能创建了新的 proxy）
+            const proxy = sessionProxies.get(sessionId);
+            if (proxy) { proxy.kill(); sessionProxies.delete(sessionId); }
 
-          if (codeInterpreterBuffer.trim()) {
-            const blocks = extractPythonBlocks(codeInterpreterBuffer);
-            if (blocks.length > 0) {
-              for (let i = 0; i < blocks.length; i++) {
-                broadcastToSession(sessionId, { type: 'output', data: `\n[执行 Python 代码块 ${i + 1}/${blocks.length}...]\n` });
-                const result = await executePython(blocks[i]);
-                let output = `\n[代码块 ${i + 1} 执行完毕]`;
-                if (result.stdout) output += `\n输出:\n${result.stdout}`;
-                if (result.stderr) output += `\n错误:\n${result.stderr}`;
-                if (result.exitCode !== 0) output += `\n退出码: ${result.exitCode}`;
-                broadcastToSession(sessionId, { type: 'output', data: output + '\n' });
-              }
+            // 构建本轮 assistant 消息内容块
+            const assistantContent = [];
+            if (roundText) {
+              assistantContent.push({ type: 'text', text: roundText });
             }
+            for (const tb of roundToolBlocks) {
+              assistantContent.push({
+                type: 'tool_use',
+                id: tb.id,
+                name: tb.name,
+                input: tb.input
+              });
+            }
+
+            // 累加到消息历史
+            if (assistantContent.length > 0) {
+              toolUseMessages.push({ role: 'assistant', content: assistantContent });
+            }
+
+            // 处理本轮 tool_use 请求
+            if (roundToolBlocks.length > 0) {
+              for (const tb of roundToolBlocks) {
+                broadcastToSession(sessionId, { type: 'output', data: `\n[使用工具: ${tb.name}]\n` });
+
+                let toolResult;
+                try {
+                  toolResult = await executeToolUseBlock(tb, session, mcpManager);
+                  broadcastToSession(sessionId, { type: 'output', data: `\n[${tb.name}] ${toolResult}\n` });
+                } catch (err) {
+                  toolResult = `Error: ${err.message}`;
+                  broadcastToSession(sessionId, { type: 'output', data: `\n[${tb.name} 失败] ${err.message}\n` });
+                }
+
+                // 将 tool_result 添加到消息历史
+                toolUseMessages.push({
+                  role: 'user',
+                  content: [{
+                    type: 'tool_result',
+                    tool_use_id: tb.id,
+                    content: String(toolResult)
+                  }]
+                });
+              }
+
+              // 继续下一轮循环（让模型处理 tool_result）
+              continue;
+            }
+
+            // 无 tool_use，结束循环
+            break;
           }
 
-          // ===== File Tools：提取并执行文件操作工具代码块 =====
+          // ===== 降级：代码围栏提取（当模型未使用 tool_use 时） =====
           if (assistantBuffer.trim()) {
+            let pythonBlocks = extractPythonBlocks(assistantBuffer);
+            for (let i = 0; i < pythonBlocks.length; i++) {
+              broadcastToSession(sessionId, { type: 'output', data: `\n[执行 Python 代码块 ${i + 1}/${pythonBlocks.length}...]\n` });
+              const result = await executePython(pythonBlocks[i]);
+              let output = `\n[代码块 ${i + 1} 执行完毕]`;
+              if (result.stdout) output += `\n输出:\n${result.stdout}`;
+              if (result.stderr) output += `\n错误:\n${result.stderr}`;
+              if (result.exitCode !== 0) output += `\n退出码: ${result.exitCode}`;
+              broadcastToSession(sessionId, { type: 'output', data: output + '\n' });
+            }
+
+            // File Tools：代码围栏格式的文件操作
             const fileToolResults = await extractAndExecuteFileTools(assistantBuffer, session);
             for (const r of fileToolResults) {
               if (r.ok) {
@@ -768,7 +902,7 @@ export function createWsHandler(deps) {
               }
             }
 
-            // ===== free-code Tools：提取并执行 free-code 工具代码块 =====
+            // free-code Tools：代码围栏格式的工具
             const freeCodeResults = await extractAndExecuteFreeCodeTools(assistantBuffer, session);
             for (const r of freeCodeResults) {
               if (r.ok) {

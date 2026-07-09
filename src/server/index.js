@@ -17,6 +17,7 @@ const {
   broadcastToSession: _broadcastToSession,
   spawnCli: _spawnCli,
   callModelWithTools: _callModelWithTools,
+  callModelWithMessages: _callModelWithMessages,
   maskSensitive,
   stripAnsi,
   modelStats
@@ -30,6 +31,9 @@ const spawnCli = (session, prompt) => _spawnCli(session, prompt, deps.agentConfi
 
 // Bind extra params into callModelWithTools
 const callModelWithTools = (session, prompt, tools) => _callModelWithTools(session, prompt, tools, deps.agentConfig, sessionClients, sessionProxies);
+
+// Bind extra params into callModelWithMessages
+const callModelWithMessages = (session, systemPrompt, messages, tools) => _callModelWithMessages(session, systemPrompt, messages, tools, deps.agentConfig, sessionClients, sessionProxies);
 
 // ===== Create Express app =====
 const app = createApp({
@@ -63,6 +67,7 @@ wss.on('connection', createWsHandler({
   broadcastToSession,
   spawnCli,
   callModelWithTools,
+  callModelWithMessages,
   maskSensitive,
   stripAnsi,
   checkRateLimit: deps.checkRateLimit,

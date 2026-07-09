@@ -1,6 +1,7 @@
 import { getOrBuildPrefix } from '../../cache/immutablePrefix.js';
 import { compactHistory } from '../../cache/contextCompactor.js';
 import { buildBackendSystemPromptPrefix } from './backendPromptLoader.js';
+import { getToolSchemas } from '../tools/toolSchemas.js';
 
 const TOOL_SECTION_TITLES = {
   file_analysis: 'File Analysis',
@@ -8,8 +9,6 @@ const TOOL_SECTION_TITLES = {
   web_search: 'Web Search Results',
   rag_search: 'Knowledge Base Results'
 };
-
-const DEFAULT_TOOLS = [];
 
 /** 最小 fallback 提示词（仅在无后端 JSON 且无 systemPrompts.js 时使用） */
 function loadFallbackPrefix() {
@@ -96,7 +95,12 @@ export function buildPrompt({
   const prompt = sections.join('\n\n');
   
   if (enableTools) {
-    return { prompt, tools: DEFAULT_TOOLS };
+    // 从 activeToolIds 获取 Anthropic 格式工具 schema
+    const coreSchemas = getToolSchemas(activeToolIds, { core: true, approval: false });
+    // 内置工具 schema（需审批的）
+    const approvalSchemas = getToolSchemas(activeToolIds, { core: false, approval: true });
+    const allSchemas = [...coreSchemas, ...approvalSchemas];
+    return { prompt, tools: allSchemas };
   }
   
   return { prompt, tools: [] };
