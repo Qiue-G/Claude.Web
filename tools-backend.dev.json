@@ -592,6 +592,58 @@
           "query"
         ]
       }
+    },
+    {
+      "name": "delete_file",
+      "description": "Delete a file at the specified path. Irreversible operation.",
+      "prompt": "You can delete files using:\n\n```delete_file\npath: relative/file/path\n```\n\nThis is irreversible. Use with caution.",
+      "type": "core",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Relative file path from the workspace root"
+          }
+        },
+        "required": ["path"]
+      }
+    },
+    {
+      "name": "rename_file",
+      "description": "Rename or move a file from oldPath to newPath.",
+      "prompt": "You can rename/move files using:\n\n```rename_file\npath: relative/file/old-name.ext\nnewPath: relative/file/new-name.ext\n```",
+      "type": "core",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "oldPath": {
+            "type": "string",
+            "description": "Current relative file path"
+          },
+          "newPath": {
+            "type": "string",
+            "description": "New relative file path"
+          }
+        },
+        "required": ["oldPath", "newPath"]
+      }
+    },
+    {
+      "name": "list_files",
+      "description": "List files and directories at the specified path. Shows directory structure.",
+      "prompt": "You can list files using:\n\n```list_files\npath: relative/directory/path\n```\n\nIf path is omitted, lists the workspace root.",
+      "type": "core",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Relative directory path (defaults to workspace root)"
+          }
+        },
+        "required": []
+      }
     }
   ],
   "extracted_at": "2026-07-09T05:47:13.496Z",

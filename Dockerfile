@@ -149,23 +149,24 @@ RUN set -e; \
       echo "[WARN] free-code not available, skipping tool schema extraction"; \
     fi
 
-# Append custom tool schemas (DeleteFile, RenameFile, ListFiles) to tools-backend.json
+# Append custom tool schemas (DeleteFile, RenameFile, ListFiles) to /app/tools-backend.json
+# Note: dump-tool-schemas.ts writes to /app/tools-backend.json, so we must modify that file
 RUN set -e; \
-    if [ -f "/free-code/tools-backend.json" ]; then \
+    if [ -f "/app/tools-backend.json" ]; then \
       node -e " \
         var fs = require('fs'); \
-        var p = '/free-code/tools-backend.json'; \
+        var p = '/app/tools-backend.json'; \
         var data = JSON.parse(fs.readFileSync(p, 'utf-8')); \
         data.tools.push( \
-          { name: 'DeleteFile', description: 'Delete a file at the specified path. Irreversible operation.', input_schema: { type: 'object', properties: { path: { type: 'string', description: 'Relative file path from the workspace root' } }, required: ['path'] } }, \
-          { name: 'RenameFile', description: 'Rename or move a file from oldPath to newPath.', input_schema: { type: 'object', properties: { oldPath: { type: 'string', description: 'Current relative file path' }, newPath: { type: 'string', description: 'New relative file path' } }, required: ['oldPath', 'newPath'] } }, \
-          { name: 'ListFiles', description: 'List files and directories at the specified path.', input_schema: { type: 'object', properties: { path: { type: 'string', description: 'Relative directory path' } }, required: [] } } \
+          { name: 'delete_file', description: 'Delete a file at the specified path. Irreversible operation.', prompt: 'You can delete files using:\n\n```delete_file\npath: relative/file/path\n```\n\nThis is irreversible. Use with caution.', type: 'core', input_schema: { type: 'object', properties: { path: { type: 'string', description: 'Relative file path from the workspace root' } }, required: ['path'] } }, \
+          { name: 'rename_file', description: 'Rename or move a file from oldPath to newPath.', prompt: 'You can rename/move files using:\n\n```rename_file\npath: relative/file/old-name.ext\nnewPath: relative/file/new-name.ext\n```', type: 'core', input_schema: { type: 'object', properties: { oldPath: { type: 'string', description: 'Current relative file path' }, newPath: { type: 'string', description: 'New relative file path' } }, required: ['oldPath', 'newPath'] } }, \
+          { name: 'list_files', description: 'List files and directories at the specified path.', prompt: 'You can list files using:\n\n```list_files\npath: relative/directory/path\n```\n\nIf path is omitted, lists the workspace root.', type: 'core', input_schema: { type: 'object', properties: { path: { type: 'string', description: 'Relative directory path (defaults to workspace root)' } }, required: [] } } \
         ); \
         fs.writeFileSync(p, JSON.stringify(data, null, 2)); \
-        console.log('[INFO] Appended DeleteFile, RenameFile, ListFiles to tools-backend.json'); \
+        console.log('[INFO] Appended delete_file, rename_file, list_files to /app/tools-backend.json'); \
       "; \
     else \
-      echo "[WARN] tools-backend.json not found, skipping custom schema injection"; \
+      echo "[WARN] /app/tools-backend.json not found, skipping custom schema injection"; \
     fi
 
 # Copy optional files into /free-code (only if directory has content)
