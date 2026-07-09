@@ -425,6 +425,7 @@ export function getFileToolDefinitions() {
 export async function extractAndExecuteFileTools(text, session) {
   const results = [];
 
+  // 先尝试代码围栏格式提取
   for (const tool of FILE_TOOL_DEFINITIONS) {
     if (!tool.extract || !tool.execute) continue;
 
@@ -436,6 +437,75 @@ export async function extractAndExecuteFileTools(text, session) {
       } catch (err) {
         results.push({ tool: tool.id, ok: false, error: err.message, input: block });
       }
+    }
+  }
+
+  // 再尝试 DSML 文本标记格式提取（deepseek-v4 等模型使用）
+  // 格式：[使用工具: tool_name] 或 [tool_name] 后跟 key: value 参数
+  const dsmlResults = await extractAndExecuteDSMLTools(text, session);
+  results.push(...dsmlResults);
+
+  return results;
+}
+
+/**
+ * 提取 DSML 文本标记格式的工具调用
+ * 格式：[使用工具: write_file] 后跟换行分隔的 key: value 参数
+ */
+async function extractAndExecuteDSMLTools(text, session) {
+  const results = [];
+  // 匹配 [使用工具: tool_name] 或 [tool_name] 格式
+  const markerRegex = /\[使用工具:\s*(\w+)\]/g;
+  let match;
+
+  while ((match = markerRegex.exec(text)) !== null) {
+    const toolName = match[1];
+
+    // 只处理已知的文件工具
+    const knownTools = ['write_file', 'edit_file', 'delete_file', 'rename_file', 'list_files', 'read_file'];
+    if (!knownTools.includes(toolName)) continue;
+
+    // 从标记位置向后解析参数（格式：key: value，每行一个）
+    const afterMarker = text.slice(match.index + match[0].length).trimStart();
+    const paramLines = afterMarker.split('\n');
+    const input = {};
+
+    for (const line of paramLines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      // 下一个标记或代码围栏开始，停止解析
+      if (trimmed.startsWith('[') || trimmed.startsWith('```')) break;
+
+      const colonIdx = trimmed.indexOf(':');
+      if (colonIdx === -1) continue;
+
+      const key = trimmed.slice(0, colonIdx).trim();
+      const value = trimmed.slice(colonIdx + 1).trim();
+      if (key && value) {
+        // 映射参数名：file_path → path, file_path → oldPath/newPath 等
+        if (key === 'file_path' || key === 'path') {
+          input.path = value;
+        } else if (key === 'content') {
+          input.content = value;
+        } else if (key === 'new_path' || key === 'newPath') {
+          input.newPath = value;
+        } else if (key === 'search' || key === 'old_string' || key === 'searchStr') {
+          input.searchStr = value;
+        } else if (key === 'replace' || key === 'new_string' || key === 'replaceStr') {
+          input.replaceStr = value;
+        } else {
+          input[key] = value;
+        }
+      }
+    }
+
+    if (Object.keys(input).length === 0) continue;
+
+    try {
+      const result = await executeFileTool(toolName, input, session);
+      results.push({ tool: toolName, ok: true, result, input });
+    } catch (err) {
+      results.push({ tool: toolName, ok: false, error: err.message, input });
     }
   }
 

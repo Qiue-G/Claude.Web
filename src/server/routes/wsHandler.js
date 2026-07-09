@@ -280,18 +280,42 @@ export function createWsHandler(deps) {
 async function executeToolUseBlock(tb, session, mcpManager) {
   const { name, input } = tb;
 
+  // 参数预检：确保必要参数不为空
+  function validateParam(val, label) {
+    if (!val || (typeof val === 'string' && !val.trim())) {
+      throw new Error(`${name}: ${label} 参数缺失`);
+    }
+    return val.trim();
+  }
+
   switch (name) {
     // ===== File Tools（桥接：优先 free-code 编译版，回退原生） =====
-    case 'write_file':
-      return await bridgeWriteFile(input.file_path || input.path, input.content, session.dir);
+    case 'write_file': {
+      const path = validateParam(input.file_path || input.path, 'file_path');
+      const content = input.content !== undefined ? String(input.content) : '';
+      return await bridgeWriteFile(path, content, session.dir);
+    }
     case 'read_file':
-    case 'read':
-      return await bridgeReadFile(input.file_path || input.path, session.dir);
+    case 'read': {
+      const path = validateParam(input.file_path || input.path, 'file_path');
+      return await bridgeReadFile(path, session.dir);
+    }
     case 'edit_file':
-    case 'edit':
-      return await bridgeEditFile(input.file_path || input.path, input.old_string || input.searchStr, input.new_string || input.replaceStr, session.dir);
-    case 'delete_file':
-    case 'rename_file':
+    case 'edit': {
+      const path = validateParam(input.file_path || input.path, 'file_path');
+      const oldStr = validateParam(input.old_string || input.searchStr, 'old_string/searchStr');
+      const newStr = input.new_string || input.replaceStr || '';
+      return await bridgeEditFile(path, oldStr, newStr, session.dir);
+    }
+    case 'delete_file': {
+      validateParam(input.file_path || input.path, 'file_path');
+      return await executeFileTool(name, input, session);
+    }
+    case 'rename_file': {
+      validateParam(input.file_path || input.path, 'file_path');
+      validateParam(input.new_path || input.newPath, 'new_path/newPath');
+      return await executeFileTool(name, input, session);
+    }
     case 'list_files':
       return await executeFileTool(name, input, session);
 
