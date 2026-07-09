@@ -869,14 +869,16 @@ async function executeToolUseBlock(tb, session, mcpManager) {
                       assistantBuffer += chunk.delta.text;
                       broadcastToSession(sessionId, { type: 'output', data: chunk.delta.text });
                     } else if (chunk.delta?.type === 'input_json_delta' && chunk.delta.partial_json) {
-                      // 累积 tool_use 的 JSON 参数
+                      // 累积 tool_use 的 JSON 参数（流式片段需要累积再解析）
                       const tb = roundToolBlocks.find(b => b.index === chunk.index);
                       if (tb) {
+                        // 累积原始 JSON 字符串
+                        tb._rawJson = (tb._rawJson || '') + chunk.delta.partial_json;
                         try {
-                          const partial = JSON.parse(chunk.delta.partial_json);
-                          Object.assign(tb.input, partial);
+                          const parsed = JSON.parse(tb._rawJson);
+                          Object.assign(tb.input, parsed);
                         } catch {
-                          // 不完整的 JSON 流片，下次再合并
+                          // 不完整的 JSON 流片，继续累积
                         }
                       }
                     }

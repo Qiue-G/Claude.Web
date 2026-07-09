@@ -239,7 +239,7 @@ function translateStreamChunk(orChunk) {
         const initialArgs = (tc.function?.arguments || '').trim();
 
         // 空参数：暂存 pending，等待后续 chunk 带参数到达再发送 content_block_start
-        if (!initialArgs || initialArgs === '{}' || initialArgs === '[]') {
+        if (!initialArgs) {
           pendingToolCalls.set(idx, {
             id: tc.id,
             name: tc.function?.name || '',
@@ -484,7 +484,17 @@ const server = createServer(async (req, res) => {
 
             const dataStr = trimmed.slice(6);
             if (dataStr === '[DONE]') {
-              // 丢弃 pending 中从未收到参数的 tool_call
+              // flush pending tool calls：发送延迟的 content_block_start
+              for (const [idx, pending] of pendingToolCalls) {
+                if (!pending.name) continue;
+                const aiIdx = 1 + idx;
+                res.write(`data: ${JSON.stringify({
+                  type: 'content_block_start',
+                  index: aiIdx,
+                  content_block: { type: 'tool_use', id: pending.id, name: pending.name, input: {} }
+                })}\n\n`);
+                toolCallBuffers.set(idx, pending);
+              }
               pendingToolCalls.clear();
               // 发送 content_block_stop 给所有已追踪的 tool call
               for (const [idx] of toolCallBuffers) {
