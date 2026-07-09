@@ -1,0 +1,599 @@
+{
+  "tools": [
+    {
+      "name": "agent",
+      "description": "AgentTool tool",
+      "prompt": "AgentTool tool",
+      "type": "core",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "type": "string",
+            "description": "子 Agent 要执行的任务描述"
+          }
+        },
+        "required": [
+          "task"
+        ]
+      }
+    },
+    {
+      "name": "ask_user_question",
+      "description": "Asks the user multiple choice questions to gather information, clarify ambiguity, understand preferences, make decisions or offer them choices.",
+      "prompt": "Asks the user multiple choice questions to gather information, clarify ambiguity, understand preferences, make decisions or offer them choices.",
+      "type": "core",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string",
+            "description": "要询问用户的问题"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "选项列表（可选）"
+          }
+        },
+        "required": [
+          "question"
+        ]
+      }
+    },
+    {
+      "name": "bash",
+      "description": "BashTool tool",
+      "prompt": "TODO: runtime function - extracted at runtime",
+      "type": "core",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "要执行的命令"
+          },
+          "timeout": {
+            "type": "number",
+            "description": "超时时间（毫秒，可选）"
+          },
+          "description": {
+            "type": "string",
+            "description": "命令说明"
+          },
+          "run_in_background": {
+            "type": "boolean",
+            "description": "是否在后台运行"
+          }
+        },
+        "required": [
+          "command"
+        ]
+      }
+    },
+    {
+      "name": "SendUserMessage",
+      "description": "Send a message to the user",
+      "prompt": "Send a message to the user",
+      "type": "other",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "config",
+      "description": "Get or set Claude Code configuration settings.",
+      "prompt": "Get or set Claude Code configuration settings.",
+      "type": "core",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "enter_plan_mode",
+      "description": "EnterPlanModeTool tool",
+      "prompt": "TODO: runtime function - extracted at runtime",
+      "type": "other",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "enter_worktree",
+      "description": "EnterWorktreeTool tool",
+      "prompt": "TODO: runtime function - extracted at runtime",
+      "type": "other",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "AskUserQuestion",
+      "description": "ExitPlanModeTool tool",
+      "prompt": "ExitPlanModeTool tool",
+      "type": "other",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "exit_worktree",
+      "description": "ExitWorktreeTool tool",
+      "prompt": "TODO: runtime function - extracted at runtime",
+      "type": "other",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "edit",
+      "description": "TODO: runtime function - not extracted at build time",
+      "prompt": "TODO: runtime function - not extracted at build time",
+      "type": "core",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "要编辑文件的绝对路径"
+          },
+          "old_string": {
+            "type": "string",
+            "description": "要替换的精确文本（必须唯一）"
+          },
+          "new_string": {
+            "type": "string",
+            "description": "替换后的新文本"
+          }
+        },
+        "required": [
+          "file_path",
+          "old_string",
+          "new_string"
+        ]
+      }
+    },
+    {
+      "name": "read",
+      "description": "Read a file from the local filesystem.",
+      "prompt": "TODO: runtime prompt template - extracted at runtime",
+      "type": "core",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "要读取文件的绝对路径"
+          },
+          "offset": {
+            "type": "number",
+            "description": "起始行号（可选，用于大文件）"
+          },
+          "limit": {
+            "type": "number",
+            "description": "读取行数（可选）"
+          }
+        },
+        "required": [
+          "file_path"
+        ]
+      }
+    },
+    {
+      "name": "write_file",
+      "description": "Write a file to the local filesystem.",
+      "prompt": "TODO: runtime function - extracted at runtime",
+      "type": "core",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "要写入文件的绝对路径（必须是绝对路径）"
+          },
+          "content": {
+            "type": "string",
+            "description": "要写入文件的内容"
+          }
+        },
+        "required": [
+          "file_path",
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "glob",
+      "description": "- Fast file pattern matching tool that works with any codebase size\r\n- Supports glob patterns like \"**/*.js\" or \"src/**/*.ts\"\r\n- Returns matching file paths sorted by modification time\r\n- Use this tool when you need to find files by name patterns\r\n- When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead",
+      "prompt": "- Fast file pattern matching tool that works with any codebase size\r\n- Supports glob patterns like \"**/*.js\" or \"src/**/*.ts\"\r\n- Returns matching file paths sorted by modification time\r\n- Use this tool when you need to find files by name patterns\r\n- When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead",
+      "type": "core",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "要匹配的 glob 模式（如 **/*.ts）"
+          },
+          "path": {
+            "type": "string",
+            "description": "要搜索的目录路径（可选，默认使用工作目录）"
+          }
+        },
+        "required": [
+          "pattern"
+        ]
+      }
+    },
+    {
+      "name": "grep",
+      "description": "TODO: runtime function - not extracted at build time",
+      "prompt": "TODO: runtime function - not extracted at build time",
+      "type": "core",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "要搜索的正则表达式模式"
+          },
+          "path": {
+            "type": "string",
+            "description": "要搜索的目录路径（可选）"
+          },
+          "glob": {
+            "type": "string",
+            "description": "文件过滤 glob（可选，如 *.js）"
+          },
+          "output_mode": {
+            "type": "string",
+            "enum": [
+              "content",
+              "files_with_matches"
+            ],
+            "description": "输出模式"
+          }
+        },
+        "required": [
+          "pattern"
+        ]
+      }
+    },
+    {
+      "name": "lsp",
+      "description": "Interact with Language Server Protocol (LSP) servers to get code intelligence features.\r\n\r\nSupported operations:\r\n- goToDefinition: Find where a symbol is defined\r\n- findReferences: Find all references to a symbol\r\n- hover: Get hover information (documentation, type info) for a symbol\r\n- documentSymbol: Get all symbols (functions, classes, variables) in a document\r\n- workspaceSymbol: Search for symbols across the entire workspace\r\n- goToImplementation: Find implementations of an interface or abstract method\r\n- prepareCallHierarchy: Get call hierarchy item at a position (functions/methods)\r\n- incomingCalls: Find all functions/methods that call the function at a position\r\n- outgoingCalls: Find all functions/methods called by the function at a position\r\n\r\nAll operations require:\r\n- filePath: The file to operate on\r\n- line: The line number (1-based, as shown in editors)\r\n- character: The character offset (1-based, as shown in editors)\r\n\r\nNote: LSP servers must be configured for the file type. If no server is available, an error will be returned.",
+      "prompt": "Interact with Language Server Protocol (LSP) servers to get code intelligence features.\r\n\r\nSupported operations:\r\n- goToDefinition: Find where a symbol is defined\r\n- findReferences: Find all references to a symbol\r\n- hover: Get hover information (documentation, type info) for a symbol\r\n- documentSymbol: Get all symbols (functions, classes, variables) in a document\r\n- workspaceSymbol: Search for symbols across the entire workspace\r\n- goToImplementation: Find implementations of an interface or abstract method\r\n- prepareCallHierarchy: Get call hierarchy item at a position (functions/methods)\r\n- incomingCalls: Find all functions/methods that call the function at a position\r\n- outgoingCalls: Find all functions/methods called by the function at a position\r\n\r\nAll operations require:\r\n- filePath: The file to operate on\r\n- line: The line number (1-based, as shown in editors)\r\n- character: The character offset (1-based, as shown in editors)\r\n\r\nNote: LSP servers must be configured for the file type. If no server is available, an error will be returned.",
+      "type": "core",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "definition",
+              "references",
+              "hover",
+              "completion"
+            ],
+            "description": "LSP 操作类型"
+          },
+          "file_path": {
+            "type": "string",
+            "description": "文件路径"
+          },
+          "line": {
+            "type": "number",
+            "description": "行号"
+          },
+          "character": {
+            "type": "number",
+            "description": "列号"
+          }
+        },
+        "required": [
+          "action",
+          "file_path"
+        ]
+      }
+    },
+    {
+      "name": "ListMcpResourcesTool",
+      "description": "Lists available resources from configured MCP servers.\r\nEach resource object includes a 'server' field indicating which server it's from.\r\n\r\nUsage examples:\r\n- List all resources from all servers: \\`listMcpResources\\",
+      "prompt": "List available resources from configured MCP servers.\r\nEach returned resource will include all standard MCP resource fields plus a 'server' field \r\nindicating which server the resource belongs to.\r\n\r\nParameters:\r\n- server (optional): The name of a specific MCP server to get resources from. If not provided,\r\n  resources from all servers will be returned.",
+      "type": "other",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "mcp",
+      "description": "MCPTool tool",
+      "prompt": "MCPTool tool",
+      "type": "other",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "notebook_edit",
+      "description": "Replace the contents of a specific cell in a Jupyter notebook.",
+      "prompt": "Completely replaces the contents of a specific cell in a Jupyter notebook (.ipynb file) with new source. Jupyter notebooks are interactive documents that combine code, text, and visualizations, commonly used for data analysis and scientific computing. The notebook_path parameter must be an absolute path, not a relative path. The cell_number is 0-indexed. Use edit_mode=insert to add a new cell at the index specified by cell_number. Use edit_mode=delete to delete the cell at the index specified by cell_number.",
+      "type": "other",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "power_shell",
+      "description": "PowerShellTool tool",
+      "prompt": "PowerShellTool tool",
+      "type": "other",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "read_mcp_resource",
+      "description": "Reads a specific resource from an MCP server.\r\n- server: The name of the MCP server to read from\r\n- uri: The URI of the resource to read\r\n\r\nUsage examples:\r\n- Read a resource from a server: \\`readMcpResource({ server: \"myserver\", uri: \"my-resource-uri\" })\\",
+      "prompt": "Reads a specific resource from an MCP server, identified by server name and resource URI.\r\n\r\nParameters:\r\n- server (required): The name of the MCP server from which to read the resource\r\n- uri (required): The URI of the resource to read",
+      "type": "other",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "RemoteTrigger",
+      "description": "Manage scheduled remote Claude Code agents (triggers) via the claude.ai CCR API. Auth is handled in-process — the token never reaches the shell.",
+      "prompt": "Call the claude.ai remote-trigger API. Use this instead of curl — the OAuth token is added automatically in-process and never exposed.\r\n\r\nActions:\r\n- list: GET /v1/code/triggers\r\n- get: GET /v1/code/triggers/{trigger_id}\r\n- create: POST /v1/code/triggers (requires body)\r\n- update: POST /v1/code/triggers/{trigger_id} (requires body, partial update)\r\n- run: POST /v1/code/triggers/{trigger_id}/run\r\n\r\nThe response is the raw JSON from the API.",
+      "type": "other",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "CronCreate",
+      "description": "ScheduleCronTool tool",
+      "prompt": "ScheduleCronTool tool",
+      "type": "other",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "send_message",
+      "description": "Send a message to another agent",
+      "prompt": "TODO: runtime function - extracted at runtime",
+      "type": "other",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "skill",
+      "description": "SkillTool tool",
+      "prompt": "SkillTool tool",
+      "type": "core",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "要调用的技能名称"
+          },
+          "query": {
+            "type": "string",
+            "description": "技能任务描述"
+          }
+        },
+        "required": [
+          "name",
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "Sleep",
+      "description": "Wait for a specified duration",
+      "prompt": "Wait for a specified duration",
+      "type": "other",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "task_create",
+      "description": "Create a new task in the task list",
+      "prompt": "TODO: runtime function - extracted at runtime",
+      "type": "other",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "task_get",
+      "description": "Get a task by ID from the task list",
+      "prompt": "Use this tool to retrieve a task by its ID from the task list.\r\n\r\n## When to Use This Tool\r\n\r\n- When you need the full description and context before starting work on a task\r\n- To understand task dependencies (what it blocks, what blocks it)\r\n- After being assigned a task, to get complete requirements\r\n\r\n## Output\r\n\r\nReturns full task details:\r\n- **subject**: Task title\r\n- **description**: Detailed requirements and context\r\n- **status**: 'pending', 'in_progress', or 'completed'\r\n- **blocks**: Tasks waiting on this one to complete\r\n- **blockedBy**: Tasks that must complete before this one can start\r\n\r\n## Tips\r\n\r\n- After fetching a task, verify its blockedBy list is empty before beginning work.\r\n- Use TaskList to see all tasks in summary form.",
+      "type": "other",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "task_list",
+      "description": "List all tasks in the task list",
+      "prompt": "TODO: runtime function - extracted at runtime",
+      "type": "other",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "TaskStop",
+      "description": "- Stops a running background task by its ID\r\n- Takes a task_id parameter identifying the task to stop\r\n- Returns a success or failure status\r\n- Use this tool when you need to terminate a long-running task",
+      "prompt": "- Stops a running background task by its ID\r\n- Takes a task_id parameter identifying the task to stop\r\n- Returns a success or failure status\r\n- Use this tool when you need to terminate a long-running task",
+      "type": "other",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "task_update",
+      "description": "Update a task in the task list",
+      "prompt": "Use this tool to update a task in the task list.\r\n\r\n## When to Use This Tool\r\n\r\n**Mark tasks as resolved:**\r\n- When you have completed the work described in a task\r\n- When a task is no longer needed or has been superseded\r\n- IMPORTANT: Always mark your assigned tasks as resolved when you finish them\r\n- After resolving, call TaskList to find your next task\r\n\r\n- ONLY mark a task as completed when you have FULLY accomplished it\r\n- If you encounter errors, blockers, or cannot finish, keep the task as in_progress\r\n- When blocked, create a new task describing what needs to be resolved\r\n- Never mark a task as completed if:\r\n  - Tests are failing\r\n  - Implementation is partial\r\n  - You encountered unresolved errors\r\n  - You couldn't find necessary files or dependencies\r\n\r\n**Delete tasks:**\r\n- When a task is no longer relevant or was created in error\r\n- Setting status to \\`deleted\\` permanently removes the task\r\n\r\n**Update task details:**\r\n- When requirements change or become clearer\r\n- When establishing dependencies between tasks\r\n\r\n## Fields You Can Update\r\n\r\n- **status**: The task status (see Status Workflow below)\r\n- **subject**: Change the task title (imperative form, e.g., \"Run tests\")\r\n- **description**: Change the task description\r\n- **activeForm**: Present continuous form shown in spinner when in_progress (e.g., \"Running tests\")\r\n- **owner**: Change the task owner (agent name)\r\n- **metadata**: Merge metadata keys into the task (set a key to null to delete it)\r\n- **addBlocks**: Mark tasks that cannot start until this one completes\r\n- **addBlockedBy**: Mark tasks that must complete before this one can start\r\n\r\n## Status Workflow\r\n\r\nStatus progresses: \\`pending\\` → \\`in_progress\\` → \\`completed\\",
+      "type": "other",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "team_create",
+      "description": "TeamCreateTool tool",
+      "prompt": "TODO: runtime function - extracted at runtime",
+      "type": "other",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "team_delete",
+      "description": "TeamDeleteTool tool",
+      "prompt": "TODO: runtime function - extracted at runtime",
+      "type": "other",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "todo_write",
+      "description": "Update the todo list for the current session. To be used proactively and often to track progress and pending tasks. Make sure that at least one task is in_progress at all times. Always provide both content (imperative) and activeForm (present continuous) for each task.",
+      "prompt": "Use this tool to create and manage a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.\r\nIt also helps the user understand the progress of the task and overall progress of their requests.\r\n\r\n## When to Use This Tool\r\nUse this tool proactively in these scenarios:\r\n\r\n1. Complex multi-step tasks - When a task requires 3 or more distinct steps or actions\r\n2. Non-trivial and complex tasks - Tasks that require careful planning or multiple operations\r\n3. User explicitly requests todo list - When the user directly asks you to use the todo list\r\n4. User provides multiple tasks - When users provide a list of things to be done (numbered or comma-separated)\r\n5. After receiving new instructions - Immediately capture user requirements as todos\r\n6. When you start working on a task - Mark it as in_progress BEFORE beginning work. Ideally you should only have one todo as in_progress at a time\r\n7. After completing a task - Mark it as completed and add any new follow-up tasks discovered during implementation\r\n\r\n## When NOT to Use This Tool\r\n\r\nSkip using this tool when:\r\n1. There is only a single, straightforward task\r\n2. The task is trivial and tracking it provides no organizational benefit\r\n3. The task can be completed in less than 3 trivial steps\r\n4. The task is purely conversational or informational\r\n\r\nNOTE that you should not use this tool if there is only one trivial task to do. In this case you are better off just doing the task directly.\r\n\r\n## Examples of When to Use the Todo List\r\n\r\n<example>\r\nUser: I want to add a dark mode toggle to the application settings. Make sure you run the tests and build when you're done!\r\nAssistant: *Creates todo list with the following items:*\r\n1. Creating dark mode toggle component in Settings page\r\n2. Adding dark mode state management (context/store)\r\n3. Implementing CSS-in-JS styles for dark theme\r\n4. Updating existing components to support theme s\n...(truncated)...",
+      "type": "core",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "todos": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "content": {
+                  "type": "string",
+                  "description": "任务描述（祈使句）"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "in_progress",
+                    "completed"
+                  ]
+                },
+                "priority": {
+                  "type": "string",
+                  "enum": [
+                    "high",
+                    "medium",
+                    "low"
+                  ]
+                }
+              },
+              "required": [
+                "content",
+                "status"
+              ]
+            },
+            "description": "要更新的任务列表"
+          }
+        },
+        "required": [
+          "todos"
+        ]
+      }
+    },
+    {
+      "name": "tool_search",
+      "description": "ToolSearchTool tool",
+      "prompt": "TODO: runtime function - extracted at runtime",
+      "type": "core",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "web_fetch",
+      "description": "- Fetches content from a specified URL and processes it using an AI model\r\n- Takes a URL and a prompt as input\r\n- Fetches the URL content, converts HTML to markdown\r\n- Processes the content with the prompt using a small, fast model\r\n- Returns the model's response about the content\r\n- Use this tool when you need to retrieve and analyze web content\r\n\r\nUsage notes:\r\n  - IMPORTANT: If an MCP-provided web fetch tool is available, prefer using that tool instead of this one, as it may have fewer restrictions.\r\n  - The URL must be a fully-formed valid URL\r\n  - HTTP URLs will be automatically upgraded to HTTPS\r\n  - The prompt should describe what information you want to extract from the page\r\n  - This tool is read-only and does not modify any files\r\n  - Results may be summarized if the content is very large\r\n  - Includes a self-cleaning 15-minute cache for faster responses when repeatedly accessing the same URL\r\n  - When a URL redirects to a different host, the tool will inform you and provide the redirect URL in a special format. You should then make a new WebFetch request with the redirect URL to fetch the content.\r\n  - For GitHub URLs, prefer using the gh CLI via Bash instead (e.g., gh pr view, gh issue view, gh api).",
+      "prompt": "- Fetches content from a specified URL and processes it using an AI model\r\n- Takes a URL and a prompt as input\r\n- Fetches the URL content, converts HTML to markdown\r\n- Processes the content with the prompt using a small, fast model\r\n- Returns the model's response about the content\r\n- Use this tool when you need to retrieve and analyze web content\r\n\r\nUsage notes:\r\n  - IMPORTANT: If an MCP-provided web fetch tool is available, prefer using that tool instead of this one, as it may have fewer restrictions.\r\n  - The URL must be a fully-formed valid URL\r\n  - HTTP URLs will be automatically upgraded to HTTPS\r\n  - The prompt should describe what information you want to extract from the page\r\n  - This tool is read-only and does not modify any files\r\n  - Results may be summarized if the content is very large\r\n  - Includes a self-cleaning 15-minute cache for faster responses when repeatedly accessing the same URL\r\n  - When a URL redirects to a different host, the tool will inform you and provide the redirect URL in a special format. You should then make a new WebFetch request with the redirect URL to fetch the content.\r\n  - For GitHub URLs, prefer using the gh CLI via Bash instead (e.g., gh pr view, gh issue view, gh api).",
+      "type": "approval",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "要获取内容的 URL"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "name": "web_search",
+      "description": "WebSearchTool tool",
+      "prompt": "TODO: runtime function - extracted at runtime",
+      "type": "approval",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "搜索查询"
+          },
+          "allowed_domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "仅包含这些域名的结果"
+          },
+          "blocked_domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "排除这些域名的结果"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  ],
+  "extracted_at": "2026-07-09T05:47:13.496Z",
+  "source_dir": "/free-code/src/tools"
+}

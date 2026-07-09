@@ -76,7 +76,7 @@ function makeTool(localName, localDef) {
       name: localName,
       description: backend.description || localDef.description,
       input_schema: backend.input_schema || localDef.input_schema,
-      instruction: localDef.instruction,
+      instruction: backend.prompt || localDef.instruction,
     };
   }
   return localDef;

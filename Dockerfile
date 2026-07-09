@@ -22,6 +22,7 @@ RUN npm ci
 COPY src/ ./src/
 COPY scripts/ ./scripts/
 COPY vite.config.js svelte.config.js ./
+COPY prompts-backend.json ./
 
 # Build frontend (creates public/ directory with production assets)
 RUN npm run build

@@ -4,12 +4,21 @@
  * 从 free-code 提取的 JSON 文件中加载系统提示词。
  * 构建时由 Dockerfile 中的提取脚本生成。
  *
- * 环境变量 PROMPTS_BACKEND_PATH 可覆盖 JSON 路径（默认 /app/prompts-backend.json）
+ * 环境变量 PROMPTS_BACKEND_PATH 可覆盖 JSON 路径
+ * 默认搜索路径：
+ *   1. /app/prompts-backend.json (Docker 生产)
+ *   2. 项目根目录/prompts-backend.json (本地开发)
  */
 
 import { readFileSync, existsSync } from 'fs';
+import { resolve } from 'path';
 
-const BACKEND_PATH = process.env.PROMPTS_BACKEND_PATH || '/app/prompts-backend.json';
+/** prompts-backend.json 的搜索路径列表 */
+const CANDIDATE_PATHS = [
+  process.env.PROMPTS_BACKEND_PATH,
+  '/app/prompts-backend.json',
+  resolve(import.meta.dirname, '../../../prompts-backend.json'),
+].filter(Boolean);
 
 /** JSON 缓存 */
 let cachedSections = null;
@@ -21,20 +30,21 @@ let cachedSections = null;
 function loadSections() {
   if (cachedSections) return cachedSections;
 
-  if (!existsSync(BACKEND_PATH)) {
-    console.warn(`[backendPromptLoader] prompts-backend.json not found at ${BACKEND_PATH}`);
-    return null;
+  for (const filePath of CANDIDATE_PATHS) {
+    if (!existsSync(filePath)) continue;
+
+    try {
+      const raw = readFileSync(filePath, 'utf-8');
+      cachedSections = JSON.parse(raw);
+      console.log(`[backendPromptLoader] Loaded prompts from ${filePath}`);
+      return cachedSections;
+    } catch (err) {
+      console.warn(`[backendPromptLoader] Failed to load ${filePath}: ${err.message}`);
+    }
   }
 
-  try {
-    const raw = readFileSync(BACKEND_PATH, 'utf-8');
-    cachedSections = JSON.parse(raw);
-    console.log(`[backendPromptLoader] Loaded prompts from ${BACKEND_PATH}`);
-    return cachedSections;
-  } catch (err) {
-    console.error(`[backendPromptLoader] Failed to load prompts:`, err.message);
-    return null;
-  }
+  console.warn(`[backendPromptLoader] prompts-backend.json not found in any candidate path`);
+  return null;
 }
 
 /**
