@@ -240,16 +240,11 @@ async function callModelWithMessages(session, systemPrompt, messages, tools, age
   try {
     let baseUrl = process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
 
-    if (session.provider === 'openrouter') {
+    if (session.provider === 'openrouter' || session.provider === 'deepseek') {
       const { process: proxy, port } = await startProxy(session, agentConfig, sessionClients, sessionProxies);
       sessionProxies.set(session.id, proxy);
       baseUrl = 'http://127.0.0.1:' + port;
       logger.info('Model API URL', { url: baseUrl });
-    } else if (session.provider === 'deepseek') {
-      // DeepSeek V4 原生支持 Anthropic Messages API 格式（含 tool_use），
-      // 跳过 or_proxy 翻译层，直接调用 Anthropic 兼容端点
-      baseUrl = 'https://api.deepseek.com/anthropic';
-      logger.info('DeepSeek V4 Anthropic endpoint', { model: session.model, url: baseUrl });
     }
 
     const model = session.provider === 'openrouter'

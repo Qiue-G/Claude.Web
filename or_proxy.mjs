@@ -289,9 +289,10 @@ function translateStreamChunk(orChunk) {
 function translateToOpenRouter(anthropicBody, model) {
   const messages = translateMessages(anthropicBody);
   const tools = translateTools(anthropicBody.tools);
+  const modelName = model || MODEL;
 
   const body = {
-    model: model || MODEL,
+    model: modelName,
     messages,
     max_tokens: anthropicBody.max_tokens || 4096,
     temperature: anthropicBody.temperature ?? 0.7,
@@ -299,6 +300,12 @@ function translateToOpenRouter(anthropicBody, model) {
   };
 
   if (tools) body.tools = tools;
+
+  // DeepSeek V4 默认启用 thinking 模式，与 tool_calls 冲突
+  // 禁用 thinking 使模型能正常输出结构化工具调用
+  if (modelName.includes('deepseek-v4') || modelName.includes('deepseek-ai/deepseek-v4')) {
+    body.extra_body = { thinking: { type: 'disabled' } };
+  }
 
   return body;
 }
