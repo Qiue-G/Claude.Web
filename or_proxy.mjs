@@ -301,13 +301,6 @@ function translateToOpenRouter(anthropicBody, model) {
 
   if (tools) body.tools = tools;
 
-  // DeepSeek V4 默认启用 thinking 模式，与 tool_calls 冲突
-  // 禁用 thinking 使模型能正常输出结构化工具调用
-  // 注意：DeepSeek HTTP API 要求 thinking 为顶层参数，不是 OpenAI SDK 的 extra_body
-  if (modelName.includes('deepseek-v4') || modelName.includes('deepseek-ai/deepseek-v4')) {
-    body.thinking = { type: 'disabled' };
-  }
-
   return body;
 }
 
