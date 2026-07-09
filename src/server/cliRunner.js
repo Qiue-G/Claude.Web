@@ -262,9 +262,16 @@ async function callModelWithMessages(session, systemPrompt, messages, tools, age
 
     if (tools && tools.length > 0) {
       body.tools = tools;
-      // 对非 Anthropic 模型强制要求使用工具（否则 DeepSeek 等模型倾向于只回复文字）
+      // 对非 Anthropic 模型：仅首次消息强制工具调用，防止工具结果返回后继续死循环
       if (session.provider !== 'anthropic') {
-        body.tool_choice = 'any';
+        const hasToolResults = messages.some(m =>
+          Array.isArray(m.content)
+            ? m.content.some(c => c.type === 'tool_result')
+            : false
+        );
+        if (!hasToolResults) {
+          body.tool_choice = 'required';
+        }
       }
     }
 
