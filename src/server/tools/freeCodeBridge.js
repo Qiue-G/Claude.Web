@@ -132,7 +132,7 @@ export async function grepSearch(pattern, dir, cwd, globFilter, outputMode) {
   return results;
 }
 
-export default { loadCompiledTools, globSearch, grepSearch, bridgeWriteFile, bridgeReadFile, bridgeEditFile };
+export default { loadCompiledTools, globSearch, grepSearch, bridgeWriteFile, bridgeReadFile, bridgeEditFile, bridgeDeleteFile, bridgeRenameFile, bridgeListFiles };
 
 // ===== 文件工具桥接 =====
 
@@ -211,4 +211,72 @@ export async function bridgeEditFile(filePath, oldString, newString, cwd) {
   }
   await fs.writeFile(fullPath, newContent, 'utf-8');
   return `文件已编辑: ${filePath}`;
+}
+
+/**
+ * 删除文件 - 优先使用 free-code 编译版本，回退到原生实现
+ */
+export async function bridgeDeleteFile(filePath, cwd) {
+  const fc = await loadCompiledTools();
+
+  if (fc && fc.deleteFileTool) {
+    try {
+      return await fc.deleteFileTool(filePath, cwd);
+    } catch (err) {
+      console.warn(`[freeCodeBridge] Compiled deleteFileTool failed: ${err.message}, falling back`);
+    }
+  }
+
+  // 原生回退
+  const fs = await import('fs/promises');
+  const path = await import('path');
+  const fullPath = path.resolve(cwd, filePath);
+  await fs.unlink(fullPath);
+  return `文件已删除: ${filePath}`;
+}
+
+/**
+ * 重命名文件 - 优先使用 free-code 编译版本，回退到原生实现
+ */
+export async function bridgeRenameFile(oldPath, newPath, cwd) {
+  const fc = await loadCompiledTools();
+
+  if (fc && fc.renameFileTool) {
+    try {
+      return await fc.renameFileTool(oldPath, newPath, cwd);
+    } catch (err) {
+      console.warn(`[freeCodeBridge] Compiled renameFileTool failed: ${err.message}, falling back`);
+    }
+  }
+
+  // 原生回退
+  const fs = await import('fs/promises');
+  const path = await import('path');
+  const oldFullPath = path.resolve(cwd, oldPath);
+  const newFullPath = path.resolve(cwd, newPath);
+  await fs.mkdir(path.dirname(newFullPath), { recursive: true });
+  await fs.rename(oldFullPath, newFullPath);
+  return `文件已重命名: ${oldPath} → ${newPath}`;
+}
+
+/**
+ * 列出文件 - 优先使用 free-code 编译版本，回退到原生实现
+ */
+export async function bridgeListFiles(dir, cwd) {
+  const fc = await loadCompiledTools();
+
+  if (fc && fc.listFilesTool) {
+    try {
+      return await fc.listFilesTool(dir, cwd);
+    } catch (err) {
+      console.warn(`[freeCodeBridge] Compiled listFilesTool failed: ${err.message}, falling back`);
+    }
+  }
+
+  // 原生回退
+  const fs = await import('fs/promises');
+  const path = await import('path');
+  const fullPath = path.resolve(cwd, dir || '.');
+  const entries = await fs.readdir(fullPath, { withFileTypes: true });
+  return entries.map(e => `${e.isDirectory() ? '📁' : '📄'} ${e.name}`).join('\n');
 }

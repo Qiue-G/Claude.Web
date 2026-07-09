@@ -45,8 +45,9 @@ RUN set -e; \
       && printf '%s\n' \
         'import { glob } from "../utils/glob.js";' \
         'import { getCwd } from "../utils/cwd.js";' \
-        'import { writeFile as fsWriteFile, readFile as fsReadFile, mkdir, stat } from "fs/promises";' \
+        'import { writeFile as fsWriteFile, readFile as fsReadFile, mkdir, stat, readdir, unlink, rename } from "fs/promises";' \
         'import { resolve, dirname } from "path";' \
+        'import { execSync } from "child_process";' \
         '' \
         'export async function globSearch(pattern, dir) {' \
         '  const start = Date.now();' \
@@ -82,6 +83,36 @@ RUN set -e; \
         '  }' \
         '  await fsWriteFile(fullPath, newContent, "utf-8");' \
         '  return `文件已编辑: ${filePath}`;' \
+        '}' \
+        '' \
+        'export async function grepSearch(pattern, dir, globFilter, outputMode) {' \
+        '  const cwd = dir || getCwd();' \
+        '  let cmd = `rg -l --no-heading "${pattern}" "${cwd}"`;' \
+        '  if (globFilter) cmd += ` -g "${globFilter}"`;' \
+        '  try {' \
+        '    const stdout = execSync(cmd, { encoding: "utf-8", maxBuffer: 10 * 1024 * 1024 });' \
+        '    return stdout.trim().split("\\n").filter(Boolean);' \
+        '  } catch { return []; }' \
+        '}' \
+        '' \
+        'export async function deleteFileTool(filePath, cwd) {' \
+        '  const fullPath = resolve(cwd || getCwd(), filePath);' \
+        '  await unlink(fullPath);' \
+        '  return `文件已删除: ${filePath}`;' \
+        '}' \
+        '' \
+        'export async function renameFileTool(oldPath, newPath, cwd) {' \
+        '  const oldFullPath = resolve(cwd || getCwd(), oldPath);' \
+        '  const newFullPath = resolve(cwd || getCwd(), newPath);' \
+        '  await mkdir(dirname(newFullPath), { recursive: true });' \
+        '  await rename(oldFullPath, newFullPath);' \
+        '  return `文件已重命名: ${oldPath} → ${newPath}`;' \
+        '}' \
+        '' \
+        'export async function listFilesTool(dir, cwd) {' \
+        '  const fullPath = resolve(cwd || getCwd(), dir || ".");' \
+        '  const entries = await readdir(fullPath, { withFileTypes: true });' \
+        '  return entries.map(e => `${e.isDirectory() ? "📁" : "📄"} ${e.name}`).join("\\n");' \
         '}' \
         > /free-code/src/tools/web-bridge.ts \
       && cd /free-code \

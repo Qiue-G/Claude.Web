@@ -6,7 +6,7 @@ import { buildPrompt } from '../runtime/promptBuilder.js';
 import { getToolInstructions, isBuiltinTool, isMcpTool, parseMcpToolId } from '../tools/registry.js';
 import { getFileToolInstructions, extractAndExecuteFileTools, isPathInDir, executeFileTool } from '../tools/fileTools.js';
 import { getFreeCodeToolInstructions, extractAndExecuteFreeCodeTools, executeGlob, executeGrep, executeTodoWrite } from '../tools/freeCodeTools.js';
-import { bridgeWriteFile, bridgeReadFile, bridgeEditFile } from '../tools/freeCodeBridge.js';
+import { bridgeWriteFile, bridgeReadFile, bridgeEditFile, bridgeDeleteFile, bridgeRenameFile, bridgeListFiles } from '../tools/freeCodeBridge.js';
 import { runHooks } from '../runtime/hooksRunner.js';
 import { runFilters } from '../runtime/filterPipeline.js';
 import { buildFilterList } from '../runtime/filters/index.js';
@@ -308,16 +308,16 @@ async function executeToolUseBlock(tb, session, mcpManager) {
       return await bridgeEditFile(path, oldStr, newStr, session.dir);
     }
     case 'delete_file': {
-      validateParam(input.file_path || input.path, 'file_path');
-      return await executeFileTool(name, input, session);
-    }
-    case 'rename_file': {
-      validateParam(input.file_path || input.path, 'file_path');
-      validateParam(input.new_path || input.newPath, 'new_path/newPath');
-      return await executeFileTool(name, input, session);
-    }
-    case 'list_files':
-      return await executeFileTool(name, input, session);
+       const path = validateParam(input.file_path || input.path, 'file_path');
+       return await bridgeDeleteFile(path, session.dir);
+     }
+     case 'rename_file': {
+       const oldPath = validateParam(input.file_path || input.path, 'file_path');
+       const newPath = validateParam(input.new_path || input.newPath, 'new_path/newPath');
+       return await bridgeRenameFile(oldPath, newPath, session.dir);
+     }
+     case 'list_files':
+       return await bridgeListFiles(input.dir || input.path || '.', session.dir);
 
     // ===== Free-code 工具 =====
     case 'glob':
