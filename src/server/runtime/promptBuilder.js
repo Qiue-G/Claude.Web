@@ -61,7 +61,12 @@ export function buildPrompt({
   sections.push(systemPrefix);
 
   // ===== 工具指令 =====
-  if (toolInstructions && toolInstructions.trim()) {
+  if (enableTools) {
+    // 主路径：优先使用原生 tool_use 块，降级路径仍然可用
+    const nativeInstructions = `[Tool Instructions]\nYou have tools available through the API. PREFER using native tool_use blocks to invoke them. If native tool_use is not available, you can also use the text marker format: [使用工具: tool_name].`;
+    sections.push(getOrBuildPrefix(activeToolIds, () => nativeInstructions));
+  } else if (toolInstructions && toolInstructions.trim()) {
+    // 降级路径（无 tools 参数）：使用代码围栏格式
     const prefixText = getOrBuildPrefix(activeToolIds, () =>
       `[Tool Instructions]\nYou have the following tools available:\n${toolInstructions.trim()}`
     );
