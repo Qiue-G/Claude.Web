@@ -195,8 +195,10 @@ function translateToAnthropic(orResponse, model) {
   if (toolCalls && toolCalls.length > 0) {
     for (const tc of toolCalls) {
       if (tc.type !== 'function') continue;
+      const argsStr = (tc.function.arguments || '').trim();
+      if (!argsStr || argsStr === '{}' || argsStr === '[]') continue; // 跳过空参数
       let input = {};
-      try { input = JSON.parse(tc.function.arguments); } catch (e) { input = { _raw: tc.function.arguments }; }
+      try { input = JSON.parse(argsStr); } catch (e) { input = { _raw: argsStr }; }
       contentBlocks.push({ type: 'tool_use', id: tc.id, name: tc.function.name, input });
     }
   }

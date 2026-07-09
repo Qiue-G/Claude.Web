@@ -863,6 +863,10 @@ async function executeToolUseBlock(tb, session, mcpManager) {
               assistantContent.push({ type: 'text', text: roundText });
             }
             for (const tb of roundToolBlocks) {
+              // 跳过空参数的工具调用（deepseek-v4 有时会生成仅有工具名而无参数的 DSML 标记）
+              if (!tb.input || typeof tb.input !== 'object' || Object.keys(tb.input).length === 0) {
+                continue;
+              }
               assistantContent.push({
                 type: 'tool_use',
                 id: tb.id,
