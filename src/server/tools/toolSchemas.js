@@ -20,23 +20,25 @@ import { resolve } from 'path';
 // 本地开发时 fallback 路径
 const BACKEND_FALLBACK_PATH = resolve(import.meta.dirname, '../../../tools-backend.dev.json');
 
-// ===== free-code → 本地工具名映射 =====
-const FC_TO_LOCAL_NAME = {
-  Write:    'write_file',
-  Read:     'read_file',
-  Edit:     'edit_file',
-  Glob:     'glob',
-  Grep:     'grep',
-  DeleteFile: 'delete_file',
-  RenameFile: 'rename_file',
-  ListFiles: 'list_files',
-  Bash:     'bash',
-  WebSearch: 'web_search',
-  WebFetch:  'web_fetch',
-  TodoWrite: 'todo_write',
-  Skill:    'skill',
-  Agent:    'agent',
-  AskUserQuestion: 'ask_user_question',
+// ===== 后端工具名 → 本地工具名映射 =====
+// 后端 JSON 中的工具名可能和本地不同，需要映射
+const BACKEND_TO_LOCAL_NAME = {
+  // 后端名称 → 本地名称
+  'write_file': 'write_file',
+  'read': 'read_file',
+  'edit': 'edit_file',
+  'glob': 'glob',
+  'grep': 'grep',
+  'todo_write': 'todo_write',
+  'web_fetch': 'web_fetch',
+  'web_search': 'web_search',
+  'bash': 'bash',
+  'skill': 'skill',
+  'agent': 'agent',
+  // 后端没有的工具（本地独有）
+  'delete_file': null,
+  'rename_file': null,
+  'list_files': null,
 };
 
 // ===== 尝试加载后端 Schema =====
@@ -53,10 +55,13 @@ if (_isBackendAvailable) {
  * 从后端获取工具定义，或返回 null
  */
 function resolveBackend(localName) {
-  // 反向查找：本地名 → free-code 名
-  for (const [fcName, locName] of Object.entries(FC_TO_LOCAL_NAME)) {
-    if (locName === localName) {
-      return _backendByName.get(fcName) || null;
+  // 直接查找后端同名
+  const sameName = _backendByName.get(localName);
+  if (sameName) return sameName;
+  // 反向查找：本地名 → 后端名
+  for (const [backendName, localMapped] of Object.entries(BACKEND_TO_LOCAL_NAME)) {
+    if (localMapped === localName) {
+      return _backendByName.get(backendName) || null;
     }
   }
   return null;

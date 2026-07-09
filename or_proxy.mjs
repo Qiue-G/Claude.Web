@@ -19,9 +19,9 @@ const MAX_BODY_SIZE = 5 * 1024 * 1024; // 5MB 请求体上限
 // --- Fallback / retry config ---
 const fallbackIdx = args.indexOf('--fallback-model');
 const FALLBACK_MODEL = fallbackIdx >= 0 ? args[fallbackIdx + 1] : null;
-const MAX_RETRIES = 2;          // same-model retry count
+const MAX_RETRIES = 1;          // same-model retry count
 const BASE_RETRY_DELAY = 1000;  // ms, doubles each attempt
-const REQUEST_TIMEOUT = 120000; // 120s per attempt
+const REQUEST_TIMEOUT = 60000;  // 60s per attempt
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
