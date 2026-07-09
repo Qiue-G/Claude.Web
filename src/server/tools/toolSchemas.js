@@ -27,6 +27,9 @@ const FC_TO_LOCAL_NAME = {
   Edit:     'edit_file',
   Glob:     'glob',
   Grep:     'grep',
+  DeleteFile: 'delete_file',
+  RenameFile: 'rename_file',
+  ListFiles: 'list_files',
   Bash:     'bash',
   WebSearch: 'web_search',
   WebFetch:  'web_fetch',
@@ -128,7 +131,7 @@ const EDIT_FILE = makeTool('edit_file', {
   ].join('\n')
 });
 
-const DELETE_FILE = {
+const DELETE_FILE = makeTool('delete_file', {
   name: 'delete_file',
   description: 'Delete a file at the specified path. Irreversible operation.',
   input_schema: {
@@ -147,9 +150,9 @@ const DELETE_FILE = {
     '',
     'This is irreversible. Use with caution.'
   ].join('\n')
-};
+});
 
-const RENAME_FILE = {
+const RENAME_FILE = makeTool('rename_file', {
   name: 'rename_file',
   description: 'Rename or move a file from oldPath to newPath.',
   input_schema: {
@@ -168,9 +171,9 @@ const RENAME_FILE = {
     'newPath: relative/file/new-name.ext',
     '```'
   ].join('\n')
-};
+});
 
-const LIST_FILES = {
+const LIST_FILES = makeTool('list_files', {
   name: 'list_files',
   description: 'List files and directories at the specified path. Shows directory structure.',
   input_schema: {
@@ -189,7 +192,7 @@ const LIST_FILES = {
     '',
     'If path is omitted, lists the workspace root.'
   ].join('\n')
-};
+});
 
 const READ_FILE = makeTool('read_file', {
   name: 'read_file',

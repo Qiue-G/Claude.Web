@@ -148,6 +148,25 @@ RUN set -e; \
       echo "[WARN] free-code not available, skipping tool schema extraction"; \
     fi
 
+# Append custom tool schemas (DeleteFile, RenameFile, ListFiles) to tools-backend.json
+RUN set -e; \
+    if [ -f "/free-code/tools-backend.json" ]; then \
+      node -e " \
+        var fs = require('fs'); \
+        var p = '/free-code/tools-backend.json'; \
+        var data = JSON.parse(fs.readFileSync(p, 'utf-8')); \
+        data.tools.push( \
+          { name: 'DeleteFile', description: 'Delete a file at the specified path. Irreversible operation.', input_schema: { type: 'object', properties: { path: { type: 'string', description: 'Relative file path from the workspace root' } }, required: ['path'] } }, \
+          { name: 'RenameFile', description: 'Rename or move a file from oldPath to newPath.', input_schema: { type: 'object', properties: { oldPath: { type: 'string', description: 'Current relative file path' }, newPath: { type: 'string', description: 'New relative file path' } }, required: ['oldPath', 'newPath'] } }, \
+          { name: 'ListFiles', description: 'List files and directories at the specified path.', input_schema: { type: 'object', properties: { path: { type: 'string', description: 'Relative directory path' } }, required: [] } } \
+        ); \
+        fs.writeFileSync(p, JSON.stringify(data, null, 2)); \
+        console.log('[INFO] Appended DeleteFile, RenameFile, ListFiles to tools-backend.json'); \
+      "; \
+    else \
+      echo "[WARN] tools-backend.json not found, skipping custom schema injection"; \
+    fi
+
 # Copy optional files into /free-code (only if directory has content)
 COPY or_proxy.mjs /free-code/or_proxy.mjs
 COPY agent-config.json /free-code/agent-config.json
