@@ -793,7 +793,9 @@ async function executeToolUseBlock(tb, session, mcpManager) {
             let roundText = '';
             let roundToolBlocks = [];
             let streamTimeout = null;
+            let totalTimeout = null;
             const STREAM_IDLE_TIMEOUT = 120000; // 2分钟无数据则超时
+            const STREAM_TOTAL_TIMEOUT = 180000; // 3分钟总体超时（防止代理无限重试）
 
             function resetStreamTimeout() {
               if (streamTimeout) clearTimeout(streamTimeout);
@@ -801,10 +803,16 @@ async function executeToolUseBlock(tb, session, mcpManager) {
                 console.error(`[wsHandler] Stream idle timeout for session ${sessionId} after ${STREAM_IDLE_TIMEOUT}ms`);
                 streamTimeout = null;
               }, STREAM_IDLE_TIMEOUT);
-              // 让 timeout 不阻止进程退出
               if (streamTimeout && streamTimeout.unref) streamTimeout.unref();
             }
             resetStreamTimeout();
+
+            // 总体超时：不管有没有数据，到时间就断
+            totalTimeout = setTimeout(() => {
+              console.error(`[wsHandler] Stream total timeout for session ${sessionId} after ${STREAM_TOTAL_TIMEOUT}ms`);
+              if (streamTimeout) { clearTimeout(streamTimeout); streamTimeout = null; }
+            }, STREAM_TOTAL_TIMEOUT);
+            if (totalTimeout && totalTimeout.unref) totalTimeout.unref();
 
             while (true) {
               const readPromise = reader.read();
@@ -819,7 +827,7 @@ async function executeToolUseBlock(tb, session, mcpManager) {
                 })
               ]);
               if (raceResult?.timeout) {
-                console.error(`[wsHandler] Breaking stream due to idle timeout for session ${sessionId}`);
+                console.error(`[wsHandler] Breaking stream due to timeout for session ${sessionId}`);
                 break;
               }
               const { done, value } = await readPromise;
@@ -880,6 +888,7 @@ async function executeToolUseBlock(tb, session, mcpManager) {
 
             // 清理 stream 超时
             if (streamTimeout) { clearTimeout(streamTimeout); streamTimeout = null; }
+            if (totalTimeout) { clearTimeout(totalTimeout); totalTimeout = null; }
 
             releaseProcessSlot();
             sessionProcesses.delete(sessionId);
