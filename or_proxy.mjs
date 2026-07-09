@@ -341,6 +341,7 @@ function translateToOpenRouter(anthropicBody, model) {
   };
 
   if (tools) body.tools = tools;
+  if (anthropicBody.tool_choice) body.tool_choice = anthropicBody.tool_choice;
 
   return body;
 }
