@@ -186,7 +186,8 @@ function executeWithLimits(code, cwd) {
 
     if (process.platform === 'linux') {
       cmd = '/bin/sh';
-      args = ['-c', `ulimit -v 262144; ulimit -u 50; ulimit -f 10240; exec ${PYTHON_CMD} "${tmpFile}"`];
+      // Alpine ash 不支持 ulimit -u，仅设置内存和文件大小限制
+      args = ['-c', `ulimit -v 262144 2>/dev/null; ulimit -f 10240 2>/dev/null; exec ${PYTHON_CMD} "${tmpFile}"`];
     } else {
       // Windows: 不设置 ulimit，仅使用超时 + 临时目录隔离
       cmd = PYTHON_CMD;
