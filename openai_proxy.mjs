@@ -19,7 +19,7 @@ const BASE_URL = args['base-url'];
 const PORT = 0; // 随机端口
 
 // 消息格式转换：Anthropic → OpenAI
-function translateMessages(anthropicMessages) {
+export function translateMessages(anthropicMessages) {
   return anthropicMessages.map(msg => {
     if (msg.role === 'user') {
       return {
@@ -42,7 +42,7 @@ function translateMessages(anthropicMessages) {
 }
 
 // 工具格式转换：Anthropic → OpenAI
-function translateTools(anthropicTools) {
+export function translateTools(anthropicTools) {
   if (!anthropicTools) return undefined;
   
   return anthropicTools.map(tool => ({
@@ -56,7 +56,7 @@ function translateTools(anthropicTools) {
 }
 
 // 请求体转换
-function translateToOpenAI(anthropicBody) {
+export function translateToOpenAI(anthropicBody) {
   return {
     model: anthropicBody.model || MODEL,
     messages: translateMessages(anthropicBody.messages || []),
@@ -69,7 +69,7 @@ function translateToOpenAI(anthropicBody) {
 }
 
 // 流式响应转换
-function translateStreamChunk(openaiChunk) {
+export function translateStreamChunk(openaiChunk) {
   const delta = openaiChunk.choices?.[0]?.delta;
   if (!delta) return null;
 
@@ -195,8 +195,18 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-  const addr = server.address();
-  process.stdout.write(`port ${addr.port}\n`);
-  console.error(`[openai_proxy] listening on 127.0.0.1:${addr.port}`);
-});
+// 仅当作为主模块运行时启动服务器
+const isMainModule = process.argv[1] && (
+  process.argv[1].endsWith('openai_proxy.mjs') ||
+  process.argv[1].endsWith('openai_proxy')
+);
+
+if (isMainModule) {
+  server.listen(PORT, '127.0.0.1', () => {
+    const addr = server.address();
+    process.stdout.write(`port ${addr.port}\n`);
+    console.error(`[openai_proxy] listening on 127.0.0.1:${addr.port}`);
+  });
+}
+
+export { server };

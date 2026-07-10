@@ -164,3 +164,114 @@ test('PROCESS_TIMEOUT is a positive integer', () => {
   assert.ok(typeof PROCESS_TIMEOUT === 'number');
   assert.ok(PROCESS_TIMEOUT > 0);
 });
+
+// ====================================================================
+// tool_choice 降级逻辑
+// ====================================================================
+
+test('callModelWithTools 降级 tool_choice required 到 auto', async () => {
+  const { callModelWithTools } = await import('../src/server/cliRunner.js');
+
+  // 模拟 session - 使用自定义 provider 避免启动代理进程，同时触发 tool_choice 逻辑
+  const session = {
+    id: 'test-session',
+    currentModel: 'test-model',
+    provider: 'custom',
+    baseUrl: 'https://api.test.com',
+    apiKey: 'test-key'
+  };
+
+  // 模拟 sessionProxies
+  const sessionProxies = new Map();
+  const sessionClients = new Map();
+
+  // 模拟 fetch 返回 400 错误（tool_choice 不支持）
+  let fetchCallCount = 0;
+  const originalFetch = global.fetch;
+  global.fetch = async (url, options) => {
+    fetchCallCount++;
+    const body = JSON.parse(options.body);
+
+    // 第一次调用返回 400 错误
+    if (fetchCallCount === 1) {
+      assert.equal(body.tool_choice, 'required', '第一次应该使用 required');
+      return {
+        status: 400,
+        text: async () => 'Error: tool_choice required is not supported'
+      };
+    }
+
+    // 第二次调用应该降级到 auto
+    assert.equal(body.tool_choice, 'auto', '第二次应该降级到 auto');
+    return {
+      status: 200,
+      ok: true,
+      body: {
+        getReader: () => ({
+          read: async () => ({ done: true, value: undefined })
+        })
+      },
+      headers: new Map([['content-type', 'text/event-stream']])
+    };
+  };
+
+  try {
+    const prompt = 'test';
+    const tools = [{ name: 'test_tool', description: 'A test tool', input_schema: { type: 'object', properties: {} } }];
+    const agentConfig = {};
+
+    const { response, releaseProcessSlot } = await callModelWithTools(
+      session, prompt, tools, agentConfig, sessionClients, sessionProxies
+    );
+
+    assert.equal(fetchCallCount, 2, '应该重试一次');
+    assert.equal(response.status, 200, '第二次应该成功');
+
+    releaseProcessSlot();
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('callModelWithTools 不降级非 tool_choice 错误', async () => {
+  const { callModelWithTools } = await import('../src/server/cliRunner.js');
+
+  // 模拟 session - 使用自定义 provider 避免启动代理进程
+  const session = {
+    id: 'test-session-2',
+    currentModel: 'test-model',
+    provider: 'custom',
+    baseUrl: 'https://api.test.com',
+    apiKey: 'test-key'
+  };
+
+  const sessionProxies = new Map();
+  const sessionClients = new Map();
+
+  let fetchCallCount = 0;
+  const originalFetch = global.fetch;
+  global.fetch = async () => {
+    fetchCallCount++;
+    return {
+      status: 400,
+      text: async () => 'Error: invalid model name'
+    };
+  };
+
+  try {
+    const prompt = 'test';
+    const tools = [{ name: 'test_tool', description: 'A test tool', input_schema: { type: 'object', properties: {} } }];
+    const agentConfig = {};
+
+    const { response, releaseProcessSlot } = await callModelWithTools(
+      session, prompt, tools, agentConfig, sessionClients, sessionProxies
+    );
+
+    assert.equal(fetchCallCount, 1, '不应该重试非 tool_choice 错误');
+    assert.equal(response.status, 400, '应该返回原始错误');
+
+    releaseProcessSlot();
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

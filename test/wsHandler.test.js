@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
-import { createWsHandler, applyPreToolUseHook, getRagSearchCollection } from '../src/server/routes/wsHandler.js';
+import { createWsHandler } from '../src/server/routes/wsHandler.js';
+import { applyPreToolUseHook, getRagSearchCollection } from '../src/server/routes/wsHandlers/messageHandlers.js';
 
 /** Helper: start a WS server on a random port, return { url, close } */
 function withWsServer(handler) {
@@ -69,6 +70,10 @@ function makeMockDeps(overrides = {}) {
       response: { body: makeMockReadableStream() },
       releaseProcessSlot: () => {}
     }),
+    callModelWithMessages: async () => ({
+      response: { body: makeMockReadableStream() },
+      releaseProcessSlot: () => {}
+    }),
     maskSensitive: (s) => s,
     stripAnsi: (s) => s,
     checkRateLimit: () => true,
@@ -94,6 +99,7 @@ function addSession(deps, id, overrides = {}) {
     token: 'valid-token',
     provider: 'openai',
     model: 'gpt-4',
+    dir: process.cwd(),
     ...overrides
   });
 }
