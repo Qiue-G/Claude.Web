@@ -22,9 +22,23 @@ const FALLBACK_MODEL = fallbackIdx >= 0 ? args[fallbackIdx + 1] : null;
 const MAX_RETRIES = 1;          // same-model retry count
 const BASE_RETRY_DELAY = 1000;  // ms, doubles each attempt
 const REQUEST_TIMEOUT = 60000;  // 60s per attempt
+const DEFAULT_MAX_TOKENS = 4096;
+const DEFAULT_TEMPERATURE = 0.7;
+const ERROR_DETAIL_MAX_LENGTH = 500;
 
+/**
+ * 延迟指定毫秒数
+ * @param {number} ms - 延迟毫秒数
+ * @returns {Promise<void>}
+ */
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+/**
+ * 判断错误是否可重试
+ * @param {number|null} status - HTTP 状态码
+ * @param {Error|null} error - 错误对象
+ * @returns {boolean} 是否可重试
+ */
 function isRetryable(status, error) {
   if (error?.name === 'AbortError' || error?.name === 'TimeoutError') return true;
   if (error?.code === 'ECONNRESET' || error?.code === 'ETIMEDOUT' || error?.code === 'ECONNREFUSED') return true;
@@ -33,6 +47,10 @@ function isRetryable(status, error) {
   return false;
 }
 
+/**
+ * 构建 OpenRouter 请求头（含 CORS 标识）
+ * @returns {object} HTTP 请求头
+ */
 function buildOpenRouterHeaders() {
   const h = {
     'Content-Type': 'application/json',
@@ -47,24 +65,37 @@ function buildOpenRouterHeaders() {
 
 // --- Error classification ---
 
+/**
+ * 分类 HTTP 错误并返回结构化错误信息
+ * @param {number} status - HTTP 状态码
+ * @param {string} originalMessage - 原始错误消息
+ * @returns {{code: string, zh_message: string, http_status: number, detail: string}} 分类后的错误信息
+ */
 function classifyError(status, originalMessage) {
   const map = {
-    400: { code: 'bad_request',        zh: '请求参数无效' },
-    401: { code: 'invalid_api_key',    zh: 'API Key 无效或已过期，请检查后重试' },
+    400: { code: 'bad_request',         zh: '请求参数无效' },
+    401: { code: 'invalid_api_key',     zh: 'API Key 无效或已过期，请检查后重试' },
     402: { code: 'insufficient_balance',zh: '账户余额不足，请充值后重试' },
     403: { code: 'model_not_authorized',zh: '无权访问该模型，请更换模型或检查权限' },
     404: { code: 'endpoint_not_found',  zh: 'API 端点不存在' },
-    429: { code: 'rate_limited',       zh: '请求频率过高，请稍后重试' },
-    500: { code: 'provider_error',     zh: '服务商内部错误，正在重试' },
+    405: { code: 'method_not_allowed',  zh: '请求方法不被允许' },
+    408: { code: 'request_timeout',     zh: '请求超时，请稍后重试' },
+    410: { code: 'resource_gone',       zh: '资源已下线' },
+    413: { code: 'payload_too_large',   zh: '请求体过大，请减小内容后重试' },
+    415: { code: 'unsupported_media',   zh: '不支持的媒体类型' },
+    422: { code: 'unprocessable_entity',zh: '请求参数格式错误' },
+    429: { code: 'rate_limited',        zh: '请求频率过高，请稍后重试' },
+    500: { code: 'provider_error',      zh: '服务商内部错误，正在重试' },
     502: { code: 'provider_unavailable',zh: '服务商网关不可用，正在切换备用模型' },
     503: { code: 'provider_overloaded', zh: '服务商过载，正在重试' },
+    504: { code: 'gateway_timeout',     zh: '网关超时，正在重试' },
   };
   const entry = map[status];
   return {
     code: entry?.code || 'unknown_error',
     zh_message: entry?.zh || '未知错误',
     http_status: status,
-    detail: (originalMessage || '').substring(0, 500)
+    detail: (originalMessage || '').substring(0, ERROR_DETAIL_MAX_LENGTH)
   };
 }
 
@@ -85,6 +116,11 @@ function resetToolBuffers() {
 
 // --- Request: Anthropic tools → OpenAI functions ---
 
+/**
+ * 将 Anthropic 工具定义转换为 OpenAI 函数调用格式
+ * @param {Array} anthropicTools - Anthropic 格式的工具数组
+ * @returns {Array|undefined} OpenAI 格式的函数定义数组
+ */
 function translateTools(anthropicTools) {
   if (!anthropicTools || !Array.isArray(anthropicTools) || anthropicTools.length === 0) return undefined;
   return anthropicTools.map(t => ({
@@ -327,6 +363,12 @@ function translateStreamChunk(orChunk) {
 
 // --- Request entry point ---
 
+/**
+ * 将 Anthropic Messages API 请求体转换为 OpenRouter Chat Completions 格式
+ * @param {object} anthropicBody - Anthropic 格式的请求体
+ * @param {string} model - 目标模型名称
+ * @returns {object} OpenRouter 格式的请求体
+ */
 function translateToOpenRouter(anthropicBody, model) {
   const messages = translateMessages(anthropicBody);
   const tools = translateTools(anthropicBody.tools);
@@ -335,13 +377,18 @@ function translateToOpenRouter(anthropicBody, model) {
   const body = {
     model: modelName,
     messages,
-    max_tokens: anthropicBody.max_tokens || 4096,
-    temperature: anthropicBody.temperature ?? 0.7,
+    max_tokens: anthropicBody.max_tokens || DEFAULT_MAX_TOKENS,
+    temperature: anthropicBody.temperature ?? DEFAULT_TEMPERATURE,
     stream: anthropicBody.stream || false
   };
 
+  // 透传可选参数
   if (tools) body.tools = tools;
   if (anthropicBody.tool_choice) body.tool_choice = anthropicBody.tool_choice;
+  if (anthropicBody.top_p !== undefined) body.top_p = anthropicBody.top_p;
+  if (anthropicBody.top_k !== undefined) body.top_k = anthropicBody.top_k;
+  if (anthropicBody.stop_sequences) body.stop = anthropicBody.stop_sequences;
+  if (anthropicBody.metadata) body.metadata = anthropicBody.metadata;
 
   return body;
 }

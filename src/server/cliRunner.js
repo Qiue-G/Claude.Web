@@ -16,6 +16,27 @@ let globalProcessCount = 0;
 const PROCESS_TIMEOUT = parseInt(process.env.PROCESS_TIMEOUT || '300000'); // 5 分钟
 const modelStats = createModelStats();
 
+/**
+ * 获取进程槽位（资源限制）
+ * @returns {{ releaseProcessSlot: () => void }} 释放函数
+ * @throws {Error} 当达到全局进程限制时
+ */
+function acquireProcessSlot() {
+  if (globalProcessCount >= GLOBAL_PROCESS_LIMIT) {
+    throw new Error('Server busy. Global process limit (' + GLOBAL_PROCESS_LIMIT + ') reached. Try again later.');
+  }
+  globalProcessCount++;
+  let processCountActive = true;
+  
+  const releaseProcessSlot = () => {
+    if (!processCountActive) return;
+    processCountActive = false;
+    globalProcessCount--;
+  };
+  
+  return { releaseProcessSlot };
+}
+
 function stripAnsi(str) {
   str = str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
   str = str.replace(/\x1b\][^\x07]*\x07/g, '');
@@ -73,16 +94,26 @@ function getFallbackModel(provider, agentConfig) {
 async function startProxy(session, agentConfig, sessionClients, sessionProxies) {
   const DEFAULTS = agentConfig.defaults || {};
   const PROVIDERS = agentConfig.providers || {};
-  const proxyPath = join(FREE_CODE_DIR, 'or_proxy.mjs');
+  
+  // 根据 provider 选择代理脚本
+  let proxyPath;
+  if (session.provider === 'openai') {
+    proxyPath = join(FREE_CODE_DIR, 'openai_proxy.mjs');
+  } else {
+    proxyPath = join(FREE_CODE_DIR, 'or_proxy.mjs');
+  }
+  
   const model = session.provider === 'openrouter'
     ? resolveOpenRouterModel(session.model || DEFAULTS.model, agentConfig)
     : (session.model || DEFAULTS.model || 'deepseek-chat');
   const fallback = getFallbackModel(session.provider, agentConfig);
-  logger.info('Starting proxy', { model, fallback });
+  logger.info('Starting proxy', { provider: session.provider, model, fallback });
 
   const proxyArgs = [proxyPath, '--model', model];
   if (session.provider === 'deepseek') {
     proxyArgs.push('--base-url', 'https://api.deepseek.com/v1');
+  } else if (session.provider === 'openai') {
+    proxyArgs.push('--base-url', 'https://api.openai.com/v1');
   }
   if (fallback && fallback !== model) {
     proxyArgs.push('--fallback-model', fallback);
@@ -142,17 +173,7 @@ async function startProxy(session, agentConfig, sessionClients, sessionProxies) 
 }
 
 async function spawnCli(session, prompt, agentConfig, sessionClients, sessionProxies) {
-  // 全局进程限制
-  if (globalProcessCount >= GLOBAL_PROCESS_LIMIT) {
-    throw new Error('Server busy. Global process limit (' + GLOBAL_PROCESS_LIMIT + ') reached. Try again later.');
-  }
-  globalProcessCount++;
-  let processCountActive = true;
-  const releaseProcessSlot = () => {
-    if (!processCountActive) return;
-    processCountActive = false;
-    globalProcessCount--;
-  };
+  const { releaseProcessSlot } = acquireProcessSlot();
 
   try {
     const cliPath = join(FREE_CODE_DIR, 'cli-dev');
@@ -226,21 +247,12 @@ async function callModelWithTools(session, prompt, tools, agentConfig, sessionCl
  * 发送完整消息历史，包含 tool_use / tool_result 内容块
  */
 async function callModelWithMessages(session, systemPrompt, messages, tools, agentConfig, sessionClients, sessionProxies) {
-  if (globalProcessCount >= GLOBAL_PROCESS_LIMIT) {
-    throw new Error('Server busy. Global process limit (' + GLOBAL_PROCESS_LIMIT + ') reached. Try again later.');
-  }
-  globalProcessCount++;
-  let processCountActive = true;
-  const releaseProcessSlot = () => {
-    if (!processCountActive) return;
-    processCountActive = false;
-    globalProcessCount--;
-  };
+  const { releaseProcessSlot } = acquireProcessSlot();
 
   try {
     let baseUrl = process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
 
-    if (session.provider === 'openrouter' || session.provider === 'deepseek') {
+    if (session.provider === 'openrouter' || session.provider === 'deepseek' || session.provider === 'openai') {
       const { process: proxy, port } = await startProxy(session, agentConfig, sessionClients, sessionProxies);
       sessionProxies.set(session.id, proxy);
       baseUrl = 'http://127.0.0.1:' + port;
@@ -280,12 +292,32 @@ async function callModelWithMessages(session, systemPrompt, messages, tools, age
       'Authorization': `Bearer ${session.apiKey || ''}`
     };
 
-    const response = await fetch(`${baseUrl}/v1/messages`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(PROCESS_TIMEOUT)
-    });
+    // 重试逻辑，支持 tool_choice 降级
+    let response;
+    let retryCount = 0;
+    const maxRetries = 2;
+
+    while (retryCount <= maxRetries) {
+      response = await fetch(`${baseUrl}/v1/messages`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(PROCESS_TIMEOUT)
+      });
+
+      // 如果是 400 错误且包含 tool_choice 相关错误，降级到 'auto'
+      if (response.status === 400 && retryCount < maxRetries) {
+        const errorText = await response.text();
+        if (errorText.includes('tool_choice') || errorText.includes('required')) {
+          logger.warn('tool_choice required failed, falling back to auto');
+          body.tool_choice = 'auto';
+          retryCount++;
+          continue;
+        }
+      }
+
+      break; // 成功或非 tool_choice 错误，退出重试
+    }
 
     return { response, releaseProcessSlot };
   } catch (e) {
