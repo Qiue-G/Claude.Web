@@ -424,15 +424,28 @@ export async function runToolLoop({
     const validToolBlocks = roundToolBlocks.filter(tb => tb.input && typeof tb.input === 'object' && Object.keys(tb.input).length > 0);
     if (validToolBlocks.length > 0) {
       for (const tb of validToolBlocks) {
-        broadcastToSession(sessionId, { type: 'output', data: `\n[使用工具: ${tb.name}]\n` });
+        // 发送 tool_use 事件（前端可单独渲染，不混入文本流）
+        broadcastToSession(sessionId, {
+          type: 'tool_use',
+          toolName: tb.name,
+          toolInput: tb.input
+        });
 
         let toolResult;
         try {
           toolResult = await executeToolUseBlockFn(tb, session, null);
-          broadcastToSession(sessionId, { type: 'output', data: `\n[${tb.name}] ${toolResult}\n` });
+          broadcastToSession(sessionId, {
+            type: 'tool_result',
+            toolName: tb.name,
+            result: String(toolResult)
+          });
         } catch (err) {
           toolResult = `Error: ${err.message}`;
-          broadcastToSession(sessionId, { type: 'output', data: `\n[${tb.name} 失败] ${err.message}\n` });
+          broadcastToSession(sessionId, {
+            type: 'tool_error',
+            toolName: tb.name,
+            error: err.message
+          });
         }
 
         toolUseMessages.push({

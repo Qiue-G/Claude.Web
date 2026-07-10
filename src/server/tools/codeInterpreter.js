@@ -186,7 +186,7 @@ function executeWithLimits(code, cwd) {
 
     if (process.platform === 'linux') {
       cmd = '/bin/sh';
-      args = ['-c', `ulimit -v 262144 -u 50 -f 10240; exec ${PYTHON_CMD} "${tmpFile}"`];
+      args = ['-c', `ulimit -v 262144; ulimit -u 50; ulimit -f 10240; exec ${PYTHON_CMD} "${tmpFile}"`];
     } else {
       // Windows: 不设置 ulimit，仅使用超时 + 临时目录隔离
       cmd = PYTHON_CMD;

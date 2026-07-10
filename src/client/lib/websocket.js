@@ -355,6 +355,22 @@ function handleServerMessage(msg) {
       }
       appendToLastAssistant(stripAnsi(msg.data || ''));
       break;
+    case 'tool_use':
+      {
+        const msgs = get(messages);
+        const last = msgs[msgs.length - 1];
+        if (!last || last.role !== 'assistant') {
+          addMessage('assistant', '');
+        }
+        appendToLastAssistant(`\n[使用工具: ${msg.toolName}]\n`);
+      }
+      break;
+    case 'tool_result':
+      appendToLastAssistant(`\n[${msg.toolName}] ${stripAnsi(msg.result || '')}\n`);
+      break;
+    case 'tool_error':
+      appendToLastAssistant(`\n[${msg.toolName} 失败] ${msg.error}\n`);
+      break;
     case 'stderr':
       appendToLastAssistant(stripAnsi('[stderr] ' + (msg.data || '')));
       break;
