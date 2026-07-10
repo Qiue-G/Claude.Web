@@ -328,11 +328,15 @@ export async function runToolLoop({
           setTimeout(check, 100);
         })
       ]);
+      
+      // 检查超时标志
       if (raceResult?.timeout) {
         console.error(`[wsHandler] Breaking stream due to timeout for session ${sessionId}`);
         break;
       }
-      const { done, value } = await reader.read();
+      
+      // 使用 race 的结果，不要再次调用 reader.read()
+      const { done, value } = raceResult;
       if (done) break;
       resetStreamTimeout();
 
