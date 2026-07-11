@@ -67,11 +67,11 @@ function makeMockDeps(overrides = {}) {
       kill: () => {}
     }),
     callModelWithTools: async () => ({
-      response: { body: makeMockReadableStream() },
+      response: { ok: true, body: makeMockReadableStream() },
       releaseProcessSlot: () => {}
     }),
     callModelWithMessages: async () => ({
-      response: { body: makeMockReadableStream() },
+      response: { ok: true, body: makeMockReadableStream() },
       releaseProcessSlot: () => {}
     }),
     maskSensitive: (s) => s,
