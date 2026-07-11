@@ -169,10 +169,10 @@ test('PROCESS_TIMEOUT is a positive integer', () => {
 // tool_choice 降级逻辑
 // ====================================================================
 
-test('callModelWithTools 降级 tool_choice required 到 auto', async () => {
+test('callModelWithTools 非 Anthropic 模型使用 auto tool_choice', async () => {
   const { callModelWithTools } = await import('../src/server/cliRunner.js');
 
-  // 模拟 session - 使用自定义 provider 避免启动代理进程，同时触发 tool_choice 逻辑
+  // 模拟 session - 使用自定义 provider 避免启动代理进程
   const session = {
     id: 'test-session',
     currentModel: 'test-model',
@@ -181,28 +181,17 @@ test('callModelWithTools 降级 tool_choice required 到 auto', async () => {
     apiKey: 'test-key'
   };
 
-  // 模拟 sessionProxies
   const sessionProxies = new Map();
   const sessionClients = new Map();
 
-  // 模拟 fetch 返回 400 错误（tool_choice 不支持）
   let fetchCallCount = 0;
   const originalFetch = global.fetch;
   global.fetch = async (url, options) => {
     fetchCallCount++;
     const body = JSON.parse(options.body);
 
-    // 第一次调用返回 400 错误
-    if (fetchCallCount === 1) {
-      assert.equal(body.tool_choice, 'required', '第一次应该使用 required');
-      return {
-        status: 400,
-        text: async () => 'Error: tool_choice required is not supported'
-      };
-    }
-
-    // 第二次调用应该降级到 auto
-    assert.equal(body.tool_choice, 'auto', '第二次应该降级到 auto');
+    // 非 Anthropic 模型应直接使用 auto
+    assert.equal(body.tool_choice, 'auto', '非 Anthropic 模型应使用 auto');
     return {
       status: 200,
       ok: true,
@@ -224,8 +213,8 @@ test('callModelWithTools 降级 tool_choice required 到 auto', async () => {
       session, prompt, tools, agentConfig, sessionClients, sessionProxies
     );
 
-    assert.equal(fetchCallCount, 2, '应该重试一次');
-    assert.equal(response.status, 200, '第二次应该成功');
+    assert.equal(fetchCallCount, 1, '应该只调用一次');
+    assert.equal(response.status, 200, '应该成功');
 
     releaseProcessSlot();
   } finally {
