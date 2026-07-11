@@ -290,6 +290,19 @@ export async function runToolLoop({
       : toolUseMessages;
     const { response, releaseProcessSlot } = await callModelWithMessages(session, systemPrompt, messagesForModel, toolsForModel);
 
+    // 检查 HTTP 响应状态，避免静默失败
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error');
+      releaseProcessSlot();
+      sessionProcesses.delete(sessionId);
+      wsProcCount.set(sessionId, Math.max(0, (wsProcCount.get(sessionId) || 0) - 1));
+      const proxy = sessionProxies.get(sessionId);
+      if (proxy) { try { proxy.kill(); } catch (_) {} sessionProxies.delete(sessionId); }
+      console.error(`[MODEL API] HTTP ${response.status}: ${errorText.substring(0, 200)}`);
+      broadcastToSession(sessionId, { type: 'error', message: `Model API error: HTTP ${response.status}. ${errorText.substring(0, 200)}` });
+      return { incremented: false, assistantBuffer: '' };
+    }
+
     const requestId = ++processSeqIdRef.value;
     sessionProcesses.set(sessionId, { _procSeq: requestId });
 

@@ -229,7 +229,13 @@ export function createWsHandler(deps) {
               return;
             }
 
-            wsProcCount.set(sessionId, (wsProcCount.get(sessionId) || 0) + 1);
+            // 先检查并发限制，再递增计数
+            const currentCount = wsProcCount.get(sessionId) || 0;
+            if (currentCount >= 2) {
+              ws.send(JSON.stringify({ type: 'error', message: 'Already processing. Wait for completion.' }));
+              return;
+            }
+            wsProcCount.set(sessionId, currentCount + 1);
             isInputMessage = true;
 
             await handleInputMessage(ws, message, sessionId, session, {
@@ -243,6 +249,7 @@ export function createWsHandler(deps) {
             });
           } catch (inputErr) {
             console.error('[INPUT] Error:', inputErr);
+            wsProcCount.set(sessionId, Math.max(0, (wsProcCount.get(sessionId) || 0) - 1));
             if (ws.readyState === ws.OPEN) {
               ws.send(JSON.stringify({ type: 'error', message: inputErr.message || 'Input processing failed' }));
             }
