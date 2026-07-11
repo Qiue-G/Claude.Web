@@ -1,13 +1,13 @@
 <script>
   import { sessions, currentSessionId, createSession, switchSession, deleteSession, updateSessionTitle } from '$stores/chatHistory.store.js';
   import Icon from '$components/common/Icon.svelte';
-  import { createEventDispatcher } from 'svelte';
   import { t } from '$lib/i18n.js';
   import { searchChats } from '$apis/search.api.js';
   import { isAuthenticated } from '$stores/auth.store.js';
   import ShareModal from './ShareModal.svelte';
 
-  const dispatch = createEventDispatcher();
+  export let onnewchat = null;
+  export let onselect = null;
 
   let editingId = null;
   let editTitle = '';
@@ -87,13 +87,13 @@
 
   function handleNewChat() {
     const session = createSession();
-    dispatch('newchat', session);
+    onnewchat?.(session);
     searchQuery = '';
   }
 
   function handleSelectSession(session) {
     switchSession(session.id);
-    dispatch('select', session);
+    onselect?.(session);
     searchQuery = '';
   }
 
@@ -154,7 +154,7 @@
 
 <div class="chat-sidebar">
   <div class="sidebar-header">
-    <button class="new-chat-btn" on:click={handleNewChat}>
+    <button class="new-chat-btn" onclick={handleNewChat}>
       <Icon name="edit" size="md" />
       <span>{$t('chat.new')}</span>
     </button>
@@ -162,9 +162,9 @@
 
   <div class="search-box">
     <Icon name="search" size="sm" />
-    <input type="text" class="search-input" id="sidebar-search" name="sidebar-search" placeholder={$t('common.search') + '...'} bind:value={searchQuery} on:input={handleSearchInput} />
+    <input type="text" class="search-input" id="sidebar-search" name="sidebar-search" placeholder={$t('common.search') + '...'} bind:value={searchQuery} oninput={handleSearchInput} />
     {#if searchQuery}
-      <button class="search-clear" on:click={() => searchQuery = ''}><Icon name="close" size="sm" /></button>
+      <button class="search-clear" onclick={() => searchQuery = ''}><Icon name="close" size="sm" /></button>
     {/if}
   </div>
 
@@ -184,8 +184,8 @@
       <div 
         class="session-item" 
         class:active={$currentSessionId === session.id}
-        on:click={() => handleSelectSession(session)}
-        on:keydown={(e) => e.key === 'Enter' && handleSelectSession(session)}
+        onclick={() => handleSelectSession(session)}
+        onkeydown={(e) => e.key === 'Enter' && handleSelectSession(session)}
         role="button"
         tabindex="0"
       >
@@ -197,8 +197,8 @@
             id="session-rename-input"
             name="session-rename"
             bind:value={editTitle}
-            on:blur={saveEdit}
-            on:keydown={(e) => {
+            onblur={saveEdit}
+            onkeydown={(e) => {
               if (e.key === 'Enter') saveEdit();
               if (e.key === 'Escape') cancelEdit();
             }}
@@ -219,7 +219,7 @@
             {#if $isAuthenticated}
               <button
                 class="action-btn"
-                on:click={(e) => handleShare(e, session)}
+                onclick={(e) => handleShare(e, session)}
                 title="分享"
               >
                 <Icon name="share" size="sm" />
@@ -227,14 +227,14 @@
             {/if}
             <button
               class="action-btn"
-              on:click={(e) => { e.stopPropagation(); startEditing(session); }}
+              onclick={(e) => { e.stopPropagation(); startEditing(session); }}
               title={$t('files.rename')}
             >
               <Icon name="edit" size="sm" />
             </button>
             <button
               class="action-btn danger"
-              on:click={(e) => handleDeleteSession(e, session)}
+              onclick={(e) => handleDeleteSession(e, session)}
               title={$t('files.delete')}
             >
               <Icon name="trash" size="sm" />
@@ -256,7 +256,7 @@
 <ShareModal
   bind:open={showShareModal}
   sessionId={shareSessionId}
-  on:close={handleShareModalClose}
+  onclose={handleShareModalClose}
 />
 
 <style>

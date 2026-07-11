@@ -1,32 +1,33 @@
 <script>
   import FileItem from './FileItem.svelte';
   import { fileTree, currentFile } from '$stores/files.store.js';
-  import { createEventDispatcher } from 'svelte';
   import { t } from '$lib/i18n.js';
   import { get } from 'svelte/store';
 
   export let sessionId = '';
   export let token = '';
 
-  const dispatch = createEventDispatcher();
+  export let onfileSelect = null;
+  export let onfileDelete = null;
+  export let onfileRename = null;
+  export let onfileUpload = null;
 
   let dragOver = false;
   let dragEnterCount = 0;
   let searchQuery = '';
 
-  function handleSelect(e) {
-    const item = e.detail;
+  function handleSelect(item) {
     if (item.type === 'file') {
-      dispatch('fileSelect', item);
+      onfileSelect?.(item);
     }
   }
 
-  function handleDelete(e) {
-    dispatch('fileDelete', e.detail);
+  function handleDelete(item) {
+    onfileDelete?.(item);
   }
 
-  function handleRename(e) {
-    dispatch('fileRename', e.detail);
+  function handleRename(detail) {
+    onfileRename?.(detail);
   }
 
   function handleDragEnter(e) {
@@ -64,16 +65,16 @@
     for (let i = 0; i < files.length; i++) {
       fileList.push(files[i]);
     }
-    dispatch('fileUpload', fileList);
+    onfileUpload?.(fileList);
   }
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="file-tree-panel"
-  on:dragenter={handleDragEnter}
-  on:dragleave={handleDragLeave}
-  on:dragover={handleDragOver}
-  on:drop={handleDrop}
+  ondragenter={handleDragEnter}
+  ondragleave={handleDragLeave}
+  ondragover={handleDragOver}
+  ondrop={handleDrop}
 >
   <div class="panel-header">
     {$t('files.title')}
@@ -86,7 +87,7 @@
       bind:value={searchQuery}
     />
     {#if searchQuery}
-      <button class="search-clear" on:click={() => searchQuery = ''}>×</button>
+      <button class="search-clear" onclick={() => searchQuery = ''}>×</button>
     {/if}
   </div>
   <div class="file-tree" class:drag-over={dragOver}>
@@ -103,9 +104,9 @@
           {token}
           isActive={$currentFile === item.path}
           searchQuery={searchQuery.toLowerCase().trim()}
-          on:select={handleSelect}
-          on:delete={handleDelete}
-          on:rename={handleRename}
+          onselect={handleSelect}
+          ondelete={handleDelete}
+          onrename={handleRename}
         />
       {/each}
     {/if}

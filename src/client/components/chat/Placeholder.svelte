@@ -1,17 +1,15 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
-
   export let title = '';
   export let subtitle = '';
   export let icon = '\u2699';
   export let suggestions = [];
 
-  const dispatch = createEventDispatcher();
+  export let onsuggestion = null;
 
   function handleSuggestionClick(e) {
     const text = e.currentTarget.dataset.text;
     if (!text) return;
-    dispatch('suggestion', text);
+    onsuggestion?.(text);
   }
 </script>
 

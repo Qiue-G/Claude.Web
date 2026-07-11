@@ -1,22 +1,26 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
   import Icon from '$components/common/Icon.svelte';
   import { savedModels, activeModelId } from '$stores/models.store.js';
   import { isConnected } from '$stores/session.store.js';
   import { t } from '$lib/i18n.js';
 
-  const dispatch = createEventDispatcher();
+  /** @type {Function} */
+  export let onswitch = undefined;
+  /** @type {Function} */
+  export let ondelete = undefined;
+  /** @type {Function} */
+  export let onedit = undefined;
 
   function handleSwitch(model) {
-    dispatch('switch', model);
+    onswitch?.(model);
   }
 
   function handleDelete(model) {
-    dispatch('delete', model);
+    ondelete?.(model);
   }
 
   function handleEdit(model) {
-    dispatch('edit', model);
+    onedit?.(model);
   }
 </script>
 
@@ -41,7 +45,7 @@
 
         <button
           class="action-btn"
-          on:click={() => handleEdit(model)}
+          onclick={() => handleEdit(model)}
           title={$t('model.edit')}
         >
           <Icon name="edit" size="sm" />
@@ -50,7 +54,7 @@
         {#if model.id !== $activeModelId}
           <button
             class="action-btn primary"
-            on:click={() => handleSwitch(model)}
+            onclick={() => handleSwitch(model)}
             title={$t('model.switch')}
           >
             <Icon name="check" size="sm" />
@@ -59,7 +63,7 @@
 
         <button
           class="action-btn danger"
-          on:click={() => handleDelete(model)}
+          onclick={() => handleDelete(model)}
           title={$t('model.delete')}
         >
           <Icon name="trash" size="sm" />

@@ -1,5 +1,5 @@
 <script>
-  import { createEventDispatcher, afterUpdate } from 'svelte';
+  import { afterUpdate } from 'svelte';
   import { get } from 'svelte/store';
   import { sessionToken } from '$stores/session.store.js';
   import { scrollToLine } from '$stores/files.store.js';
@@ -14,8 +14,8 @@
   export let total = 1;
   export let onprev = null;
   export let onnext = null;
-
-  const dispatch = createEventDispatcher();
+  export let onreverted = null;
+  export let onopen = null;
 
   let reverting = false;
   let reverted = false;
@@ -63,7 +63,7 @@
       });
       if (!res.ok) throw new Error(`Rollback failed: ${res.statusText}`);
       reverted = true;
-      dispatch('reverted', { filePath: diff.filePath });
+      onreverted?.({ filePath: diff.filePath });
     } catch (e) {
       revertError = e.message;
     } finally {
@@ -72,13 +72,13 @@
   }
 
   function handleOpen() {
-    dispatch('open', { filePath: diff.filePath });
+    onopen?.({ filePath: diff.filePath });
   }
 
   function jumpToFile(line) {
     if (line) {
       scrollToLine.set({ filePath: diff.filePath, line });
-      dispatch('open', { filePath: diff.filePath });
+      onopen?.({ filePath: diff.filePath });
     } else {
       handleOpen();
     }

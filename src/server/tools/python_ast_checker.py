@@ -47,9 +47,9 @@ SAFE_IMPORTS = {
     'numbers',
 }
 
-# 禁止的函数调用
+# 禁止的函数调用（open 不在此列，由沙箱层控制文件访问范围）
 DANGEROUS_FUNCTIONS = {
-    'open', 'exec', 'eval', 'compile', 'input',
+    'exec', 'eval', 'compile', 'input',
     '__import__', 'globals', 'locals', 'vars',
     'breakpoint', 'exit', 'quit',
     # 反射函数（可动态访问危险属性和模块）
@@ -114,14 +114,6 @@ class SecurityAnalyzer(ast.NodeVisitor):
     def visit_Attribute(self, node):
         if node.attr in DANGEROUS_ATTRIBUTES:
             self._violation(node, f"禁止访问危险属性: .{node.attr}", 'high')
-        self.generic_visit(node)
-
-    def visit_With(self, node):
-        for item in node.items:
-            ctx = item.context_expr
-            if isinstance(ctx, ast.Call) and isinstance(ctx.func, ast.Name):
-                if ctx.func.id == 'open':
-                    self._violation(node, "禁止使用 open() 进行文件操作", 'high')
         self.generic_visit(node)
 
     def visit_Assign(self, node):

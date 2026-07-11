@@ -62,7 +62,7 @@
 
 {#if $isCommandPaletteOpen}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="command-palette-backdrop" on:click={handleBackdropClick} on:keydown={handleKeydown}>
+  <div class="command-palette-backdrop" onclick={handleBackdropClick} onkeydown={handleKeydown}>
     <div class="command-palette">
       <div class="search-container">
         <Icon name="search" size="md" />
@@ -72,7 +72,7 @@
           bind:this={inputElement}
           bind:value={searchQuery}
           placeholder={$t('command.search')}
-          on:keydown={handleKeydown}
+          onkeydown={handleKeydown}
         />
       </div>
 
@@ -81,7 +81,7 @@
           <button
             class="command-item"
             class:selected={index === selectedIndex}
-            on:click={() => handleCommandClick(command)}
+            onclick={() => handleCommandClick(command)}
           >
             <div class="command-info">
               <div class="command-name">{$t(command.nameKey) || command.name}</div>

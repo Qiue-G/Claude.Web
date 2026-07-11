@@ -1,18 +1,20 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
   import Icon from '$components/common/Icon.svelte';
   import { openTabs, activeTab } from '$stores/files.store.js';
 
-  const dispatch = createEventDispatcher();
+  /** @type {Function} */
+  export let ontabSelect = undefined;
+  /** @type {Function} */
+  export let ontabClose = undefined;
 
   function selectTab(path) {
     activeTab.set(path);
-    dispatch('tabSelect', path);
+    ontabSelect?.(path);
   }
 
   function closeTab(e, path) {
     e.stopPropagation();
-    dispatch('tabClose', path);
+    ontabClose?.(path);
   }
 
   function handleTabKeydown(e, path) {
@@ -22,7 +24,7 @@
     }
     if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
-      dispatch('tabClose', path);
+      ontabClose?.(path);
     }
   }
 </script>
@@ -34,11 +36,11 @@
       role="tab"
       tabindex="0"
       class:active={$activeTab === path}
-      on:click={() => selectTab(path)}
-      on:keydown={(e) => handleTabKeydown(e, path)}
+      onclick={() => selectTab(path)}
+      onkeydown={(e) => handleTabKeydown(e, path)}
     >
       <span class="tab-name">{path.split('/').pop()}</span>
-      <button class="tab-close" on:click={(e) => closeTab(e, path)}>
+      <button class="tab-close" onclick={(e) => closeTab(e, path)}>
         <Icon name="close" size="sm" />
       </button>
     </div>

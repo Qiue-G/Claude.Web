@@ -5,7 +5,27 @@
  * 如果编译的工具不可用，回退到原生实现
  */
 
+import path from 'path';
 import { withCompiledFallback } from './bridgeUtils.js';
+
+/**
+ * 安全路径解析：将 filePath 解析为 cwd 下的绝对路径，并检查是否在 cwd 内
+ * 防止模型传入绝对路径（如 /Users/...）导致路径逃逸
+ */
+function resolveSafePath(filePath, cwd) {
+  // 将绝对路径转为相对路径：去掉前导 /
+  let safeFilePath = filePath;
+  if (path.isAbsolute(filePath)) {
+    safeFilePath = filePath.replace(/^\/+/, '');
+  }
+  const fullPath = path.resolve(cwd, safeFilePath);
+  const resolvedCwd = path.resolve(cwd);
+  const relativePath = path.relative(resolvedCwd, fullPath);
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    throw new Error(`路径越界: ${filePath} 不在工作目录内`);
+  }
+  return fullPath;
+}
 
 // ===== Glob：文件搜索 =====
 
@@ -17,7 +37,6 @@ export const globSearch = withCompiledFallback(
   async (pattern, dir, cwd) => {
     // 原生回退：使用 node-glob
     const fs = await import('fs/promises');
-    const path = await import('path');
     const { glob } = await import('glob');
 
     const searchDir = dir || cwd;
@@ -50,7 +69,6 @@ export const grepSearch = withCompiledFallback(
   async (pattern, dir, cwd, globFilter, outputMode) => {
     // 原生回退：使用 Node.js readFile + RegExp
     const fs = await import('fs/promises');
-    const path = await import('path');
     const { glob } = await import('glob');
 
     const searchDir = dir || cwd;
@@ -96,10 +114,8 @@ export const grepSearch = withCompiledFallback(
 export const bridgeWriteFile = withCompiledFallback(
   (fc) => fc.writeFileTool,
   async (filePath, content, cwd) => {
-    // 原生回退
     const fs = await import('fs/promises');
-    const path = await import('path');
-    const fullPath = path.resolve(cwd, filePath);
+    const fullPath = resolveSafePath(filePath, cwd);
     await fs.mkdir(path.dirname(fullPath), { recursive: true });
     await fs.writeFile(fullPath, content, 'utf-8');
     return `文件已写入: ${filePath} (${content.length} 字符)`;
@@ -113,10 +129,8 @@ export const bridgeWriteFile = withCompiledFallback(
 export const bridgeReadFile = withCompiledFallback(
   (fc) => fc.readFileTool,
   async (filePath, cwd) => {
-    // 原生回退
     const fs = await import('fs/promises');
-    const path = await import('path');
-    const fullPath = path.resolve(cwd, filePath);
+    const fullPath = resolveSafePath(filePath, cwd);
     const content = await fs.readFile(fullPath, 'utf-8');
     const stat = await fs.stat(fullPath);
     const size = stat.size > 1024 ? `${(stat.size / 1024).toFixed(1)} KB` : `${stat.size} B`;
@@ -131,10 +145,8 @@ export const bridgeReadFile = withCompiledFallback(
 export const bridgeEditFile = withCompiledFallback(
   (fc) => fc.editFileTool,
   async (filePath, oldString, newString, cwd) => {
-    // 原生回退
     const fs = await import('fs/promises');
-    const path = await import('path');
-    const fullPath = path.resolve(cwd, filePath);
+    const fullPath = resolveSafePath(filePath, cwd);
     let content = await fs.readFile(fullPath, 'utf-8');
     if (!content.includes(oldString)) {
       throw new Error(`未找到匹配的原文`);
@@ -155,10 +167,8 @@ export const bridgeEditFile = withCompiledFallback(
 export const bridgeDeleteFile = withCompiledFallback(
   (fc) => fc.deleteFileTool,
   async (filePath, cwd) => {
-    // 原生回退
     const fs = await import('fs/promises');
-    const path = await import('path');
-    const fullPath = path.resolve(cwd, filePath);
+    const fullPath = resolveSafePath(filePath, cwd);
     await fs.unlink(fullPath);
     return `文件已删除: ${filePath}`;
   },
@@ -171,11 +181,9 @@ export const bridgeDeleteFile = withCompiledFallback(
 export const bridgeRenameFile = withCompiledFallback(
   (fc) => fc.renameFileTool,
   async (oldPath, newPath, cwd) => {
-    // 原生回退
     const fs = await import('fs/promises');
-    const path = await import('path');
-    const oldFullPath = path.resolve(cwd, oldPath);
-    const newFullPath = path.resolve(cwd, newPath);
+    const oldFullPath = resolveSafePath(oldPath, cwd);
+    const newFullPath = resolveSafePath(newPath, cwd);
     await fs.mkdir(path.dirname(newFullPath), { recursive: true });
     await fs.rename(oldFullPath, newFullPath);
     return `文件已重命名: ${oldPath} → ${newPath}`;
@@ -189,10 +197,8 @@ export const bridgeRenameFile = withCompiledFallback(
 export const bridgeListFiles = withCompiledFallback(
   (fc) => fc.listFilesTool,
   async (dir, cwd) => {
-    // 原生回退
     const fs = await import('fs/promises');
-    const path = await import('path');
-    const fullPath = path.resolve(cwd, dir || '.');
+    const fullPath = resolveSafePath(dir || '.', cwd);
     const entries = await fs.readdir(fullPath, { withFileTypes: true });
     return entries.map(e => `${e.isDirectory() ? '📁' : '📄'} ${e.name}`).join('\n');
   },

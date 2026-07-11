@@ -1,5 +1,4 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
   import { get } from 'svelte/store';
   import { sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
   import { getFileVersions, getVersionContent, rollbackFile } from '$apis/files.api.js';
@@ -8,7 +7,7 @@
 
   $: _t = $t;
 
-  const dispatch = createEventDispatcher();
+  export let onrollback = null;
 
   export let filePath = '';
 
@@ -75,7 +74,7 @@
       const csrf = get(csrfToken);
       await rollbackFile(sid, versionId, filePath, tok, csrf);
       showToast('已回滚到版本 ' + versionId.substring(0, 8) + '...', 'success');
-      dispatch('rollback', { versionId });
+      onrollback?.({ versionId });
       // Reload versions
       await loadVersions();
     } catch (e) {

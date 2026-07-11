@@ -23,10 +23,10 @@
 
 <span
   class="tooltip-wrapper {className}"
-  on:mouseenter={showTooltip}
-  on:mouseleave={hideTooltip}
-  on:focusin={showTooltip}
-  on:focusout={hideTooltip}
+  onmouseenter={showTooltip}
+  onmouseleave={hideTooltip}
+  onfocusin={showTooltip}
+  onfocusout={hideTooltip}
   role="presentation"
 >
   <slot />

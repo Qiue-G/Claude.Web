@@ -212,8 +212,8 @@
   bind:open={versionHistoryOpen}
   {sessionId}
   messageId={messageId}
-  on:close={() => { versionHistoryOpen = false; }}
-  on:restored={(e) => { versionHistoryOpen = false; }}
+  onclose={() => { versionHistoryOpen = false; }}
+  onrestored={() => { versionHistoryOpen = false; }}
 />
 
 <style>

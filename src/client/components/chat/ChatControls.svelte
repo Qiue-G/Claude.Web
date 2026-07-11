@@ -1,5 +1,5 @@
 <script>
-  import { createEventDispatcher, onMount } from 'svelte';
+  import { onMount } from 'svelte';
   import Icon from '$components/common/Icon.svelte';
   import { t } from '$lib/i18n.js';
   import { fetchTools } from '$apis/tools.api.js';
@@ -8,8 +8,8 @@
 
   /** @type {boolean} */
   export let open = false;
-
-  const dispatch = createEventDispatcher();
+  /** @type {Function} */
+  export let onclose = undefined;
 
   const fallbackTools = [
     { id: 'web_search', label: 'Web Search', description: '联网搜索获取最新信息', icon: 'globe', configured: true },
@@ -33,14 +33,14 @@
   });
 
   function close() {
-    dispatch('close');
+    onclose?.();
   }
 
   function toggleTool(tool) {
     if (!tool.configured) return;
     const enabled = !currentToolStates[tool.id];
     setToolEnabled(tool.id, enabled);
-    dispatch('change', { id: tool.id, enabled });
+    onchange?.({ id: tool.id, enabled });
   }
 
   function handleBackdropClick(e) {
@@ -56,13 +56,13 @@
   }
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} />
 
 {#if open}
   <div
     class="controls-backdrop"
-    on:click={handleBackdropClick}
-    on:keydown={handleKeydown}
+    onclick={handleBackdropClick}
+    onkeydown={handleKeydown}
     role="presentation"
   >
     <div
@@ -77,7 +77,7 @@
         <button
           type="button"
           class="close-btn"
-          on:click={close}
+          onclick={close}
           aria-label={$t('common.close')}
           title={$t('common.close')}
         >
@@ -102,7 +102,7 @@
                 class="tool-toggle"
                 class:enabled={currentToolStates[tool.id]}
                 class:disabled={!tool.configured}
-                on:click={() => toggleTool(tool)}
+                onclick={() => toggleTool(tool)}
                 aria-pressed={currentToolStates[tool.id]}
                 disabled={!tool.configured}
               >
@@ -138,7 +138,7 @@
               type="button"
               class="filter-toggle"
               class:enabled={filter.enabled}
-              on:click={() => setFilterEnabled(filter.id, !filter.enabled)}
+              onclick={() => setFilterEnabled(filter.id, !filter.enabled)}
               aria-pressed={filter.enabled}
             >
               <span class="filter-info">

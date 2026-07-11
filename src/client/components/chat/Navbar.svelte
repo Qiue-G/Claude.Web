@@ -1,5 +1,4 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
   import Icon from '$components/common/Icon.svelte';
   import { currentSession } from '$stores/chatHistory.store.js';
   import { t } from '$lib/i18n.js';
@@ -8,19 +7,23 @@
   export let showSidebarToggle = true;
   /** @type {boolean} */
   export let sidebarOpen = false;
-
-  const dispatch = createEventDispatcher();
+  /** @type {Function} */
+  export let ontoggleSidebar = undefined;
+  /** @type {Function} */
+  export let onnewchat = undefined;
+  /** @type {Function} */
+  export let onsettings = undefined;
 
   function toggleSidebar() {
-    dispatch('toggleSidebar');
+    ontoggleSidebar?.();
   }
 
   function handleNewChat() {
-    dispatch('newchat');
+    onnewchat?.();
   }
 
   function handleSettings() {
-    dispatch('settings');
+    onsettings?.();
   }
 </script>
 
@@ -30,7 +33,7 @@
       <button
         type="button"
         class="icon-btn"
-        on:click={toggleSidebar}
+        onclick={toggleSidebar}
         aria-label={sidebarOpen ? $t('command.closeChatSidebar') : $t('command.toggleChatSidebar')}
         title={$t('command.toggleChatSidebar')}
       >
@@ -53,7 +56,7 @@
     <button
       type="button"
       class="icon-btn"
-      on:click={handleNewChat}
+      onclick={handleNewChat}
       aria-label={$t('chat.new')}
       title={$t('chat.new')}
     >
@@ -63,7 +66,7 @@
     <button
       type="button"
       class="icon-btn"
-      on:click={handleSettings}
+      onclick={handleSettings}
       aria-label={$t('model.parameters')}
       title={$t('model.parameters')}
     >

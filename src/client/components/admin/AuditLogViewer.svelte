@@ -51,7 +51,7 @@
 <div class="audit-panel">
   <div class="audit-header">
     <h4 class="audit-title">{_t('audit.title')}</h4>
-    <button class="refresh-btn" on:click={fetchLogs} disabled={loading}>
+    <button class="refresh-btn" onclick={fetchLogs} disabled={loading}>
       {loading ? _t('common.loading') : _t('audit.refresh')}
     </button>
   </div>
@@ -63,14 +63,14 @@
       class="filter-input"
       bind:value={filter.action}
       placeholder={_t('audit.filterAction')}
-      on:keydown={(e) => e.key === 'Enter' && fetchLogs()}
+      onkeydown={(e) => e.key === 'Enter' && fetchLogs()}
     />
     <input
       type="text"
       class="filter-input"
       bind:value={filter.sessionId}
       placeholder={_t('audit.filterSession')}
-      on:keydown={(e) => e.key === 'Enter' && fetchLogs()}
+      onkeydown={(e) => e.key === 'Enter' && fetchLogs()}
     />
     <input
       type="date"

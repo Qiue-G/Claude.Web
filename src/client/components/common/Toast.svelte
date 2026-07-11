@@ -25,7 +25,7 @@
         <Icon name={icons[toast.type]} size="sm" />
       </div>
       <div class="toast-content">{toast.message}</div>
-      <button class="toast-close" on:click={() => handleClose(toast.id)} aria-label="close">
+      <button class="toast-close" onclick={() => handleClose(toast.id)} aria-label="close">
         <Icon name="close" size="sm" />
       </button>
     </div>

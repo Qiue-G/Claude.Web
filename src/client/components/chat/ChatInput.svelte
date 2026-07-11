@@ -1,5 +1,5 @@
 <script>
-  import { createEventDispatcher, tick } from 'svelte';
+  import { tick } from 'svelte';
   import Icon from '$components/common/Icon.svelte';
   import { isWaiting } from '$stores/chat.store.js';
   import { t } from '$lib/i18n.js';
@@ -8,10 +8,12 @@
 
   $: _t = $t;
 
-  const dispatch = createEventDispatcher();
-
   export let paramsOpen = false;
   export let editContent = '';
+
+  export let onsend = null;
+  export let oneditSent = null;
+  export let ontoggleParams = null;
 
   let inputText = '';
   let textarea = null;
@@ -49,7 +51,7 @@
 
     const wasEditing = !!editContent;
 
-    dispatch('send', {
+    onsend?.({
       text,
       files: attachedFiles,
       images: pastedImages
@@ -58,7 +60,7 @@
     inputText = '';
     attachedFiles = [];
     pastedImages = [];
-    if (wasEditing) dispatch('editSent');
+    if (wasEditing) oneditSent?.();
     tick().then(() => {
       autoResize();
       textarea?.focus();
@@ -257,7 +259,7 @@
       type="button"
       class="params-btn"
       class:active={paramsOpen}
-      onclick={() => dispatch('toggleParams')}
+      onclick={() => ontoggleParams?.()}
       disabled={$isWaiting}
       title={_t('model.parameters')}
       aria-label={_t('model.parameters')}

@@ -1,5 +1,5 @@
 <script>
-  import { createEventDispatcher, tick, onDestroy } from 'svelte';
+  import { tick, onDestroy } from 'svelte';
   import { fly, fade } from 'svelte/transition';
 
   export let open = false;
@@ -11,8 +11,8 @@
   export let trapFocus = true;
   /** @type {boolean} 点击遮罩是否关闭 */
   export let closeOnBackdrop = true;
-
-  const dispatch = createEventDispatcher();
+  /** @type {Function} */
+  export let onclose = undefined;
 
   let modalEl;
   let modalContent;
@@ -87,7 +87,7 @@
 
   function handleClose() {
     open = false;
-    dispatch('close');
+    onclose?.();
   }
 
   function handleKeydown(e) {
@@ -150,15 +150,15 @@
   });
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} />
 
 {#if open}
   <div
     bind:this={modalEl}
     class="modal-overlay"
     role="presentation"
-    on:mousedown={handleBackdropMouseDown}
-    on:mouseup={handleBackdropMouseUp}
+    onmousedown={handleBackdropMouseDown}
+    onmouseup={handleBackdropMouseUp}
     transition:fade={{ duration: 150 }}
   >
     <div
@@ -170,8 +170,8 @@
       tabindex="-1"
       style="max-width: {width}"
       transition:fly={{ y: 20, duration: 200 }}
-      on:click|stopPropagation
-      on:keydown|stopPropagation
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
     >
       {#if title}
         <div class="modal-header">
@@ -179,7 +179,7 @@
           <button
             type="button"
             class="modal-close"
-            on:click={handleClose}
+            onclick={handleClose}
             aria-label="close modal"
           >
             &times;

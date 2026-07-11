@@ -1,5 +1,4 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
 import { get } from 'svelte/store';
   import { sessionId, sessionToken } from '$stores/session.store.js';
   import { getDiff } from '$apis/files.api.js';
@@ -7,7 +6,7 @@ import { get } from 'svelte/store';
 
   $: _t = $t;
 
-  const dispatch = createEventDispatcher();
+  export let onclose = null;
 
   export let fromId = '';
   export let toId = '';
@@ -54,7 +53,7 @@ import { get } from 'svelte/store';
   }
 
   function closeDiff() {
-    dispatch('close');
+    onclose?.();
   }
 </script>
 

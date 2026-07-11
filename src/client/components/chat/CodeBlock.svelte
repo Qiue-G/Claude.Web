@@ -75,12 +75,12 @@
     <span class="code-lang">{displayLang}{#if lineCount > 0}<span class="code-lines">{$t('code.lines', { n: lineCount })}</span>{/if}</span>
     <div class="hdr-actions">
       {#if isExecutable}
-        <button class="run-btn" class:running={executing} on:click={executeCommand} disabled={executing}>
+        <button class="run-btn" class:running={executing} onclick={executeCommand} disabled={executing}>
           <Icon name="play" size="sm" />
           {executing ? $t('common.running') : $t('code.run')}
         </button>
       {/if}
-      <button class="copy-btn" class:copied on:click={copyCode}>
+      <button class="copy-btn" class:copied onclick={copyCode}>
         <Icon name="copy" size="sm" />
         {copied ? $t('common.copied') : $t('common.copy')}
       </button>

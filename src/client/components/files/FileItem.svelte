@@ -1,5 +1,5 @@
 <script>
-  import { createEventDispatcher, onMount } from 'svelte';
+  import { onMount } from 'svelte';
   import Icon from '$components/common/Icon.svelte';
   import { listDirectory } from '$apis/files.api.js';
 
@@ -10,7 +10,9 @@
   export let token = '';
   export let searchQuery = '';
 
-  const dispatch = createEventDispatcher();
+  export let onselect = null;
+  export let ondelete = null;
+  export let onrename = null;
 
   let isOpen = false;
   let contextMenuVisible = false;
@@ -54,9 +56,8 @@
       if (isOpen && !loaded && sessionId && token) {
         await lazyLoadChildren();
       }
-      dispatch('toggle', item);
     } else {
-      dispatch('select', item);
+      onselect?.(item);
     }
   }
 
@@ -96,7 +97,7 @@
   function handleDelete() {
     closeContextMenu();
     if (!confirm(`确定删除 "${item.name}"？`)) return;
-    dispatch('delete', item);
+    ondelete?.(item);
   }
 
   function startRename() {
@@ -123,7 +124,7 @@
     const parts = item.path.split('/');
     parts[parts.length - 1] = newName.trim();
     const newPath = parts.join('/');
-    dispatch('rename', { oldItem: item, newPath });
+    onrename?.({ oldItem: item, newPath });
   }
 
   function handleRenameKeydown(e) {
@@ -135,7 +136,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="tree-item {item.type}" class:active={isActive}
   style="padding-left: {depth * 16 + 12}px"
-  on:contextmenu={handleContextMenu}>
+  oncontextmenu={handleContextMenu}>
 
   {#if item.type === 'directory'}
     <span class="arrow">
@@ -153,11 +154,11 @@
       type="text"
       bind:value={newName}
       bind:this={renameInput}
-      on:keydown={handleRenameKeydown}
-      on:blur={submitRename}
+      onkeydown={handleRenameKeydown}
+      onblur={submitRename}
     />
   {:else}
-    <span class="tree-label" role="treeitem" tabindex="0" aria-selected="false" on:click={toggle} on:keydown>
+    <span class="tree-label" role="treeitem" tabindex="0" aria-selected="false" onclick={toggle}>
       {item.name}
     </span>
   {/if}
@@ -169,12 +170,12 @@
 
 {#if contextMenuVisible}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="menu-backdrop" on:click={closeContextMenu} on:contextmenu|preventDefault={closeContextMenu}></div>
+  <div class="menu-backdrop" onclick={closeContextMenu} oncontextmenu={(e) => { e.preventDefault(); closeContextMenu(e); }}></div>
   <div class="context-menu" style="left: {contextMenuX}px; top: {contextMenuY}px;">
-    <button class="menu-item" on:click={startRename} on:focus>
+    <button class="menu-item" onclick={startRename}>
       <Icon name="edit" size="sm" /> 重命名
     </button>
-    <button class="menu-item menu-item-danger" on:click={handleDelete} on:focus>
+    <button class="menu-item menu-item-danger" onclick={handleDelete}>
       <Icon name="trash" size="sm" /> 删除
     </button>
   </div>
@@ -188,7 +189,7 @@
   {:else}
     {#each filteredChildren as child}
       <svelte:self item={child} depth={depth + 1} {isActive} {sessionId} {token} {searchQuery}
-        on:select on:delete on:rename />
+        {onselect} {ondelete} {onrename} />
     {/each}
   {/if}
 {/if}

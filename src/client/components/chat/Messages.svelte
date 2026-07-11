@@ -110,7 +110,7 @@
     <div class="load-more-hint">{$t('chat.loadMore')}</div>
   {/if}
   {#if messages.length === 0}
-    <Placeholder title={emptyTitle || 'Welcome'} subtitle={emptySubtitle || 'AI-powered coding assistant'} icon="⚙" {suggestions} on:suggestion={(e) => onsuggestion?.(e.detail)} />
+    <Placeholder title={emptyTitle || 'Welcome'} subtitle={emptySubtitle || 'AI-powered coding assistant'} icon="⚙" {suggestions} onsuggestion={(text) => onsuggestion?.(text)} />
   {:else}
     <div class="messages-list">
       {#each groupedMessages as entry, i (entry.id || entry.diffs?.[0]?.id || i)}
@@ -127,8 +127,8 @@
                 total={entry.diffs.length}
                 onprev={handlePrev(i, j)}
                 onnext={handleNext(i, j, entry.diffs.length)}
-                on:reverted={() => window.dispatchEvent(new CustomEvent('files-changed'))}
-                on:open={(e) => onopenfile?.(e.detail)}
+                onreverted={() => window.dispatchEvent(new CustomEvent('files-changed'))}
+                onopen={(data) => onopenfile?.(data)}
               />
             {/each}
           </div>

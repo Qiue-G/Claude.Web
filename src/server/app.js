@@ -28,16 +28,21 @@ export function createApp(deps) {
   const app = express();
 
   // Security headers (helmet)
+  const isProd = process.env.NODE_ENV === 'production';
   app.use(helmet({
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        scriptSrc: isProd
+          ? ["'self'"]
+          : ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        imgSrc: ["'self'", "data:"],
-        connectSrc: ["'self'", "ws:", "wss:"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'", "ws:", "wss:", "https:"],
         frameAncestors: ["'self'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
         upgradeInsecureRequests: null, // Disable to allow HTTP in development
       },
     },

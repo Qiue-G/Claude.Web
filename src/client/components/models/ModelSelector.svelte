@@ -1,11 +1,13 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
   import Icon from '$components/common/Icon.svelte';
   import { savedModels, activeModelId } from '$stores/models.store.js';
   import { isConnected } from '$stores/session.store.js';
   import { t } from '$lib/i18n.js';
 
-  const dispatch = createEventDispatcher();
+  /** @type {Function} */
+  export let onselect = undefined;
+  /** @type {Function} */
+  export let onopenConfig = undefined;
 
   let isOpen = false;
   let selectorElement;
@@ -15,12 +17,12 @@
   }
 
   function selectModel(model) {
-    dispatch('select', model);
+    onselect?.(model);
     isOpen = false;
   }
 
   function openConfig() {
-    dispatch('openConfig');
+    onopenConfig?.();
     isOpen = false;
   }
 
@@ -34,10 +36,10 @@
   $: displayName = activeModel ? activeModel.name : $t('model.select');
 </script>
 
-<svelte:window on:click={handleClickOutside} />
+<svelte:window onclick={handleClickOutside} />
 
 <div class="model-selector" bind:this={selectorElement}>
-  <button class="selector-trigger" on:click={toggle}>
+  <button class="selector-trigger" onclick={toggle}>
     <span class="model-name">{displayName}</span>
     <Icon name={isOpen ? 'chevronUp' : 'chevronDown'} size="sm" />
   </button>
@@ -50,7 +52,7 @@
           <button
             class="model-option"
             class:active={model.id === $activeModelId}
-            on:click={() => selectModel(model)}
+            onclick={() => selectModel(model)}
           >
             <span class="model-name">{model.name}</span>
             {#if model.id === $activeModelId && $isConnected}
@@ -65,7 +67,7 @@
 
       <div class="dropdown-divider"></div>
 
-      <button class="config-button" on:click={openConfig}>
+      <button class="config-button" onclick={openConfig}>
         <Icon name="settings" size="sm" />
         <span>{$t('model.configure')}</span>
       </button>

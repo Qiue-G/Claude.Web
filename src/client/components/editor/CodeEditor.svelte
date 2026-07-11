@@ -1,10 +1,13 @@
 <script>
   import EditorTabs from './EditorTabs.svelte';
   import { fileContents, activeTab, currentFile, currentFileContent, scrollToLine } from '$stores/files.store.js';
-  import { createEventDispatcher, tick, afterUpdate } from 'svelte';
+  import { tick, afterUpdate } from 'svelte';
   import { t } from '$lib/i18n.js';
 
-  const dispatch = createEventDispatcher();
+  export let onchange = null;
+  export let onsave = null;
+  export let ontabSelect = null;
+  export let ontabClose = null;
 
   let textarea;
   let gutter;
@@ -43,7 +46,7 @@
 
   function handleInput() {
     if ($activeTab) {
-      dispatch('change', { path: $activeTab, content });
+      onchange?.({ path: $activeTab, content });
     }
   }
 
@@ -86,7 +89,7 @@
     else if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
       if ($activeTab) {
-        dispatch('save', $activeTab);
+        onsave?.($activeTab);
       }
     }
   }
@@ -101,15 +104,15 @@
 
 <div class="editor-panel">
   <EditorTabs
-    on:tabSelect={(e) => dispatch('tabSelect', e.detail)}
-    on:tabClose={(e) => dispatch('tabClose', e.detail)}
+    ontabSelect={(detail) => ontabSelect?.(detail)}
+    ontabClose={(detail) => ontabClose?.(detail)}
   />
 
   {#if $activeTab}
     <div class="editor-toolbar">
       <span class="et-info">{$activeTab}</span>
       <div class="et-actions">
-        <button class="et-btn" on:click={() => dispatch('save', $activeTab)}>{$t('editor.save')}</button>
+        <button class="et-btn" onclick={() => onsave?.($activeTab)}>{$t('editor.save')}</button>
       </div>
     </div>
     <div class="editor-body">
@@ -125,9 +128,9 @@
           bind:this={textarea}
           class="editor-textarea"
           bind:value={content}
-          on:input={handleInput}
-          on:keydown={handleKeydown}
-          on:scroll={handleScroll}
+          oninput={handleInput}
+          onkeydown={handleKeydown}
+          onscroll={handleScroll}
           spellcheck="false"
         ></textarea>
       </div>

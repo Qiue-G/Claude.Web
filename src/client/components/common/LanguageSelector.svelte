@@ -1,9 +1,8 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
   import Icon from '$components/common/Icon.svelte';
   import { currentLocale, setLocale, t } from '$lib/i18n.js';
 
-  const dispatch = createEventDispatcher();
+  export let onchange = null;
 
   const languages = [
     { code: 'zh', name: '中文', flag: '🇨🇳' },
@@ -12,7 +11,7 @@
 
   function selectLanguage(code) {
     setLocale(code);
-    dispatch('change', { locale: code });
+    onchange?.({ locale: code });
   }
 </script>
 
@@ -27,7 +26,7 @@
       <button 
         class="lang-option" 
         class:active={lang.code === $currentLocale}
-        on:click={() => selectLanguage(lang.code)}
+        onclick={() => selectLanguage(lang.code)}
       >
         <span class="lang-flag">{lang.flag}</span>
         <span class="lang-name">{lang.name}</span>

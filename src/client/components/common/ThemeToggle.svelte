@@ -17,7 +17,7 @@
   $: currentTheme = themes.find(t => t.value === $theme);
 </script>
 
-<button class="theme-toggle" on:click={cycleTheme} title={$t('theme.toggle')}>
+<button class="theme-toggle" onclick={cycleTheme} title={$t('theme.toggle')}>
   <Icon name={currentTheme?.icon} size="md" />
   <span class="theme-label">{$t(currentTheme?.labelKey || 'theme.dark')}</span>
 </button>

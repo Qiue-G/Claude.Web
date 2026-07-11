@@ -1,5 +1,4 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
   import Icon from '$components/common/Icon.svelte';
   import ModelSelector from '$components/models/ModelSelector.svelte';
   import ThemeToggle from '$components/common/ThemeToggle.svelte';
@@ -11,27 +10,30 @@
   import { t } from '$lib/i18n.js';
   import { registeredToolbarItems, executeCommand } from '$stores/plugins.store.js';
 
-  const dispatch = createEventDispatcher();
+  export let ontoggleSidebar = null;
+  export let onopenConfig = null;
+  export let onopenRag = null;
+  export let onopenAdmin = null;
+  export let onselectModel = null;
 
   function handleToggleSidebar() {
-    dispatch('toggleSidebar');
+    ontoggleSidebar?.();
   }
 
   function handleOpenConfig() {
-    dispatch('openConfig');
+    onopenConfig?.();
   }
 
   function handleOpenRag() {
-    dispatch('openRag');
+    onopenRag?.();
   }
 
   function handleOpenAdmin() {
-    dispatch('openAdmin');
+    onopenAdmin?.();
   }
 
-  function handleModelSelect(e) {
-    const model = e.detail;
-    dispatch('selectModel', model);
+  function handleModelSelect(model) {
+    onselectModel?.(model);
   }
 
   function formatTokens(num) {
@@ -47,7 +49,7 @@
 
 <div class="toolbar">
   <div class="toolbar-left">
-    <button class="toolbar-btn" on:click={handleToggleSidebar} title={$t('command.toggleSidebar')}>
+    <button class="toolbar-btn" onclick={handleToggleSidebar} title={$t('command.toggleSidebar')}>
       <Icon name="panelLeft" size="md" />
     </button>
 
@@ -118,7 +120,7 @@
     {#if $registeredToolbarItems.length > 0}
       <div class="toolbar-divider"></div>
       {#each $registeredToolbarItems as item}
-        <button class="toolbar-btn" on:click={() => executeCommand(item.command)}
+        <button class="toolbar-btn" onclick={() => executeCommand(item.command)}
           title={item.label}>
           <Icon name={item.icon || 'puzzle'} />
         </button>
@@ -126,15 +128,15 @@
     {/if}
     <ThemeToggle />
     <LanguageSelector />
-    <button class="toolbar-btn rag-btn" on:click={handleOpenRag} title={$t('rag.button')}>
+    <button class="toolbar-btn rag-btn" onclick={handleOpenRag} title={$t('rag.button')}>
       <span class="rag-label">RAG</span>
     </button>
-    <button class="toolbar-btn admin-btn" on:click={handleOpenAdmin} title={$t('admin.button')}>
+    <button class="toolbar-btn admin-btn" onclick={handleOpenAdmin} title={$t('admin.button')}>
       <Icon name="shield" size="md" />
     </button>
     <ModelSelector
-      on:select={handleModelSelect}
-      on:openConfig={handleOpenConfig}
+      onselect={handleModelSelect}
+      onopenConfig={handleOpenConfig}
     />
   </div>
 </div>

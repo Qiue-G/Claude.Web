@@ -1,5 +1,4 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
   import Modal from '$components/common/Modal.svelte';
   import ModelList from './ModelList.svelte';
   import { savedModels, addModel, updateModel, removeModel, switchModel } from '$stores/models.store.js';
@@ -7,8 +6,8 @@
   import { t } from '$lib/i18n.js';
 
   export let open = false;
-
-  const dispatch = createEventDispatcher();
+  export let onconnect = null;
+  export let onclose = null;
 
   let activeTab = 'add';
   let editingModelId = null;
@@ -82,21 +81,18 @@
     activeTab = 'manage';
   }
 
-  function handleSwitchModel(e) {
-    const model = e.detail;
+  function handleSwitchModel(model) {
     switchModel(model.id);
-    dispatch('connect', model);
+    onconnect?.(model);
   }
 
-  function handleDeleteModel(e) {
-    const model = e.detail;
+  function handleDeleteModel(model) {
     if (confirm(`${$t('model.confirmDelete')} "${model.name}" ?`)) {
       removeModel(model.id);
     }
   }
 
-  function handleEditModel(e) {
-    const model = e.detail;
+  function handleEditModel(model) {
     formData = { ...model };
     editingModelId = model.id;
     activeTab = 'add';
@@ -106,24 +102,24 @@
     open = false;
     formData = { name: '', provider: 'openrouter', model: '', apiKey: '' };
     editingModelId = null;
-    dispatch('close');
+    onclose?.();
   }
 </script>
 
-<Modal {open} title={$t('model.configure')} on:close={handleClose}>
+<Modal {open} title={$t('model.configure')} onclose={handleClose}>
   <div class="config-modal">
     <div class="tabs">
       <button
         class="tab"
         class:active={activeTab === 'add'}
-        on:click={() => { activeTab = 'add'; editingModelId = null; formData = { name: '', provider: 'openrouter', model: '', apiKey: '' }; }}
+        onclick={() => { activeTab = 'add'; editingModelId = null; formData = { name: '', provider: 'openrouter', model: '', apiKey: '' }; }}
       >
         {$t('model.addModel')}
       </button>
       <button
         class="tab"
         class:active={activeTab === 'manage'}
-        on:click={() => { activeTab = 'manage'; editingModelId = null; }}
+        onclick={() => { activeTab = 'manage'; editingModelId = null; }}
       >
         {$t('model.manage')}
       </button>
@@ -131,7 +127,7 @@
 
     <div class="tab-content">
       {#if activeTab === 'add'}
-        <form class="add-form" on:submit|preventDefault={handleAddModel}>
+        <form class="add-form" onsubmit={(e) => { e.preventDefault(); handleAddModel(); }}>
           <div class="form-group">
             <label for="name">{$t('model.name')}</label>
             <input
@@ -145,7 +141,7 @@
 
           <div class="form-group">
             <label for="provider">{$t('model.provider')}</label>
-            <select id="provider" bind:value={formData.provider} on:change={handleProviderChange}>
+            <select id="provider" bind:value={formData.provider} onchange={handleProviderChange}>
               {#each providers as provider}
                 <option value={provider.value}>{provider.label}</option>
               {/each}
@@ -204,9 +200,9 @@
         </form>
       {:else}
         <ModelList
-          on:switch={handleSwitchModel}
-          on:delete={handleDeleteModel}
-          on:edit={handleEditModel}
+          onswitch={handleSwitchModel}
+          ondelete={handleDeleteModel}
+          onedit={handleEditModel}
         />
       {/if}
     </div>

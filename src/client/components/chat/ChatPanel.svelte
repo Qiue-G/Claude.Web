@@ -39,11 +39,10 @@
     { text: '/help', label: _t('chat.suggestion4'), icon: '❓' }
   ];
 
-  function handleSend(e) {
-    const detail = e.detail;
-    const text = typeof detail === 'string' ? detail : detail.text;
-    const files = typeof detail === 'object' ? (detail.files || []) : [];
-    const images = typeof detail === 'object' ? (detail.images || []) : [];
+  function handleSend(data) {
+    const text = typeof data === 'string' ? data : data.text;
+    const files = typeof data === 'object' ? (data.files || []) : [];
+    const images = typeof data === 'object' ? (data.images || []) : [];
 
     if ((!text || !text.trim()) && files.length === 0 && images.length === 0) return;
 
@@ -95,9 +94,9 @@
 <div class="chat-area">
   <Navbar
     sidebarOpen={$chatSidebarOpen}
-    on:toggleSidebar={onToggleSidebar || toggleChatSidebar}
-    on:newchat={handleNewChat}
-    on:settings={handleSettings}
+    ontoggleSidebar={onToggleSidebar || toggleChatSidebar}
+    onnewchat={handleNewChat}
+    onsettings={handleSettings}
   />
 
   <div class="chat-content">
@@ -116,19 +115,18 @@
     <div class="input-area">
       <ModelParametersPanel
         show={$paramsPanelOpen}
-        onClose={closeParamsPanel}
-        on:close={closeParamsPanel}
+        onclose={closeParamsPanel}
       />
       <ChatControls
         open={$controlsPanelOpen}
-        on:close={() => controlsPanelOpen.set(false)}
+        onclose={() => controlsPanelOpen.set(false)}
       />
       <ChatInput
-        on:send={handleSend}
-        on:toggleParams={toggleParamsPanel}
+        onsend={handleSend}
+        ontoggleParams={toggleParamsPanel}
         paramsOpen={$paramsPanelOpen}
         {editContent}
-        on:editSent={() => { editContent = ''; editingMessageId = null; }}
+        oneditSent={() => { editContent = ''; editingMessageId = null; }}
       />
     </div>
   </div>

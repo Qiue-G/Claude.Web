@@ -1,5 +1,5 @@
 <script>
-  import { onMount, onDestroy, tick, createEventDispatcher } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { fly, fade } from 'svelte/transition';
   import { modelParameters, resetParameters } from '$stores/modelParameters.store.js';
   import Icon from '$components/common/Icon.svelte';
@@ -8,9 +8,8 @@
 
   export let show = false;
   export let onClose = () => {};
-  const dispatch = createEventDispatcher();
 
-  // 内部状态：父组件通过 show 控制显示，子组件通过 dispatch + onClose 通知关闭
+  // 内部状态：父组件通过 show 控制显示，子组件通过 onClose 通知关闭
   let visible = false;
   $: visible = show;
 
@@ -19,7 +18,6 @@
   let panelHeight = 460; // 可拖拽调整的高度
 
   function close() {
-    dispatch('close');
     onClose();
   }
 
@@ -163,7 +161,7 @@
   <div
     bind:this={drawerEl}
     class="drawer-backdrop"
-    on:mousedown={handleBackdropClick}
+    onmousedown={handleBackdropClick}
     transition:fade={{ duration: 120 }}
     role="presentation"
   >
@@ -171,7 +169,7 @@
       bind:this={panelEl}
       class="drawer-panel"
       class:resizing
-      on:mousedown={(e) => e.stopPropagation()}
+      onmousedown={(e) => e.stopPropagation()}
       transition:fly={{ y: 400, duration: 180 }}
       role="dialog"
       aria-modal="true"
@@ -183,7 +181,7 @@
         class="resizer-handle"
         aria-label="拖动调整高度"
         title="拖动调整高度"
-        on:mousedown={startResize}
+        onmousedown={startResize}
         type="button"
       >
         <div class="grip"></div>
@@ -191,7 +189,7 @@
 
       <div class="drawer-header">
         <h3 id="params-drawer-title">{$t('model.parameters')}</h3>
-        <button class="close-btn" on:click={close} aria-label={$t('common.close')}>
+        <button class="close-btn" onclick={close} aria-label={$t('common.close')}>
           <Icon name="x" size="md" />
         </button>
       </div>
@@ -215,7 +213,7 @@
             max="2"
             step="0.1"
             value={$modelParameters.temperature}
-            on:input={(e) => handleSliderChange('temperature', e.target.value)}
+            oninput={(e) => handleSliderChange('temperature', e.target.value)}
             class="param-slider"
           />
         </div>
@@ -238,7 +236,7 @@
             max="1"
             step="0.05"
             value={$modelParameters.topP}
-            on:input={(e) => handleSliderChange('topP', e.target.value)}
+            oninput={(e) => handleSliderChange('topP', e.target.value)}
             class="param-slider"
           />
         </div>
@@ -261,7 +259,7 @@
             max="100"
             step="1"
             value={$modelParameters.topK}
-            on:input={(e) => handleSliderChange('topK', e.target.value)}
+            oninput={(e) => handleSliderChange('topK', e.target.value)}
             class="param-slider"
           />
         </div>
@@ -282,7 +280,7 @@
             min="1"
             max="128000"
             value={$modelParameters.maxTokens}
-            on:input={(e) => handleNumberChange('maxTokens', e.target.value)}
+            oninput={(e) => handleNumberChange('maxTokens', e.target.value)}
             class="param-input"
           />
         </div>
@@ -305,7 +303,7 @@
             max="2"
             step="0.1"
             value={$modelParameters.frequencyPenalty}
-            on:input={(e) => handleSliderChange('frequencyPenalty', e.target.value)}
+            oninput={(e) => handleSliderChange('frequencyPenalty', e.target.value)}
             class="param-slider"
           />
         </div>
@@ -328,7 +326,7 @@
             max="2"
             step="0.1"
             value={$modelParameters.presencePenalty}
-            on:input={(e) => handleSliderChange('presencePenalty', e.target.value)}
+            oninput={(e) => handleSliderChange('presencePenalty', e.target.value)}
             class="param-slider"
           />
         </div>
@@ -348,7 +346,7 @@
             type="text"
             value={$modelParameters.seed ?? ''}
             placeholder={$t('model.seed') + '...'}
-            on:input={(e) => handleSeedChange(e.target.value)}
+            oninput={(e) => handleSeedChange(e.target.value)}
             class="param-input param-input-text"
           />
         </div>
@@ -368,7 +366,7 @@
             type="text"
             value={$modelParameters.stop ?? ''}
             placeholder="\n, ###"
-            on:input={(e) => handleStopChange(e.target.value)}
+            oninput={(e) => handleStopChange(e.target.value)}
             class="param-input param-input-text"
           />
         </div>
@@ -387,7 +385,7 @@
             id="param-stream"
             class="toggle-switch"
             class:on={$modelParameters.stream}
-            on:click={handleStreamToggle}
+            onclick={handleStreamToggle}
             aria-pressed={$modelParameters.stream}
             aria-label={$t('model.stream')}
             type="button"
@@ -398,7 +396,7 @@
       </div>
 
       <div class="drawer-footer">
-        <button class="reset-btn" on:click={handleReset}>
+        <button class="reset-btn" onclick={handleReset}>
           <Icon name="refresh" size="sm" />
           {$t('model.resetParams')}
         </button>

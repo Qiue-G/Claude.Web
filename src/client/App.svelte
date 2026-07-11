@@ -282,10 +282,9 @@
   function handleOpenAdmin() { showAdminPanel = true; }
   function handleCloseConfig() { showConfigModal = false; }
 
-  function handleSelectModel(e) {
-    const model = e.detail;
+  function handleSelectModel(model) {
     if (!model) return;
-    handleConnectModel({ detail: model });
+    handleConnectModel(model);
   }
 
   function handleNewChat() {
@@ -293,10 +292,9 @@
     showToast(get(t)('toast.newChatCreated'), 'success');
   }
 
-  function handleSelectChatSession(e) {
-    const detail = e.detail;
-    if (detail && detail.sessionId) {
-      switchSession(detail.sessionId);
+  function handleSelectChatSession(session) {
+    if (session && (session.sessionId || session.id)) {
+      switchSession(session.sessionId || session.id);
     }
   }
 
@@ -406,8 +404,7 @@
     }
   }
 
-  async function handleFileSelect(e) {
-    const file = e.detail;
+  async function handleFileSelect(file) {
     if (!file || file.type !== 'file') return;
     try {
       const sid = get(sessionId);
@@ -421,13 +418,11 @@
     }
   }
 
-  function handleTabClose(e) {
-    const path = e.detail;
+  function handleTabClose(path) {
     closeTab(path);
   }
 
-  async function handleFileDelete(e) {
-    const item = e.detail;
+  async function handleFileDelete(item) {
     const sid = get(sessionId);
     const tok = get(sessionToken);
     const csrf = get(csrfToken);
@@ -440,8 +435,8 @@
     }
   }
 
-  async function handleFileRename(e) {
-    const { oldItem, newPath } = e.detail;
+  async function handleFileRename(detail) {
+    const { oldItem, newPath } = detail;
     const sid = get(sessionId);
     const tok = get(sessionToken);
     const csrf = get(csrfToken);
@@ -454,8 +449,7 @@
     }
   }
 
-  async function handleFileUpload(e) {
-    const files = e.detail;
+  async function handleFileUpload(files) {
     const sid = get(sessionId);
     const tok = get(sessionToken);
     const csrf = get(csrfToken);
@@ -475,13 +469,12 @@
     }
   }
 
-  function handleEditorChange(e) {
-    const { path, content } = e.detail;
+  function handleEditorChange(detail) {
+    const { path, content } = detail;
     fileContents.update(files => ({ ...files, [path]: content }));
   }
 
-  async function handleSaveFile(e) {
-    const detail = e.detail;
+  async function handleSaveFile(detail) {
     const path = typeof detail === 'string' ? detail : detail.path;
     const content = typeof detail === 'object' ? detail.content : undefined;
     if (!path) {
@@ -500,8 +493,7 @@
     }
   }
 
-  async function handleConnectModel(e) {
-    const model = e.detail;
+  async function handleConnectModel(model) {
     try {
       const session = await apiCreateSession(model.apiKey, model.model, model.provider);
       // 后端返回 { sessionId, token, csrfToken }
@@ -757,7 +749,7 @@
   {#if !isOnline}
     <div class="offline-banner">离线模式 - 部分功能不可用</div>
   {/if}
-  <Toolbar on:toggleSidebar={handleToggleSidebar} on:openConfig={handleOpenConfig} on:openRag={handleOpenRag} on:openAdmin={handleOpenAdmin} on:selectModel={handleSelectModel} />
+  <Toolbar ontoggleSidebar={handleToggleSidebar} onopenConfig={handleOpenConfig} onopenRag={handleOpenRag} onopenAdmin={handleOpenAdmin} onselectModel={handleSelectModel} />
 
   <div class="parallel-bar">
     <ParallelToggle models={$savedModels} />
@@ -767,13 +759,13 @@
   <div class="main-layout">
     <!-- 桌面端侧边栏（≥ 900px 内联显示） -->
     {#if !isMobile && !isTablet && $chatSidebarOpen}
-      <div class="chat-sidebar-container"><ChatSidebar on:newchat={handleNewChat} on:select={handleSelectChatSession} /></div>
+      <div class="chat-sidebar-container"><ChatSidebar onnewchat={handleNewChat} onselect={handleSelectChatSession} /></div>
     {/if}
     {#if !isMobile && !isTablet && $fileSidebarOpen}
       <div class="sidebar">
-        <FileTree sessionId={$sessionId} token={$sessionToken} on:fileSelect={handleFileSelect} on:fileDelete={handleFileDelete} on:fileRename={handleFileRename} on:fileUpload={handleFileUpload} />
+        <FileTree sessionId={$sessionId} token={$sessionToken} onfileSelect={handleFileSelect} onfileDelete={handleFileDelete} onfileRename={handleFileRename} onfileUpload={handleFileUpload} />
         {#if $currentFile}
-          <FileHistoryPanel filePath={$currentFile} on:rollback={handleFileSelect} />
+          <FileHistoryPanel filePath={$currentFile} onrollback={handleFileSelect} />
         {/if}
       </div>
     {/if}
@@ -791,7 +783,7 @@
         <div class="drawer-header">
           <button class="drawer-close-btn" onclick={closeDrawerChat} aria-label="关闭侧边栏">✕</button>
         </div>
-        <ChatSidebar on:newchat={handleNewChat} on:select={handleSelectChatSession} />
+        <ChatSidebar onnewchat={handleNewChat} onselect={handleSelectChatSession} />
       </div>
     {/if}
 
@@ -808,9 +800,9 @@
         <div class="drawer-header">
           <button class="drawer-close-btn" onclick={closeDrawerFile} aria-label="关闭文件侧边栏">✕</button>
         </div>
-        <FileTree sessionId={$sessionId} token={$sessionToken} on:fileSelect={handleFileSelect} on:fileDelete={handleFileDelete} on:fileRename={handleFileRename} on:fileUpload={handleFileUpload} />
+        <FileTree sessionId={$sessionId} token={$sessionToken} onfileSelect={handleFileSelect} onfileDelete={handleFileDelete} onfileRename={handleFileRename} onfileUpload={handleFileUpload} />
         {#if $currentFile}
-          <FileHistoryPanel filePath={$currentFile} on:rollback={handleFileSelect} />
+          <FileHistoryPanel filePath={$currentFile} onrollback={handleFileSelect} />
         {/if}
       </div>
     {/if}
@@ -825,7 +817,7 @@
         {/if}
       </div>
       <button class="resize-handle" class:active={isResizing} onmousedown={handleResizeStart} aria-label={_t('editor.resizeHandle')}></button>
-      <div class="editor-pane" class:visible-on-mobile={isMobile && mobileEditorVisible} style="flex: {editorFlex};"><CodeEditor on:tabClose={handleTabClose} on:change={handleEditorChange} on:save={handleSaveFile} /></div>
+      <div class="editor-pane" class:visible-on-mobile={isMobile && mobileEditorVisible} style="flex: {editorFlex};"><CodeEditor ontabClose={handleTabClose} onchange={handleEditorChange} onsave={handleSaveFile} /></div>
     </div>
   </div>
 
@@ -870,7 +862,7 @@
     </div>
   {/if}
 
-  <ConfigModal bind:open={showConfigModal} on:close={handleCloseConfig} on:connect={handleConnectModel} />
+  <ConfigModal bind:open={showConfigModal} onclose={handleCloseConfig} onconnect={handleConnectModel} />
   <Modal bind:open={showRagPanel} title={_t('rag.title')} width="560px">
     {#if showRagPanel}
       {#if RagPanelComponent}

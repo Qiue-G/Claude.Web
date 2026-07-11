@@ -1,5 +1,5 @@
 <script>
-  import { createEventDispatcher, onMount } from 'svelte';
+  import { onMount } from 'svelte';
   import { fly, fade } from 'svelte/transition';
   import { authToken, authUser } from '$stores/auth.store.js';
   import { sessionToken } from '$stores/session.store.js';
@@ -14,8 +14,10 @@
   export let sessionId = '';
   export let messageId = '';
   export let open = false;
-
-  const dispatch = createEventDispatcher();
+  /** @type {Function} */
+  export let onclose = undefined;
+  /** @type {Function} */
+  export let onrestored = undefined;
 
   /** @type {Array<{id: string, version: number, content: string, createdBy: string|null, createdAt: string}>} */
   let versions = [];
@@ -65,7 +67,7 @@
       await restoreVersion(sessionId, messageId, version, $authToken, $sessionToken);
       showToast(`已回滚到版本 ${version}`, 'success');
       handleClose();
-      dispatch('restored', { messageId, version });
+      onrestored?.({ messageId, version });
     } catch (e) {
       showToast(e.message || '回滚失败', 'error');
     } finally {
@@ -100,7 +102,7 @@
   function handleClose() {
     open = false;
     handleCloseDiff();
-    dispatch('close');
+    onclose?.();
   }
 
   function handleBackdropClick(e) {
@@ -135,14 +137,14 @@
   }
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} />
 
 {#if open}
   <div
     bind:this={modalEl}
     class="version-modal-overlay"
     role="presentation"
-    on:click={handleBackdropClick}
+    onclick={handleBackdropClick}
     transition:fade={{ duration: 150 }}
   >
     <div
@@ -151,14 +153,14 @@
       aria-modal="true"
       tabindex="-1"
       transition:fly={{ y: 20, duration: 200 }}
-      on:click|stopPropagation
-      on:keydown|stopPropagation
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
     >
       <div class="version-modal-header">
         <h3 class="version-modal-title">
           {showDiff ? '版本差异比较' : '版本历史'}
         </h3>
-        <button class="version-modal-close" on:click={showDiff ? handleCloseDiff : handleClose} aria-label="关闭">
+        <button class="version-modal-close" onclick={showDiff ? handleCloseDiff : handleClose} aria-label="关闭">
           &times;
         </button>
       </div>
@@ -167,7 +169,7 @@
         {#if showDiff}
           <!-- 差异视图 -->
           <div class="diff-header">
-            <button class="diff-back-btn" on:click={handleCloseDiff}>
+            <button class="diff-back-btn" onclick={handleCloseDiff}>
               <Icon name="arrowLeft" size="sm" />
               返回列表
             </button>
@@ -205,7 +207,7 @@
                 <div class="version-actions">
                   <button
                     class="version-action-btn"
-                    on:click={() => handleRestore(ver.version)}
+                    onclick={() => handleRestore(ver.version)}
                     disabled={restoring}
                     title="回滚到此版本"
                   >
@@ -215,7 +217,7 @@
                   {#if i < versions.length - 1}
                     <button
                       class="version-action-btn"
-                      on:click={() => handleShowDiff(ver.version, versions[i + 1].version)}
+                      onclick={() => handleShowDiff(ver.version, versions[i + 1].version)}
                       title="与上一版本比较差异"
                     >
                       <Icon name="fileText" size="sm" />

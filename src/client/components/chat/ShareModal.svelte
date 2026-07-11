@@ -1,5 +1,5 @@
 <script>
-  import { createEventDispatcher, onMount } from 'svelte';
+  import { onMount } from 'svelte';
   import { fly, fade } from 'svelte/transition';
   import { authToken, authUser } from '$stores/auth.store.js';
   import { sessionToken } from '$stores/session.store.js';
@@ -16,8 +16,8 @@
 
   export let sessionId = '';
   export let open = false;
-
-  const dispatch = createEventDispatcher();
+  /** @type {Function} */
+  export let onclose = undefined;
 
   /** @type {{ id: string, username: string }[]} */
   let collaborators = [];
@@ -131,7 +131,7 @@
 
   function handleClose() {
     open = false;
-    dispatch('close');
+    onclose?.();
   }
 
   function handleBackdropClick(e) {
@@ -147,15 +147,15 @@
   }
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} />
 
 {#if open}
   <div
     bind:this={modalEl}
     class="share-modal-overlay"
     role="presentation"
-    on:click={handleBackdropClick}
-    on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleBackdropClick(e); }}
+    onclick={handleBackdropClick}
+    onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleBackdropClick(e); }}
     transition:fade={{ duration: 150 }}
   >
     <div
@@ -165,12 +165,12 @@
       aria-modal="true"
       tabindex="-1"
       transition:fly={{ y: 20, duration: 200 }}
-      on:click|stopPropagation
-      on:keydown|stopPropagation
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
     >
       <div class="share-modal-header">
         <h3 class="share-modal-title">分享会话</h3>
-        <button class="share-modal-close" on:click={handleClose} aria-label="关闭">
+        <button class="share-modal-close" onclick={handleClose} aria-label="关闭">
           &times;
         </button>
       </div>
@@ -188,7 +188,7 @@
               <button
                 class="share-toggle"
                 class:active={isShared}
-                on:click={handleToggleShare}
+                onclick={handleToggleShare}
                 disabled={loading}
               >
                 {isShared ? '关闭分享' : '开启分享'}
@@ -202,7 +202,7 @@
                   value={shareUrl}
                   readonly
                 />
-                <button class="share-copy-btn" on:click={copyShareUrl} title="复制链接">
+                <button class="share-copy-btn" onclick={copyShareUrl} title="复制链接">
                   <Icon name="copy" size="sm" />
                 </button>
               </div>
@@ -226,7 +226,7 @@
                     <span class="collaborator-name">{collab.username}</span>
                     <button
                       class="collaborator-remove"
-                      on:click={() => handleRemoveCollaborator(collab.username)}
+                      onclick={() => handleRemoveCollaborator(collab.username)}
                       title="移除协作者"
                     >
                       <Icon name="x" size="sm" />
@@ -248,11 +248,11 @@
                 class="add-collaborator-input"
                 placeholder="输入用户名..."
                 bind:value={collaboratorInput}
-                on:keydown={(e) => { if (e.key === 'Enter') handleAddCollaborator(); }}
+                onkeydown={(e) => { if (e.key === 'Enter') handleAddCollaborator(); }}
               />
               <button
                 class="add-collaborator-btn"
-                on:click={handleAddCollaborator}
+                onclick={handleAddCollaborator}
                 disabled={addingCollaborator || !collaboratorInput.trim()}
               >
                 {addingCollaborator ? '添加中...' : '添加'}
