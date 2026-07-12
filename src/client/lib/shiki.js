@@ -2,8 +2,8 @@
  * Shiki syntax highlighting service.
  * Lazily initializes a highlighter and caches it for subsequent use.
  * Falls back to HTML-escaped plain text during initial load.
+ * Uses dynamic import() to avoid bundling shiki into the main chunk.
  */
-import { createHighlighter } from 'shiki';
 
 // Supported languages - only register what we actually use
 const LANGUAGES = [
@@ -27,10 +27,13 @@ async function ensureHighlighter() {
   if (highlighter) return highlighter;
   if (initError) throw initError;
   if (!initPromise) {
-    initPromise = createHighlighter({
-      themes: THEMES,
-      langs: LANGUAGES
-    }).then(h => {
+    initPromise = (async () => {
+      const { createHighlighter } = await import('shiki');
+      return createHighlighter({
+        themes: THEMES,
+        langs: LANGUAGES
+      });
+    })().then(h => {
       highlighter = h;
       return h;
     }).catch(err => {

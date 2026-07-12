@@ -16,6 +16,18 @@ const loginAttempts = new Map();
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOGIN_BLOCK_DURATION = 60000; // 60 秒
 
+// 定期清理过期记录，防止内存泄漏
+const LOGIN_ATTEMPTS_CLEANUP_INTERVAL = 300000; // 5 分钟
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, record] of loginAttempts) {
+    // 超时清理：最后尝试超过封禁时间窗口的 2 倍
+    if (now - record.lastAttempt > LOGIN_BLOCK_DURATION * 2) {
+      loginAttempts.delete(key);
+    }
+  }
+}, LOGIN_ATTEMPTS_CLEANUP_INTERVAL).unref();
+
 /**
  * 检查密码复杂度
  * 要求至少包含大写字母、小写字母、数字中至少两种
@@ -206,7 +218,8 @@ function _recordFailedAttempt(attemptsMap, key) {
   const record = attemptsMap.get(key);
   if (record) {
     record.count++;
+    record.lastAttempt = now;
   } else {
-    attemptsMap.set(key, { count: 1, firstAttempt: now });
+    attemptsMap.set(key, { count: 1, firstAttempt: now, lastAttempt: now });
   }
 }

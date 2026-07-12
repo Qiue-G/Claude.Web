@@ -46,6 +46,8 @@ export function createFileRouter(deps) {
   }
 
   // ===== Helper: insert a file version into DB =====
+  const MAX_VERSIONS_PER_FILE = 50;
+
   function insertVersion(sessionId, filePath, content, action = 'save') {
     if (!db) return;
     const hash = contentHash(content);
@@ -63,10 +65,29 @@ export function createFileRouter(deps) {
         `INSERT INTO file_versions (id, sessionId, filePath, content, hash, size, createdAt, action) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, sessionId, filePath, content, hash, Buffer.byteLength(content, 'utf-8'), now, action]
       );
+      // 修剪超出版本上限的旧版本
+      pruneVersions(sessionId, filePath);
     } catch (e) {
       console.error('[FILE] version insert failed:', e.message);
     }
     return id;
+  }
+
+  function pruneVersions(sessionId, filePath) {
+    if (!db) return;
+    try {
+      db.run(
+        `DELETE FROM file_versions WHERE id IN (
+          SELECT id FROM file_versions
+          WHERE sessionId=? AND filePath=?
+          ORDER BY createdAt DESC
+          LIMIT -1 OFFSET ?
+        )`,
+        [sessionId, filePath, MAX_VERSIONS_PER_FILE]
+      );
+    } catch (e) {
+      console.warn('[FILE] version prune failed:', e.message);
+    }
   }
 
   // ===== Helper: build file tree (used by GET /:sessionId) =====

@@ -18,12 +18,51 @@ const BASH_COMMAND_TIMEOUT = 30000;  // 30 秒
 const BASH_MAX_BUFFER = 1024 * 1024;  // 1MB
 const APPROVAL_TIMEOUT = 120000;  // 2 分钟
 const MAX_HISTORY_CHARS = 8000;  // 历史消息最大字符数
+const MAX_COMMAND_LENGTH = 4096;  // 命令最大字符数
+
+// 危险模式：拒绝包含以下模式的命令
+const DANGEROUS_COMMAND_PATTERNS = [
+  /\brm\s+-rf\s+\//,
+  /\bdd\s+if=/,
+  /\bmkfs\./,
+  /:\s*\(\)\s*\{/,          // fork bomb
+  />\s*\/dev\/sda/,
+  /\bchmod\s+(-R\s+)?777\s+\//,
+  /\bcurl.*\|\s*(ba)?sh/,   // curl pipe shell
+  /\bwget.*\|\s*(ba)?sh/,
+  /\beval\b/,
+];
+
+// 命令中需要过滤的危险元字符/语法
+const DANGEROUS_SHELL_PATTERNS = [
+  /`[^`]+`/,                // backtick command substitution
+  /\$\([^)]+\)/,            // $() command substitution
+  /\$\\{/,                  // ${} dangerous expansion
+];
 
 // 等待用户审批的工具请求（用 approvalId 索引）
 const pendingApprovals = new Map();
 
+/**
+ * Validate a bash command for dangerous patterns.
+ * @param {string} command
+ * @returns {{ valid: boolean, reason?: string }}
+ */
+function validateBashCommand(command) {
+  if (typeof command !== 'string') return { valid: false, reason: 'Command must be a string' };
+  if (command.length > MAX_COMMAND_LENGTH) return { valid: false, reason: 'Command too long' };
+  for (const pattern of DANGEROUS_COMMAND_PATTERNS) {
+    if (pattern.test(command)) return { valid: false, reason: 'Command contains dangerous pattern: ' + pattern.source };
+  }
+  for (const pattern of DANGEROUS_SHELL_PATTERNS) {
+    if (pattern.test(command)) return { valid: false, reason: 'Command contains shell injection pattern: ' + pattern.source };
+  }
+  return { valid: true };
+}
+
 // 进程序号生成器（用于检测过时进程的 close 事件）
-let processSeqId = 0;
+// 使用包装对象确保 messageHandlers 和 wsHandler 共享同一引用
+const processSeqIdRef = { value: 0 };
 
 /**
  * Creates a WebSocket connection handler.
@@ -108,6 +147,12 @@ export function createWsHandler(deps) {
           const command = message.command;
           if (!command || typeof command !== 'string') {
             ws.send(JSON.stringify({ type: 'error', message: 'Invalid command' }));
+            return;
+          }
+          // validate command safety
+          const validation = validateBashCommand(command);
+          if (!validation.valid) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Command rejected: ' + validation.reason }));
             return;
           }
           const bashSession = getSession(sessionId);
@@ -245,7 +290,7 @@ export function createWsHandler(deps) {
               messageStore, mcpManager, rag, agentConfig, db,
               filtersConfig, filterPipeline, pipelines, pluginsConfig, activityLog,
               pendingApprovals, APPROVAL_TIMEOUT, MAX_HISTORY_CHARS,
-              processSeqIdRef: { value: processSeqId }
+              processSeqIdRef
             });
           } catch (inputErr) {
             console.error('[INPUT] Error:', inputErr);

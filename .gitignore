@@ -22,3 +22,6 @@ ydocs/
 
 # AI 测试生成的项目目录
 react-app/
+
+# 项目助手记忆（非代码，不提交）
+.workbuddy/

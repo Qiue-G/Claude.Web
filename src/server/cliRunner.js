@@ -47,12 +47,14 @@ function stripAnsi(str) {
 }
 
 // Send message to all connected WebSocket clients for a session
+// Skip clients whose send buffer is backed up (slow consumer protection)
+const WS_BUFFER_LIMIT = 512 * 1024; // 512KB
 function broadcastToSession(sessionClients, sessionId, message) {
   const clients = sessionClients.get(sessionId);
   if (!clients) return;
   const data = JSON.stringify(message);
   clients.forEach(client => {
-    if (client.readyState === 1) {
+    if (client.readyState === 1 && client.bufferedAmount < WS_BUFFER_LIMIT) {
       client.send(data);
     }
   });

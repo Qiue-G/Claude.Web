@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import os from 'os';
+import { randomUUID } from 'crypto';
 import { buildSafeEnv } from '../lib/safeEnv.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -189,7 +190,7 @@ function executeWithLimits(code, cwd) {
     // 1. Windows 下 python -c 在 G:\tmp 创建泄露的临时文件
     // 2. shell 注入风险
     // 临时文件在 cwd(py-sandbox-*) 内，由调用方 cleanup 自动删除
-    const tmpFile = path.join(cwd, `_exec_${Date.now()}.py`);
+    const tmpFile = path.join(cwd, `_exec_${randomUUID()}.py`);
     fs.writeFileSync(tmpFile, code, 'utf-8');
 
     if (process.platform === 'linux') {

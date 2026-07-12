@@ -8,6 +8,7 @@
   import { escapeHtml, formatFileSize } from '$lib/utils.js';
   import { t } from '$lib/i18n.js';
   import { marked } from 'marked';
+  import DOMPurify from 'dompurify';
   import { authToken, authUser } from '$stores/auth.store.js';
 
   $: _t = $t;
@@ -40,7 +41,22 @@
   $: roleLabel = role === 'user' ? 'You' : role === 'assistant' ? 'Assistant' : 'System';
 
   // 懒渲染：只有 streaming（最新消息）或进入视口后才解析内容
-  $: parsedParts = parseContent(content);
+  // 流式渲染时节流内容解析（最多每 80ms 解析一次，减少重复计算）
+  let _throttleTimer = null;
+  let parsedParts = [];
+  $: if (content) {
+    if (streaming) {
+      if (!_throttleTimer) {
+        _throttleTimer = setTimeout(() => {
+          _throttleTimer = null;
+          parsedParts = parseContent(content);
+        }, 80);
+      }
+    } else {
+      if (_throttleTimer) { clearTimeout(_throttleTimer); _throttleTimer = null; }
+      parsedParts = parseContent(content);
+    }
+  }
 
   onMount(() => {
     if (!streaming && element) {
@@ -90,7 +106,6 @@
       return escapeHtml(text);
     }
     const safeText = escapeHtml(text);
-    // 自定义 renderer 过滤危险协议（javascript: 等）
     const renderer = new marked.Renderer();
     renderer.link = ({ href, text: linkText, tokens }) => {
       if (href && /^(javascript|data|vbscript):/i.test(href)) {
@@ -98,7 +113,14 @@
       }
       return `<a href="${href}" rel="noopener noreferrer">${linkText}</a>`;
     };
-    return marked.parse(safeText, { renderer });
+    const raw = marked.parse(safeText, { renderer });
+    return DOMPurify.sanitize(raw, {
+      ALLOWED_TAGS: ['h1','h2','h3','h4','h5','h6','p','br','strong','em','a','ul','ol','li',
+        'code','pre','table','thead','tbody','tr','th','td','blockquote','hr','img','del','s',
+        'input','details','summary','kbd','sup','sub','span','div'],
+      ALLOWED_ATTR: ['href','rel','target','src','alt','title','checked','type','class'],
+      ALLOW_DATA_ATTR: false
+    });
   }
 
   async function copyMessage() {

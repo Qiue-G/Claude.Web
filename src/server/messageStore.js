@@ -12,6 +12,7 @@
  * @param {Function} deps.saveDb
  * @returns {{ loadMessages: Function, loadMessagesPaginated: Function, saveMessage: Function, saveMessagesBatch: Function, appendToLastMessage: Function, deleteSessionMessages: Function, save: Function }}
  */
+import { randomUUID } from 'crypto';
 export function createMessageStore({ db, monitor, saveDb }) {
   const PAGE_SIZE = 20;
 
@@ -98,7 +99,7 @@ export function createMessageStore({ db, monitor, saveDb }) {
    * E4: 不再每次都 await saveDb() — 由 save() 或批写入统一持久化
    */
   async function saveMessage(sessionId, msg) {
-    const id = msg.id || (Date.now() + '_' + Math.random().toString(36).slice(2, 8));
+    const id = msg.id || randomUUID();
     const timestamp = Date.now();
     const files = msg.files ? JSON.stringify(msg.files) : null;
 
@@ -130,7 +131,7 @@ export function createMessageStore({ db, monitor, saveDb }) {
     try {
       run('BEGIN TRANSACTION');
       for (const msg of messages) {
-        const id = msg.id || (Date.now() + '_' + Math.random().toString(36).slice(2, 8));
+        const id = msg.id || randomUUID();
         const files = msg.files ? JSON.stringify(msg.files) : null;
         run(
           `INSERT INTO messages (id, sessionId, role, content, timestamp, files)

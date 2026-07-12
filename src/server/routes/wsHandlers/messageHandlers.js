@@ -61,11 +61,16 @@ export function getRagSearchCollection(session) {
  *  Take a snapshot of all file hashes in a directory
  *  Returns: Map<filePath, { hash: string, content: string }>
  */
+const MAX_FILE_SIZE = 5 * 1024 * 1024;  // 跳过大于 5MB 的文件（防止 OOM）
+const MAX_SNAPSHOT_FILES = 5000;      // 最多快照 5000 个文件
+
 export async function takeFileSnapshot(dirPath) {
   const snapshot = new Map();
+  let fileCount = 0;
   try {
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
     for (const entry of entries) {
+      if (fileCount >= MAX_SNAPSHOT_FILES) break;
       if (entry.name === 'node_modules') continue;
       if (entry.isDirectory() && entry.name.startsWith('.')) continue;
       if (entry.name === '.env') continue;
@@ -73,15 +78,20 @@ export async function takeFileSnapshot(dirPath) {
       if (entry.isDirectory()) {
         const subSnapshot = await takeFileSnapshot(fullPath);
         for (const [k, v] of subSnapshot) {
+          if (fileCount >= MAX_SNAPSHOT_FILES) break;
           snapshot.set(path.relative(dirPath, path.join(dirPath, entry.name, k)), v);
+          fileCount++;
         }
       } else if (entry.isFile()) {
+        fileCount++;
         try {
+          const stat = await fs.stat(fullPath);
+          if (stat.size > MAX_FILE_SIZE) continue;
           const content = await fs.readFile(fullPath, 'utf-8');
           if (content.includes('\0')) continue;
           const crypto = await import('crypto');
           const hash = crypto.createHash('sha256').update(content).digest('hex');
-          snapshot.set(path.relative(dirPath, fullPath), { hash, content });
+          snapshot.set(path.relative(dirPath, fullPath), { hash, content, size: stat.size });
         } catch {} // skip binary/unreadable files
       }
     }

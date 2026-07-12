@@ -140,12 +140,20 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 process.on('uncaughtException', (err) => {
   logger.error('Uncaught exception', { error: err.message, stack: err.stack });
-  process.exit(1);
+  // 优雅关闭而非直接 exit，确保数据持久化完成
+  gracefulShutdown('uncaughtException').then(() => {
+    process.exit(1);
+  });
+  // 超时保护：5 秒后强制退出
+  setTimeout(() => process.exit(1), 5000);
 });
 
 process.on('unhandledRejection', (reason) => {
   logger.error('Unhandled rejection', { reason: String(reason) });
-  process.exit(1);
+  gracefulShutdown('unhandledRejection').then(() => {
+    process.exit(1);
+  });
+  setTimeout(() => process.exit(1), 5000);
 });
 
 // ===== WebSocket heartbeat + session activity tracking =====

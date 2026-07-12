@@ -19,11 +19,19 @@ export function createSessionManager({ db, saveDb, workspaceDir, auditLog }) {
   const sessions = new Map();
 
   function rowToSession(row) {
+    // 懒解密：仅在首次访问 apiKey 时解密，避免全量加载到内存
+    let _decryptedKey = null;
+    const encryptedKey = row.apiKey;
     return {
       id: row.id,
       token: row.token,
       csrfToken: row.csrfToken,
-      apiKey: decrypt(row.apiKey),  // 解密后存入内存，消费者无需感知
+      get apiKey() {
+        if (_decryptedKey === null) {
+          _decryptedKey = decrypt(encryptedKey);
+        }
+        return _decryptedKey;
+      },
       model: row.model,
       provider: row.provider,
       dir: row.dir,

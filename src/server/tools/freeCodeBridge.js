@@ -62,18 +62,30 @@ export const globSearch = withCompiledFallback(
 );
 
 /**
- * Grep 搜索 - 优先使用 free-code 编译版本，回退到原生实现
+ * 安全 grep 搜索 - 优先使用 free-code 编译版本，回退到原生实现
  */
 export const grepSearch = withCompiledFallback(
   (fc) => fc.grepSearch,
   async (pattern, dir, cwd, globFilter, outputMode) => {
-    // 原生回退：使用 Node.js readFile + RegExp
     const fs = await import('fs/promises');
     const { glob } = await import('glob');
 
     const searchDir = dir || cwd;
     const files = await glob(globFilter || '**/*', { cwd: searchDir, nodir: true });
     const results = [];
+
+    // ReDoS 防护：限制 pattern 长度和复杂度
+    const MAX_PATTERN_LENGTH = 1000;
+    const MAX_REPETITION_NESTING = 3;  // 拒绝深度嵌套量词如 /(a+)+/
+    if (pattern.length > MAX_PATTERN_LENGTH) {
+      return [`Pattern too long (max ${MAX_PATTERN_LENGTH} characters)`];
+    }
+    // 检测可能导致灾难性回溯的模式
+    const repetitionNesting = (pattern.match(/\(\?[^)]*[+*{]/g) || []).length
+      + (pattern.match(/\([^?][^)]*[+*{]/g) || []).length;
+    if (repetitionNesting > MAX_REPETITION_NESTING) {
+      return ['Pattern rejected: too many nested repetitions (ReDoS risk)'];
+    }
     const regex = new RegExp(pattern, 'g');
 
     for (const file of files) {

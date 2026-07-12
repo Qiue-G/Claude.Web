@@ -3,7 +3,7 @@
   import FileDiffCard from './FileDiffCard.svelte';
   import Placeholder from './Placeholder.svelte';
   import { isWaiting } from '$stores/chat.store.js';
-  import { loadMoreHistory } from '$lib/websocket.js';
+  import { loadMoreHistory, hasMoreHistory } from '$lib/websocket.js';
   import { t } from '$lib/i18n.js';
 
   export let messages = [];
@@ -82,7 +82,7 @@
     userScrolledUp = scrollHeight - scrollTop - clientHeight > 80;
 
     // 滚动到顶部时加载更多历史
-    if (scrollTop < 40 && !loadingMore && window.__historyHasMore) {
+    if (scrollTop < 40 && !loadingMore && hasMoreHistory()) {
       loadingMore = true;
       loadMoreHistory();
       setTimeout(() => { loadingMore = false; }, 1000);
@@ -103,7 +103,7 @@
 </script>
 
 <div bind:this={messagesContainer} class="messages-container" onscroll={handleScroll}>
-  {#if window.__historyHasMore}
+  {#if hasMoreHistory()}
     <div class="load-more-hint">{$t('chat.loadMore')}</div>
   {/if}
   {#if messages.length === 0}

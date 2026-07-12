@@ -42,11 +42,15 @@ export function resetParallel() {
 export function addParallelChunk(modelId, text) {
   parallelResults.update(results => {
     const existing = results[modelId] || { text: '', status: 'running', chunks: [] };
-    existing.text += text;
-    existing.chunks = [...(existing.chunks || []), { text, index: (existing.chunks?.length || 0) }];
-    existing.status = 'running';
-    results[modelId] = existing;
-    return results;
+    return {
+      ...results,
+      [modelId]: {
+        ...existing,
+        text: existing.text + text,
+        chunks: [...(existing.chunks || []), { text, index: (existing.chunks?.length || 0) }],
+        status: 'running'
+      }
+    };
   });
 }
 
@@ -54,13 +58,14 @@ export function addParallelChunk(modelId, text) {
  * 标记模型完成
  */
 export function markModelDone(modelId, status, latency, tokens, error) {
-  parallelResults.update(results => {
-    const existing = results[modelId] || {};
-    existing.status = status;
-    existing.latency = latency;
-    existing.tokens = tokens;
-    existing.error = error;
-    results[modelId] = existing;
-    return results;
-  });
+  parallelResults.update(results => ({
+    ...results,
+    [modelId]: {
+      ...(results[modelId] || {}),
+      status,
+      latency,
+      tokens,
+      error
+    }
+  }));
 }

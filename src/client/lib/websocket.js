@@ -28,6 +28,11 @@ let isOffline = false;
 let _onReadyCallback = null;
 let _readyCalled = false;
 
+// 历史消息分页状态（替代 window.__history* 全局变量）
+let _historyPage = 0;
+let _historyTotalPages = 1;
+let _historyHasMore = false;
+
 export function onWsReady(callback) {
   _onReadyCallback = callback;
   // 如果 ready 消息已经到达过，立即调用
@@ -41,6 +46,7 @@ export function getWs() {
 // ── Message Queue: buffer messages during disconnection ──
 const pendingMessages = [];
 const MAX_PENDING = 50;
+const MAX_BUFFERED_AMOUNT = 1024 * 1024; // 1MB 背压阈值
 
 function queueMessage(payload) {
   if (pendingMessages.length >= MAX_PENDING) {
@@ -107,8 +113,9 @@ if (typeof window !== 'undefined') {
 }
 
 // C1: BroadcastChannel for cross-tab session sync
+let sessionChannel = null;
 if (typeof BroadcastChannel !== 'undefined') {
-  const sessionChannel = new BroadcastChannel('claude-free-session');
+  sessionChannel = new BroadcastChannel('claude-free-session');
   sessionChannel.onmessage = (event) => {
     if (event.data?.type === 'session_expired') {
       warning(get(t)('session.expired'));
@@ -131,8 +138,9 @@ export function connectWebSocket(sid, token, autoReconnect = true) {
 
   connectionStatus.set('connecting');
 
+  // 不在 URL 中传输 token（防止日志/代理/浏览器历史泄露）
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const url = `${protocol}//${location.host}/ws?token=${encodeURIComponent(token)}`;
+  const url = `${protocol}//${location.host}/ws`;
 
   ws = new WebSocket(url);
 
@@ -219,6 +227,12 @@ export async function sendInput(data) {
 
   // 先尝试现有 WebSocket
   if (ws && ws.readyState === WebSocket.OPEN) {
+    // 背压控制：缓冲区超过阈值时排队，延迟重试
+    if (ws.bufferedAmount > MAX_BUFFERED_AMOUNT) {
+      queueMessage(payload);
+      setTimeout(() => { flushPendingMessages(); }, 200);
+      return;
+    }
     try {
       ws.send(JSON.stringify(payload));
       return;
@@ -330,9 +344,9 @@ function handleServerMessage(msg) {
         setMessages(msg.messages);
         // 如果还有更多历史，保存分页信息
         if (msg.hasMore) {
-          window.__historyPage = msg.page || 0;
-          window.__historyTotalPages = msg.totalPages || 1;
-          window.__historyHasMore = msg.hasMore;
+          _historyPage = msg.page || 0;
+          _historyTotalPages = msg.totalPages || 1;
+          _historyHasMore = msg.hasMore;
         }
       } else {
         setMessages([]);
@@ -341,8 +355,8 @@ function handleServerMessage(msg) {
     case 'history_page':
       if (Array.isArray(msg.messages) && msg.messages.length > 0) {
         prependMessages(msg.messages);
-        window.__historyPage = msg.page;
-        window.__historyHasMore = msg.hasMore;
+        _historyPage = msg.page;
+        _historyHasMore = msg.hasMore;
       }
       break;
     case 'output':
@@ -428,11 +442,9 @@ function handleServerMessage(msg) {
       // 同步清理 localStorage，防止 sendInput 尝试恢复过期会话
       localStorage.removeItem('sessionId');
       localStorage.removeItem('sessionToken');
-      // Broadcast to other tabs
-      if (typeof BroadcastChannel !== 'undefined') {
-        const bc = new BroadcastChannel('claude-free-session');
-        bc.postMessage({ type: 'session_expired' });
-        bc.close();
+      // 复用模块级 sessionChannel 通知其他 tab
+      if (sessionChannel) {
+        sessionChannel.postMessage({ type: 'session_expired' });
       }
       break;
 
@@ -505,11 +517,18 @@ export function sendBashCommand(command) {
  * 请求加载更早的历史消息
  */
 export function loadMoreHistory() {
-  const page = (window.__historyPage || 0) + 1;
-  if (ws && ws.readyState === WebSocket.OPEN && window.__historyHasMore) {
+  const page = _historyPage + 1;
+  if (ws && ws.readyState === WebSocket.OPEN && _historyHasMore) {
     ws.send(JSON.stringify({
       type: 'load_more',
       page
     }));
   }
+}
+
+/**
+ * Check if there are more historical messages to load.
+ */
+export function hasMoreHistory() {
+  return _historyHasMore;
 }

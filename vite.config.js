@@ -9,7 +9,16 @@ export default defineConfig({
     outDir: '../../public',
     emptyOutDir: true,
     cssMinify: true,
-    minify: true
+    minify: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-shiki': ['shiki'],
+          'vendor-marked': ['marked'],
+          'vendor-yjs': ['yjs', 'y-websocket']
+        }
+      }
+    }
   },
   resolve: {
     alias: {

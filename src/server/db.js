@@ -138,13 +138,20 @@ export async function initDb(workspaceDir) {
   `);
 
   // 兼容旧数据：使用 PRAGMA 检测列是否存在，避免每次 ALTER TABLE
+  // 只允许已知的安全表名（防止注入，虽然参数都来自内部常量）
+  const ALLOWED_TABLES = ['sessions', 'messages', 'file_versions', 'message_versions', 'users', 'share_sessions'];
   function ensureColumns(table, columns) {
+    if (!ALLOWED_TABLES.includes(table)) {
+      console.warn(`[DB] ensureColumns: table "${table}" not in whitelist, skipping`);
+      return;
+    }
     const existing = db.exec(`PRAGMA table_info(${table})`);
     const existingCols = existing[0]?.values?.map(v => v[1]) || [];
     for (const col of columns) {
       if (!existingCols.includes(col.name)) {
         const def = col.type + (col.default ? ` DEFAULT ${col.default}` : '');
         try {
+          // ALTER TABLE 的列名来自内部定义，不是用户输入
           db.run(`ALTER TABLE ${table} ADD COLUMN ${col.name} ${def}`);
         } catch (e) {
           console.warn(`[DB] Failed to add column ${col.name}: ${e.message}`);
@@ -247,14 +254,14 @@ export async function initDb(workspaceDir) {
 
   // ── Throttled save: debounce disk writes to avoid excessive I/O ──
   let saveTimer = null;
-  let pendingSave = false;
+  let pendingSaveCount = 0;
   const SAVE_DEBOUNCE_MS = 5000;
 
   /** Persist the database to disk (throttled with retry). */
   const SAVE_RETRIES = 3;
   async function saveDb() {
     if (saveTimer) {
-      pendingSave = true;
+      pendingSaveCount++;
       return;
     }
     try {
@@ -277,8 +284,9 @@ export async function initDb(workspaceDir) {
     // Schedule next save after debounce window
     saveTimer = setTimeout(() => {
       saveTimer = null;
-      if (pendingSave) {
-        pendingSave = false;
+      const pending = pendingSaveCount;
+      pendingSaveCount = 0;
+      if (pending > 0) {
         saveDb();
       }
     }, SAVE_DEBOUNCE_MS);
