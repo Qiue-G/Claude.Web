@@ -1,4 +1,4 @@
-FROM node:22-slim
+FROM node:22.16-slim
 
 # Install Bun + build deps for node-pty
 RUN apt-get update && apt-get install -y curl unzip git build-essential python3 socat \
@@ -18,7 +18,7 @@ COPY package.json package-lock.json ./
 # Install dependencies (includes node-pty)
 RUN npm ci
 
-# Copy app files
+# Copy source code — Docker layer cache auto-invalidates when files change
 COPY src/ ./src/
 COPY scripts/ ./scripts/
 COPY vite.config.js svelte.config.js ./

@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
+import { randomUUID } from 'crypto';
 import { join, dirname as pathDirname } from 'path';
 import { existsSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -70,7 +71,6 @@ export function createApp(deps) {
   app.use(express.json({ limit: '500kb' }));
 
   // ===== Request ID tracing =====
-  import { randomUUID } from 'crypto';
   app.use((req, res, next) => {
     const reqId = req.headers['x-request-id'] || randomUUID();
     req.requestId = reqId;
