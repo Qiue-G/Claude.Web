@@ -718,8 +718,9 @@ const server = createServer(async (req, res) => {
   res.end(JSON.stringify({ error: { type: 'not_found', message: 'Not found' } }));
 });
 
-// Validate fallback model on startup (async, non-blocking)
-validateFallbackModel();
+// Validate fallback model on startup (block until complete, so first request
+// never hits an unvalidated fallback model)
+await validateFallbackModel();
 
 server.listen(PORT, '127.0.0.1', () => {
   const addr = server.address();
@@ -730,12 +731,16 @@ server.listen(PORT, '127.0.0.1', () => {
   console.error(info);
 });
 
-// --- Global error handlers: prevent silent crashes ---
+// --- Global error handlers: log and exit cleanly (parent detects via `exit` event) ---
 process.on('unhandledRejection', (reason) => {
-  console.error('[proxy] UNHANDLED REJECTION:', reason instanceof Error ? reason.stack : reason);
+  console.error('[proxy] FATAL unhandledRejection:', reason instanceof Error ? reason.stack : reason);
+  process.exitCode = 1;
+  setTimeout(() => process.exit(1), 1000);
 });
 process.on('uncaughtException', (err) => {
-  console.error('[proxy] UNCAUGHT EXCEPTION:', err.stack);
+  console.error('[proxy] FATAL uncaughtException:', err.stack);
+  process.exitCode = 1;
+  setTimeout(() => process.exit(1), 1000);
 });
 
 process.stdin.resume();
