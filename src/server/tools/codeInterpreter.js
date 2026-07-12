@@ -28,9 +28,17 @@ const MAX_CODE_SIZE = 100 * 1024; // 100KB
  */
 function astSecurityCheck(code) {
   return new Promise((resolve) => {
+    // 传递 PERMISSIVE_MODE 环境变量给 AST 检查器
+    // 当 CODE_INTERPRETER_PERMISSIVE=1 时，放宽模块导入限制（适用于单用户部署）
+    const astEnv = buildSafeEnv();
+    if (process.env.CODE_INTERPRETER_PERMISSIVE === '1') {
+      astEnv.PERMISSIVE_MODE = '1';
+    }
+
     const proc = spawn(PYTHON_CMD, [AST_CHECKER], {
       timeout: 5000,
       stdio: ['pipe', 'pipe', 'pipe'],
+      env: astEnv,
     });
 
     const timeout = setTimeout(() => {
