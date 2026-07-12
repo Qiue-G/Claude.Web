@@ -59,13 +59,13 @@ SAFE_IMPORTS = {
 DANGEROUS_FUNCTIONS = {
     'exec', 'eval', 'compile',
     '__import__',
+    'getattr', 'setattr', 'delattr',
 }
 
 # 宽松模式下额外禁止的函数
 PERMISSIVE_DANGEROUS_FUNCTIONS = {
     'input', 'breakpoint', 'exit', 'quit',
     'globals', 'locals', 'vars',
-    'getattr', 'setattr', 'delattr',
 }
 
 # 禁止的属性访问（所有模式）
