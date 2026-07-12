@@ -96,17 +96,30 @@ export function clearMessages() {
 }
 
 /**
- * 向最后一条 assistant 消息追加内容（流式响应）
+ * 查找最近的 assistant 消息索引（跳过中间的 system 消息）
+ */
+function findLastAssistantIndex(msgs) {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i].role === 'assistant') return i;
+    if (msgs[i].role === 'user') return -1;
+  }
+  return -1;
+}
+
+/**
+ * 向最近的 assistant 消息追加内容（流式响应）
+ * 会跳过中间插入的 system 消息（如 file_diff）
  */
 export function appendToLastAssistant(text) {
   const sessionId = get(currentSessionId);
   if (!sessionId) return;
   updateSession(sessionId, session => {
     const sessionMsgs = session.messages || [];
-    const last = sessionMsgs[sessionMsgs.length - 1];
-    if (last && last.role === 'assistant') {
-      const updated = { ...last, content: last.content + text };
-      return { ...session, messages: [...sessionMsgs.slice(0, -1), updated] };
+    const idx = findLastAssistantIndex(sessionMsgs);
+    if (idx >= 0) {
+      const msg = sessionMsgs[idx];
+      const updated = { ...msg, content: msg.content + text };
+      return { ...session, messages: [...sessionMsgs.slice(0, idx), updated, ...sessionMsgs.slice(idx + 1)] };
     }
     return session;
   });
@@ -137,25 +150,68 @@ export function deleteMessage(messageId) {
 }
 
 /**
- * 在指定消息之后插入一条新消息（用于工具调用卡片）
+ * 向最近的 assistant 消息追加一个工具调用（内嵌在消息中，不创建独立消息）
+ * 会跳过中间插入的 system 消息（如 file_diff）
+ * @returns {string} 生成的工具调用 ID，用于后续状态更新
  */
-export function insertMessageAfter(afterId, msg) {
+export function appendToolCallToLastAssistant(toolCall) {
+  let generatedId = '';
+  const sessionId = get(currentSessionId);
+  if (!sessionId) return generatedId;
+  updateSession(sessionId, session => {
+    const sessionMsgs = session.messages || [];
+    const idx = findLastAssistantIndex(sessionMsgs);
+    if (idx >= 0) {
+      const msg = sessionMsgs[idx];
+      const toolCalls = msg.toolCalls || [];
+      const newTc = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+        toolName: toolCall.toolName,
+        toolInput: toolCall.toolInput,
+        status: 'running',
+        result: '',
+        error: ''
+      };
+      generatedId = newTc.id;
+      const updated = {
+        ...msg,
+        toolCalls: [...toolCalls, newTc]
+      };
+      return { ...session, messages: [...sessionMsgs.slice(0, idx), updated, ...sessionMsgs.slice(idx + 1)] };
+    }
+    return session;
+  });
+  return generatedId;
+}
+
+/**
+ * 更新最近 assistant 消息中第一个 running 状态的工具调用
+ * （按顺序匹配，避免同名工具调用冲突）
+ */
+export function updateLastRunningToolCall(status, result, error) {
   const sessionId = get(currentSessionId);
   if (!sessionId) return;
   updateSession(sessionId, session => {
-    const msgs = session.messages || [];
-    const idx = msgs.findIndex(m => m.id === afterId);
-    if (idx === -1) return session;
-    const newMsg = {
-      id: Date.now() + Math.random(),
-      role: 'system',
-      content: '',
-      meta: msg.meta || null,
-      files: null,
-      time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
-      ...msg
-    };
-    return { ...session, messages: [...msgs.slice(0, idx + 1), newMsg, ...msgs.slice(idx + 1)] };
+    const sessionMsgs = session.messages || [];
+    const idx = findLastAssistantIndex(sessionMsgs);
+    if (idx >= 0) {
+      const msg = sessionMsgs[idx];
+      if (msg.toolCalls?.length) {
+        let updated = false;
+        const toolCalls = msg.toolCalls.map(tc => {
+          if (!updated && tc.status === 'running') {
+            updated = true;
+            return { ...tc, status, result: result || '', error: error || '' };
+          }
+          return tc;
+        });
+        if (updated) {
+          const msgUpdated = { ...msg, toolCalls };
+          return { ...session, messages: [...sessionMsgs.slice(0, idx), msgUpdated, ...sessionMsgs.slice(idx + 1)] };
+        }
+      }
+    }
+    return session;
   });
 }
 

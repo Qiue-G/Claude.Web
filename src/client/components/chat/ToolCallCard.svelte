@@ -71,11 +71,11 @@
       {#if isRunning}
         <span class="spinner" />
       {:else if isSuccess}
-        <Icon name="check" size="sm" class="status-icon success-icon" />
+        <span class="status-icon success-icon"><Icon name="check" size="sm" /></span>
       {:else if isError}
-        <Icon name="x" size="sm" class="status-icon error-icon" />
+        <span class="status-icon error-icon"><Icon name="x" size="sm" /></span>
       {/if}
-      <Icon name={icon} size="sm" class="tool-icon" />
+      <span class="tool-icon-wrap"><Icon name={icon} size="sm" /></span>
       <span class="tool-label">{label}</span>
       {#if fileName}
         <span class="tool-file">{fileName}</span>
@@ -170,7 +170,7 @@
     color: var(--red, #ef4444);
   }
 
-  .tool-icon {
+  .tool-icon-wrap {
     color: var(--text-dim);
     flex-shrink: 0;
   }

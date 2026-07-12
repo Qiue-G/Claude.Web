@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import CodeBlock from './CodeBlock.svelte';
   import FileBlock from './FileBlock.svelte';
+  import ToolCallCard from './ToolCallCard.svelte';
   import VersionHistory from './VersionHistory.svelte';
   import Icon from '$components/common/Icon.svelte';
   import { escapeHtml, formatFileSize } from '$lib/utils.js';
@@ -24,6 +25,7 @@
   export let rating = null;
   export let files = null;
   export let sessionId = '';
+  export let toolCalls = [];
   export let onedit = null;
   export let onretry = null;
   export let onrate = null;
@@ -144,6 +146,19 @@
               <span class="file-size">{formatFileSize(file.size)}</span>
             {/if}
           </div>
+        {/each}
+      </div>
+    {/if}
+    {#if toolCalls && toolCalls.length > 0}
+      <div class="tool-calls-section">
+        {#each toolCalls as tc (tc.id)}
+          <ToolCallCard
+            toolName={tc.toolName}
+            toolInput={tc.toolInput}
+            status={tc.status}
+            result={tc.result}
+            error={tc.error}
+          />
         {/each}
       </div>
     {/if}
@@ -284,6 +299,13 @@
   .file-attachment .file-size {
     color: var(--text-dim);
     font-size: 11px;
+  }
+
+  .tool-calls-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 8px;
   }
 
   .markdown-content {
