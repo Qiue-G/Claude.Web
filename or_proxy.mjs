@@ -30,15 +30,19 @@ const DEFAULT_TEMPERATURE = 0.7;
 const ERROR_DETAIL_MAX_LENGTH = 500;
 
 /**
- * Validate fallback model on startup by making a lightweight probe request.
- * If the fallback model returns 404 (endpoint not found), disable it immediately.
+ * Validate fallback model on startup.
+ * Works with ANY OpenAI-compatible provider (OpenRouter, DeepSeek, SiliconFlow, etc.)
+ *
+ * Strategy:
+ *   1. Try /models endpoint first (OpenRouter, OpenAI support this)
+ *   2. If /models unavailable, send a minimal probe request to the fallback model
+ *   3. If either confirms the model is gone (404), disable fallback immediately
  */
 async function validateFallbackModel() {
   if (!FALLBACK_MODEL || FALLBACK_MODEL === MODEL) return;
+  if (!KEY) return;
 
-  // Only validate for OpenRouter (other providers may not support /models endpoint)
-  if (!BASE_URL.includes('openrouter.ai')) return;
-
+  // --- Strategy 1: Try /models endpoint (works for OpenRouter, OpenAI, etc.) ---
   try {
     const modelsUrl = BASE_URL.replace('/chat/completions', '/models');
     const resp = await fetch(modelsUrl, {
@@ -46,23 +50,55 @@ async function validateFallbackModel() {
       signal: AbortSignal.timeout(10000),
     });
 
-    if (!resp.ok) {
-      console.error(`[proxy] Warning: cannot validate fallback model (${resp.status}), keeping it`);
+    if (resp.ok) {
+      const data = await resp.json();
+      const availableIds = new Set((data.data || []).map(m => m.id));
+
+      if (!availableIds.has(FALLBACK_MODEL)) {
+        console.error(`[proxy] Warning: fallback model "${FALLBACK_MODEL}" not in /models list, disabling fallback`);
+        FALLBACK_MODEL = null;
+        return;
+      }
+      console.error(`[proxy] Fallback model "${FALLBACK_MODEL}" validated via /models endpoint`);
       return;
     }
+    // /models not supported (404/405), fall through to probe request
+  } catch { /* ignore, try probe */ }
 
-    const data = await resp.json();
-    const availableIds = new Set((data.data || []).map(m => m.id));
+  // --- Strategy 2: Minimal probe request (works for ALL OpenAI-compatible APIs) ---
+  // Send the smallest possible request to check if the model endpoint exists.
+  // A 404 means the model is gone; any other response (200, 400, 429) means it exists.
+  try {
+    const probeBody = JSON.stringify({
+      model: FALLBACK_MODEL,
+      messages: [{ role: 'user', content: 'hi' }],
+      max_tokens: 1,
+      stream: false,
+    });
 
-    if (!availableIds.has(FALLBACK_MODEL)) {
-      console.error(`[proxy] Warning: fallback model "${FALLBACK_MODEL}" is not available on OpenRouter, disabling fallback`);
-      console.error(`[proxy] Available free models include: nvidia/nemotron-3-super-120b-a12b:free, tencent/hy3:free, poolside/laguna-m.1:free`);
-      FALLBACK_MODEL = null;
-    } else {
-      console.error(`[proxy] Fallback model "${FALLBACK_MODEL}" validated successfully`);
+    const resp = await fetch(CHAT_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${KEY}`,
+      },
+      body: probeBody,
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (resp.status === 404) {
+      const text = await resp.text().catch(() => '');
+      if (text.includes('endpoint_not_found') || text.includes('not found') || text.includes('No endpoints')) {
+        console.error(`[proxy] Warning: fallback model "${FALLBACK_MODEL}" returned 404, disabling fallback`);
+        FALLBACK_MODEL = null;
+        return;
+      }
     }
+
+    // Any other status (200, 400, 429, 500...) means the model endpoint exists
+    console.error(`[proxy] Fallback model "${FALLBACK_MODEL}" probe OK (status ${resp.status})`);
   } catch (e) {
-    console.error(`[proxy] Warning: fallback validation failed (${e.message}), keeping fallback model`);
+    console.error(`[proxy] Warning: fallback probe failed (${e.message}), keeping fallback model`);
   }
 }
 
