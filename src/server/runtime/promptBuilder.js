@@ -109,15 +109,16 @@ export function buildPrompt({
 function formatHistory(history, maxChars) {
   const lines = [];
   let totalLen = 0;
-  const recent = history.slice(-20);
+  // 从最新向前遍历，由 maxChars 决定保留多少条（compactor 已保证总数可控）
+  const recent = history.slice(-50);
 
-  for (const msg of recent) {
+  for (const msg of recent.reverse()) {
     const line = (msg.role || 'user') + ': ' + (msg.content || '');
     if (totalLen + line.length > maxChars) {
       lines.push('(conversation history truncated)');
       break;
     }
-    lines.push(line);
+    lines.unshift(line);
     totalLen += line.length;
   }
 

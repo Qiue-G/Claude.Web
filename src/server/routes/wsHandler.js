@@ -17,7 +17,8 @@ import * as Y from 'yjs';
 const BASH_COMMAND_TIMEOUT = 30000;  // 30 秒
 const BASH_MAX_BUFFER = 1024 * 1024;  // 1MB
 const APPROVAL_TIMEOUT = 120000;  // 2 分钟
-const MAX_HISTORY_CHARS = 8000;  // 历史消息最大字符数
+// 历史消息最大字符数（可通过环境变量调整，默认 64000 约 16K tokens）
+const MAX_HISTORY_CHARS = parseInt(process.env.MAX_HISTORY_CHARS || '64000', 10);
 const MAX_COMMAND_LENGTH = 4096;  // 命令最大字符数
 
 // 危险模式：拒绝包含以下模式的命令

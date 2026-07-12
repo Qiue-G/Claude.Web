@@ -110,12 +110,10 @@ const prompt = buildPrompt({
   enableCompaction: false,
 });
 
-console.assert(prompt.includes('[System Instructions]'), 'Prompt: has system instructions');
-console.assert(prompt.includes('[Knowledge Base Results]'), 'Prompt: has tool results');
-console.assert(prompt.includes('[Conversation History]'), 'Prompt: has history');
-console.assert(prompt.includes('[User Message]'), 'Prompt: has user message');
-console.assert(prompt.includes('Query about X'), 'Prompt: contains user message text');
-console.assert(prompt.includes('Found doc X'), 'Prompt: contains tool result text');
+console.assert(prompt.systemPrompt.includes('[Knowledge Base Results]'), 'Prompt: has tool result sections');
+console.assert(prompt.systemPrompt.includes('[Conversation History]'), 'Prompt: has history');
+console.assert(prompt.userMessage.includes('Query about X'), 'Prompt: has user message text');
+console.assert(prompt.systemPrompt.includes('Found doc X'), 'Prompt: contains tool result text');
 
 // 无工具指令时无系统指令段
 const promptNoTools = buildPrompt({
@@ -123,7 +121,7 @@ const promptNoTools = buildPrompt({
   activeToolIds: [],
   userMessage: 'hi',
 });
-console.assert(!promptNoTools.includes('[System Instructions]'), 'Prompt: no system section without tools');
+console.assert(!promptNoTools.systemPrompt.includes('[Tool Instructions]'), 'Prompt: no tool instructions without tools');
 
 // 启用压缩且历史很长时
 const longHistory = Array.from({ length: 20 }, (_, i) => ({
@@ -137,9 +135,8 @@ const promptCompacted = buildPrompt({
   maxHistoryChars: 500, // 小值确保触发压缩
 });
 // 应仍有用户消息
-console.assert(promptCompacted.includes('[User Message]'), 'Compacted prompt: has user message');
-console.assert(promptCompacted.includes('final'), 'Compacted prompt: has final message');
+console.assert(promptCompacted.userMessage === 'final', 'Compacted prompt: has final message');
 // 压缩块中应有高价值信号
-console.assert(promptCompacted.includes('decided'), 'Compacted prompt: high signal preserved');
+console.assert(promptCompacted.systemPrompt.includes('decided'), 'Compacted prompt: high signal preserved');
 
 console.log('\n✅ Phase 2 全部测试通过');
