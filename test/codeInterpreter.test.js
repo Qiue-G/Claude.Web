@@ -61,6 +61,14 @@ test('executePython rejects code over 100KB', async () => {
 
 // 第5层：全局并发限流
 test('executePython enforces concurrency limit', { timeout: 60000 }, async () => {
+  // 首先验证 Python/AST 检查可用
+  const testResult = await executePython('print("test")');
+  if (testResult.blocked && testResult.stderr.includes('安全拦截') && testResult.stderr.includes('Python 不可用')) {
+    // AST 检查不可用，跳过此测试
+    console.log('Skipping concurrency test: Python/AST checker not available in CI');
+    return;
+  }
+
   // 并发执行多个，验证超限时返回繁忙
   const promises = [];
   for (let i = 0; i < 6; i++) {

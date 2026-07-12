@@ -270,7 +270,7 @@ export async function executePython(code) {
     };
   }
 
-  // 第5层：全局并发限流
+  // 第5层：全局并发限流（原子检查+递增，避免竞态条件）
   if (activeExecutions >= MAX_CONCURRENT) {
     return {
       stdout: '',
@@ -279,7 +279,6 @@ export async function executePython(code) {
       blocked: true,
     };
   }
-
   activeExecutions++;
 
   try {
