@@ -299,7 +299,29 @@ export async function runToolLoop({
       const proxy = sessionProxies.get(sessionId);
       if (proxy) { try { proxy.kill(); } catch (_) {} sessionProxies.delete(sessionId); }
       console.error(`[MODEL API] HTTP ${response.status}: ${errorText.substring(0, 200)}`);
-      broadcastToSession(sessionId, { type: 'error', message: `Model API error: HTTP ${response.status}. ${errorText.substring(0, 200)}` });
+
+      // Parse structured error from proxy for better user message
+      let userMessage = `Model API error: HTTP ${response.status}. ${errorText.substring(0, 200)}`;
+      try {
+        const errJson = JSON.parse(errorText);
+        if (errJson.error) {
+          const e = errJson.error;
+          if (e.zh_message) {
+            userMessage = `模型请求失败 (${e.zh_message})`;
+            if (e.unavailable_models && e.unavailable_models.length > 0) {
+              userMessage += `。以下模型不可用: ${e.unavailable_models.join(', ')}`;
+            }
+            if (e.models_tried && e.models_tried.length > 0) {
+              userMessage += `。已尝试: ${e.models_tried.join(', ')}`;
+            }
+            if (e.code === 'endpoint_not_found') {
+              userMessage += '。请在"管理模型"中更新为当前可用的模型 ID';
+            }
+          }
+        }
+      } catch { /* use raw error text */ }
+
+      broadcastToSession(sessionId, { type: 'error', message: userMessage });
       return { incremented: false, assistantBuffer: '' };
     }
 

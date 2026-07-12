@@ -1,8 +1,8 @@
 /**
- * or_proxy.mjs v6
+ * or_proxy.mjs v7
  * Local proxy: Anthropic Messages API ↔ OpenAI Chat Completions (with Tool Use support)
  * Supports OpenRouter, DeepSeek, and any OpenAI-compatible API.
- * v6: Anthropic tools ↔ OpenAI functions bidirectional translation + streaming support
+ * v7: Fallback model validation + graceful degradation when fallback is unavailable
  */
 import { createServer } from 'http';
 
@@ -18,13 +18,53 @@ const MAX_BODY_SIZE = 5 * 1024 * 1024; // 5MB 请求体上限
 
 // --- Fallback / retry config ---
 const fallbackIdx = args.indexOf('--fallback-model');
-const FALLBACK_MODEL = fallbackIdx >= 0 ? args[fallbackIdx + 1] : null;
+let FALLBACK_MODEL = fallbackIdx >= 0 ? args[fallbackIdx + 1] : null;
+// Track models that have been confirmed unavailable (404 endpoint_not_found)
+// to avoid repeated failed fallback attempts
+const unavailableModels = new Set();
 const MAX_RETRIES = 1;          // same-model retry count
 const BASE_RETRY_DELAY = 1000;  // ms, doubles each attempt
 const REQUEST_TIMEOUT = 60000;  // 60s per attempt
 const DEFAULT_MAX_TOKENS = 4096;
 const DEFAULT_TEMPERATURE = 0.7;
 const ERROR_DETAIL_MAX_LENGTH = 500;
+
+/**
+ * Validate fallback model on startup by making a lightweight probe request.
+ * If the fallback model returns 404 (endpoint not found), disable it immediately.
+ */
+async function validateFallbackModel() {
+  if (!FALLBACK_MODEL || FALLBACK_MODEL === MODEL) return;
+
+  // Only validate for OpenRouter (other providers may not support /models endpoint)
+  if (!BASE_URL.includes('openrouter.ai')) return;
+
+  try {
+    const modelsUrl = BASE_URL.replace('/chat/completions', '/models');
+    const resp = await fetch(modelsUrl, {
+      headers: { 'Authorization': `Bearer ${KEY}` },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!resp.ok) {
+      console.error(`[proxy] Warning: cannot validate fallback model (${resp.status}), keeping it`);
+      return;
+    }
+
+    const data = await resp.json();
+    const availableIds = new Set((data.data || []).map(m => m.id));
+
+    if (!availableIds.has(FALLBACK_MODEL)) {
+      console.error(`[proxy] Warning: fallback model "${FALLBACK_MODEL}" is not available on OpenRouter, disabling fallback`);
+      console.error(`[proxy] Available free models include: nvidia/nemotron-3-super-120b-a12b:free, tencent/hy3:free, poolside/laguna-m.1:free`);
+      FALLBACK_MODEL = null;
+    } else {
+      console.error(`[proxy] Fallback model "${FALLBACK_MODEL}" validated successfully`);
+    }
+  } catch (e) {
+    console.error(`[proxy] Warning: fallback validation failed (${e.message}), keeping fallback model`);
+  }
+}
 
 /**
  * 延迟指定毫秒数
@@ -77,7 +117,7 @@ function classifyError(status, originalMessage) {
     401: { code: 'invalid_api_key',     zh: 'API Key 无效或已过期，请检查后重试' },
     402: { code: 'insufficient_balance',zh: '账户余额不足，请充值后重试' },
     403: { code: 'model_not_authorized',zh: '无权访问该模型，请更换模型或检查权限' },
-    404: { code: 'endpoint_not_found',  zh: 'API 端点不存在' },
+    404: { code: 'model_not_found',     zh: '模型不存在或已下线，请在"管理模型"中更新为可用模型' },
     405: { code: 'method_not_allowed',  zh: '请求方法不被允许' },
     408: { code: 'request_timeout',     zh: '请求超时，请稍后重试' },
     410: { code: 'resource_gone',       zh: '资源已下线' },
@@ -408,6 +448,12 @@ async function callModel(anthropicBody) {
   let lastStatus = null;
 
   for (const model of modelsToTry) {
+    // Skip models that have been confirmed unavailable (404 endpoint_not_found)
+    if (unavailableModels.has(model)) {
+      console.error(`[proxy] Skipping ${model} (previously confirmed unavailable)`);
+      continue;
+    }
+
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       const label = attempt > 0
         ? `[retry ${attempt}/${MAX_RETRIES}]`
@@ -433,6 +479,12 @@ async function callModel(anthropicBody) {
         lastError = new Error(`HTTP ${resp.status}: ${errText.substring(0, 300)}`);
         attempted.push(`${model} (${resp.status})`);
 
+        // Mark 404 endpoint_not_found models as permanently unavailable
+        if (resp.status === 404 && errText.includes('endpoint_not_found')) {
+          unavailableModels.add(model);
+          console.error(`[proxy] Model "${model}" endpoint not found, marked as unavailable`);
+        }
+
         if (!isRetryable(resp.status)) break; // 4xx → don't retry this model
 
         if (attempt < MAX_RETRIES) {
@@ -457,7 +509,9 @@ async function callModel(anthropicBody) {
 
   throw Object.assign(lastError || new Error('All attempts failed'), {
     status: lastStatus || 502,
-    attempted
+    attempted,
+    modelsToTry,
+    unavailableModels: [...unavailableModels]
   });
 }
 
@@ -606,7 +660,10 @@ const server = createServer(async (req, res) => {
           http_status: classified.http_status,
           detail: classified.detail,
           attempts: attempts.length,
-          attempted: attempts
+          attempted: attempts,
+          // Show which models were tried so user can fix config
+          models_tried: e.modelsToTry || [],
+          unavailable_models: e.unavailableModels || []
         }
       }));
     }
@@ -625,12 +682,15 @@ const server = createServer(async (req, res) => {
   res.end(JSON.stringify({ error: { type: 'not_found', message: 'Not found' } }));
 });
 
+// Validate fallback model on startup (async, non-blocking)
+validateFallbackModel();
+
 server.listen(PORT, '127.0.0.1', () => {
   const addr = server.address();
   process.stdout.write(`port ${addr.port}\n`);
   const info = FALLBACK_MODEL
-    ? `[proxy] v6 listening on 127.0.0.1:${addr.port} target=${BASE_URL} model=${MODEL} fallback=${FALLBACK_MODEL}`
-    : `[proxy] v6 listening on 127.0.0.1:${addr.port} target=${BASE_URL} model=${MODEL} (no fallback)`;
+    ? `[proxy] v7 listening on 127.0.0.1:${addr.port} target=${BASE_URL} model=${MODEL} fallback=${FALLBACK_MODEL}`
+    : `[proxy] v7 listening on 127.0.0.1:${addr.port} target=${BASE_URL} model=${MODEL} (no fallback)`;
   console.error(info);
 });
 
