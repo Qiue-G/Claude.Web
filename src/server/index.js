@@ -12,6 +12,23 @@ const sessionProxies = new Map();
 const wsProcCount = new Map();
 const sessionClients = new Map();
 
+// ===== Event buffer for replay on reconnect =====
+const MAX_BUFFERED_EVENTS = 100;
+const sessionEventBuffers = new Map(); // sessionId → Array<{seq, message}>
+
+function bufferEvent(sessionId, message) {
+  let buf = sessionEventBuffers.get(sessionId);
+  if (!buf) { buf = []; sessionEventBuffers.set(sessionId, buf); }
+  const seq = (buf.length > 0 ? buf[buf.length - 1].seq + 1 : 1);
+  buf.push({ seq, message });
+  if (buf.length > MAX_BUFFERED_EVENTS) buf.shift();
+}
+
+function getBufferedEvents(sessionId, lastSeq = 0) {
+  const buf = sessionEventBuffers.get(sessionId);
+  return buf ? buf.filter(e => e.seq > lastSeq).map(e => e.message) : [];
+}
+
 // ===== Dynamic import of CLI runner utilities =====
 const {
   broadcastToSession: _broadcastToSession,
@@ -23,8 +40,15 @@ const {
   modelStats
 } = await import('./cliRunner.js');
 
-// Bind sessionClients into broadcastToSession
-const broadcastToSession = (sessionId, message) => _broadcastToSession(sessionClients, sessionId, message);
+// Bind sessionClients into broadcastToSession, with event buffering
+const broadcastToSession = (sessionId, message) => {
+  const clients = sessionClients.get(sessionId);
+  // Always buffer for replay on reconnect
+  bufferEvent(sessionId, message);
+  // Only push to live clients
+  if (!clients || clients.size === 0) return;
+  _broadcastToSession(sessionClients, sessionId, message);
+};
 
 // Bind extra params into spawnCli
 const spawnCli = (session, prompt) => _spawnCli(session, prompt, deps.agentConfig, sessionClients, sessionProxies);
@@ -65,6 +89,7 @@ wss.on('connection', createWsHandler({
   sessionClients,
   wsProcCount,
   broadcastToSession,
+  getBufferedEvents,
   spawnCli,
   callModelWithTools,
   callModelWithMessages,
@@ -86,21 +111,35 @@ wss.on('connection', createWsHandler({
 async function gracefulShutdown(signal) {
   logger.info('Shutdown signal received', { signal });
 
-  // 1. Kill proxy processes
+  // 1. Kill proxy processes (SIGTERM first, then SIGKILL after grace period)
   const proxyIds = [...sessionProxies.keys()];
   for (const id of proxyIds) {
-    try { sessionProxies.get(id)?.kill('SIGTERM'); } catch (e) { /* already dead */ }
-    sessionProxies.delete(id);
-    logger.info('Killed proxy', { sessionId: id });
+    const p = sessionProxies.get(id);
+    if (p && !p.killed) {
+      try { p.kill('SIGTERM'); } catch (e) { /* already dead */ }
+    }
   }
-
   // 2. Kill CLI processes
   const procIds = [...sessionProcesses.keys()];
   for (const id of procIds) {
-    try { sessionProcesses.get(id)?.kill('SIGTERM'); } catch (e) { /* already dead */ }
-    sessionProcesses.delete(id);
-    logger.info('Killed process', { sessionId: id });
+    const p = sessionProcesses.get(id);
+    if (p && !p.killed) {
+      try { p.kill('SIGTERM'); } catch (e) { /* already dead */ }
+    }
   }
+
+  // Grace period for SIGTERM to work, then force kill zombies
+  await new Promise(r => setTimeout(r, 3000));
+  const zombieProxies = [...sessionProxies.values()].filter(p => p && !p.killed);
+  const zombieProcs = [...sessionProcesses.values()].filter(p => p && !p.killed);
+  for (const p of zombieProxies) {
+    try { p.kill('SIGKILL'); logger.warn('Force killed zombie proxy'); } catch (e) {}
+  }
+  for (const p of zombieProcs) {
+    try { p.kill('SIGKILL'); logger.warn('Force killed zombie process'); } catch (e) {}
+  }
+  sessionProxies.clear();
+  sessionProcesses.clear();
 
   // 2b. Destroy process pool
   await deps.processPool.destroy();
@@ -194,6 +233,7 @@ setInterval(async () => {
        // C1: Notify connected clients before deleting session
        broadcastToSession(id, { type: 'session_expired' });
        sessionClients.delete(id);
+       sessionEventBuffers.delete(id);
        await deps.deleteSession(id);
        await deps.messageStore.deleteSessionMessages(id);
      }

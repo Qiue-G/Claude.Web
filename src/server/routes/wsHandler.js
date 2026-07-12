@@ -251,6 +251,17 @@ export function createWsHandler(deps) {
             }
           }
 
+          // 回放断线期间缓冲的实时事件（E1: 事件溯源）
+          const buffered = deps.getBufferedEvents
+            ? deps.getBufferedEvents(sessionId, message.lastEventSeq || 0)
+            : [];
+          if (buffered.length > 0) {
+            for (const event of buffered) {
+              ws.send(JSON.stringify(event));
+            }
+            console.log('[REPLAY] sent ' + buffered.length + ' buffered events to session ' + sessionId);
+          }
+
         } else if (message.type === 'update_filters') {
           // ===== 动态更新过滤器配置 =====
           if (message.config && typeof message.config === 'object') {

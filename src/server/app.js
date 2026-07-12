@@ -69,6 +69,22 @@ export function createApp(deps) {
 
   app.use(express.json({ limit: '500kb' }));
 
+  // ===== Request ID tracing =====
+  import { randomUUID } from 'crypto';
+  app.use((req, res, next) => {
+    const reqId = req.headers['x-request-id'] || randomUUID();
+    req.requestId = reqId;
+    res.setHeader('X-Request-Id', reqId);
+    const start = Date.now();
+    res.on('finish', () => {
+      const elapsed = Date.now() - start;
+      if (req.path !== '/api/health' && req.path !== '/api/perf') {
+        logger.info('request', { method: req.method, path: req.path, status: res.statusCode, ms: elapsed, reqId });
+      }
+    });
+    next();
+  });
+
   app.use(express.static(join(__dirname, '../../public'), {
     setHeaders: (res, path) => {
       // Hash-named assets (e.g., index-CauHM6Nt.js) can be cached indefinitely
@@ -121,6 +137,7 @@ export function createApp(deps) {
     RATE_MAX_CREATE: deps.RATE_MAX_CREATE,
     MAX_SESSIONS: deps.MAX_SESSIONS,
     DEFAULTS: deps.DEFAULTS,
+    agentConfig: deps.agentConfig,
     db: deps.db
   }));
 

@@ -17,8 +17,29 @@ import { asyncHandler } from '../lib/asyncHandler.js';
 import { requireAuth } from '../auth/authMiddleware.js';
 
 export function createSessionRouter(deps) {
-  const { createSession, getSession, deleteSession, sessions, sessionProcesses, sessionProxies, messageStore, checkRateLimit, RATE_WINDOW, RATE_MAX_CREATE, MAX_SESSIONS, DEFAULTS, db } = deps;
+  const { createSession, getSession, deleteSession, sessions, sessionProcesses, sessionProxies, messageStore, checkRateLimit, RATE_WINDOW, RATE_MAX_CREATE, MAX_SESSIONS, DEFAULTS, agentConfig, db } = deps;
   const VALID_PROVIDERS = ['openrouter', 'anthropic', 'openai', 'deepseek'];
+
+  /** Get a model's tier ('free'/'paid') from agent config */
+  function getModelTier(provider, modelId) {
+    const providerCfg = agentConfig?.providers?.[provider];
+    if (!providerCfg?.models) return null;
+    const found = providerCfg.models.find(m => m.id === modelId);
+    return found?.tier || null;
+  }
+
+  /** Check if user is allowed to use the specified model */
+  function checkModelAccess(model, provider, user) {
+    const tier = getModelTier(provider, model);
+    // Model not in config — allow all access (backward compatible, config is optional)
+    if (!tier) return;
+    // Free tier: everyone allowed
+    if (tier === 'free') return;
+    // Paid tier: require authentication
+    if (tier === 'paid' && !user) {
+      throw new AppError(401, 'Login required for paid models', { code: 'login_required' });
+    }
+  }
 
   function parseCoauthors(session) {
     try {
@@ -45,7 +66,12 @@ export function createSessionRouter(deps) {
     if (sessions.size >= MAX_SESSIONS)
       throw new AppError(503, 'Too many sessions');
 
-    const session = await createSession(apiKey, model || DEFAULTS.model, provider || DEFAULTS.provider, MAX_SESSIONS);
+    // 模型访问控制：检查用户是否有权限使用该模型
+    const selectedModel = model || DEFAULTS.model;
+    const selectedProvider = provider || DEFAULTS.provider;
+    checkModelAccess(selectedModel, selectedProvider, req.user);
+
+    const session = await createSession(apiKey, selectedModel, selectedProvider, MAX_SESSIONS);
 
     // 如果用户已登录，关联 owner_id
     if (req.user) {
