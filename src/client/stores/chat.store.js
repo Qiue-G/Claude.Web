@@ -137,6 +137,29 @@ export function deleteMessage(messageId) {
 }
 
 /**
+ * 在指定消息之后插入一条新消息（用于工具调用卡片）
+ */
+export function insertMessageAfter(afterId, msg) {
+  const sessionId = get(currentSessionId);
+  if (!sessionId) return;
+  updateSession(sessionId, session => {
+    const msgs = session.messages || [];
+    const idx = msgs.findIndex(m => m.id === afterId);
+    if (idx === -1) return session;
+    const newMsg = {
+      id: Date.now() + Math.random(),
+      role: 'system',
+      content: '',
+      meta: msg.meta || null,
+      files: null,
+      time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+      ...msg
+    };
+    return { ...session, messages: [...msgs.slice(0, idx + 1), newMsg, ...msgs.slice(idx + 1)] };
+  });
+}
+
+/**
  * 删除指定消息之后的所有消息（用于编辑/重试）
  */
 export function deleteMessagesAfter(messageId) {

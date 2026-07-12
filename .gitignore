@@ -18,3 +18,6 @@ public/index.html
 
 # 运行时数据
 ydocs/
+
+# AI 测试生成的项目目录
+react-app/

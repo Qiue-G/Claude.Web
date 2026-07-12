@@ -450,6 +450,7 @@ export async function runToolLoop({
           broadcastToSession(sessionId, {
             type: 'tool_result',
             toolName: tb.name,
+            toolId: tb.id,
             result: String(toolResult)
           });
         } catch (err) {
@@ -457,6 +458,7 @@ export async function runToolLoop({
           broadcastToSession(sessionId, {
             type: 'tool_error',
             toolName: tb.name,
+            toolId: tb.id,
             error: err.message
           });
         }
@@ -627,7 +629,11 @@ export async function handleInputMessage(ws, message, sessionId, session, deps) 
       if (isMcpTool(toolId) && mcpManager) {
         const parsed = parseMcpToolId(toolId);
         if (parsed) {
-          broadcastToSession(sessionId, { type: 'output', data: `\n[执行 MCP 工具: ${parsed.serverName}/${parsed.toolName}...]\n` });
+          broadcastToSession(sessionId, {
+            type: 'tool_result',
+            toolName: `mcp_${parsed.serverName}_${parsed.toolName}`,
+            result: `执行 MCP 工具: ${parsed.serverName}/${parsed.toolName}...`
+          });
           const toolArgs = applyPreToolUseHook(toolId, { query: originalPrompt }, pluginsConfig);
           const { _instruction, ...cleanArgs } = toolArgs;
           const result = await mcpManager.callTool(parsed.serverName, parsed.toolName, cleanArgs);
@@ -746,20 +752,22 @@ export async function handleInputMessage(ws, message, sessionId, session, deps) 
 
     const fileToolResults = await extractAndExecuteFileTools(assistantBuffer, session);
     for (const r of fileToolResults) {
-      if (r.ok) {
-        broadcastToSession(sessionId, { type: 'output', data: `\n[${r.tool}] ${r.result}\n` });
-      } else {
-        broadcastToSession(sessionId, { type: 'output', data: `\n[${r.tool} 失败] ${r.error}\n` });
-      }
+      broadcastToSession(sessionId, {
+        type: r.ok ? 'tool_result' : 'tool_error',
+        toolName: r.tool,
+        result: r.ok ? r.result : undefined,
+        error: r.ok ? undefined : r.error
+      });
     }
 
     const freeCodeResults = await extractAndExecuteFreeCodeTools(assistantBuffer, session);
     for (const r of freeCodeResults) {
-      if (r.ok) {
-        broadcastToSession(sessionId, { type: 'output', data: `\n[${r.tool}] ${r.result}\n` });
-      } else {
-        broadcastToSession(sessionId, { type: 'output', data: `\n[${r.tool} 失败] ${r.error}\n` });
-      }
+      broadcastToSession(sessionId, {
+        type: r.ok ? 'tool_result' : 'tool_error',
+        toolName: r.tool,
+        result: r.ok ? r.result : undefined,
+        error: r.ok ? undefined : r.error
+      });
     }
   }
 

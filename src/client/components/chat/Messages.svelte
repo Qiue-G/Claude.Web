@@ -1,6 +1,7 @@
 <script>
   import ChatMessage from './ChatMessage.svelte';
   import FileDiffCard from './FileDiffCard.svelte';
+  import ToolCallCard from './ToolCallCard.svelte';
   import Placeholder from './Placeholder.svelte';
   import { isWaiting } from '$stores/chat.store.js';
   import { loadMoreHistory } from '$lib/websocket.js';
@@ -27,29 +28,39 @@
 
   $: _t = $t;
 
-  // 对连续 file_diff 消息进行分组
-  $: groupedMessages = groupFileDiffs(messages);
+  // 对连续 file_diff 和 tool_call 消息进行分组
+  $: groupedMessages = groupMessages(messages);
 
-  function groupFileDiffs(msgs) {
+  function groupMessages(msgs) {
     const result = [];
     let diffGroup = [];
+    let toolGroup = [];
+
+    function flushGroups() {
+      if (diffGroup.length > 0) {
+        result.push({ type: 'diff_group', diffs: diffGroup });
+        diffGroup = [];
+      }
+      if (toolGroup.length > 0) {
+        result.push({ type: 'tool_group', tools: toolGroup });
+        toolGroup = [];
+      }
+    }
 
     for (const msg of msgs) {
       if (msg.meta?.type === 'file_diff') {
+        flushGroups(); // tool_group 不能和 diff_group 混
         diffGroup.push(msg);
+      } else if (msg.meta?.type === 'tool_call') {
+        flushGroups(); // diff_group 不能和 tool_group 混
+        toolGroup.push(msg);
       } else {
-        if (diffGroup.length > 0) {
-          result.push({ type: 'diff_group', diffs: diffGroup });
-          diffGroup = [];
-        }
+        flushGroups();
         result.push(msg);
       }
     }
 
-    if (diffGroup.length > 0) {
-      result.push({ type: 'diff_group', diffs: diffGroup });
-    }
-
+    flushGroups();
     return result;
   }
 
@@ -113,7 +124,7 @@
     <Placeholder title={emptyTitle || 'Welcome'} subtitle={emptySubtitle || 'AI-powered coding assistant'} icon="⚙" {suggestions} onsuggestion={(text) => onsuggestion?.(text)} />
   {:else}
     <div class="messages-list">
-      {#each groupedMessages as entry, i (entry.id || entry.diffs?.[0]?.id || i)}
+      {#each groupedMessages as entry, i (entry.id || entry.diffs?.[0]?.id || entry.tools?.[0]?.id || i)}
         {#if entry.type === 'diff_group'}
           <div class="diff-group" data-diff-group={i}>
             <div class="diff-group-header">
@@ -129,6 +140,21 @@
                 onnext={handleNext(i, j, entry.diffs.length)}
                 onreverted={() => window.dispatchEvent(new CustomEvent('files-changed'))}
                 onopen={(data) => onopenfile?.(data)}
+              />
+            {/each}
+          </div>
+        {:else if entry.type === 'tool_group'}
+          <div class="tool-group">
+            <div class="tool-group-header">
+              <span class="tool-group-title">工具调用 ({entry.tools.length})</span>
+            </div>
+            {#each entry.tools as toolMsg (toolMsg.id)}
+              <ToolCallCard
+                toolName={toolMsg.meta?.toolName || ''}
+                toolInput={toolMsg.meta?.toolInput}
+                status={toolMsg.meta?.status || 'running'}
+                result={toolMsg.meta?.result || ''}
+                error={toolMsg.meta?.error || ''}
               />
             {/each}
           </div>
@@ -175,6 +201,30 @@
   }
 
   .diff-group-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* ===== Tool Group ===== */
+  .tool-group {
+    display: flex;
+    flex-direction: column;
+    padding: 0 16px;
+    margin: 4px 0;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 60px;
+  }
+
+  .tool-group-header {
+    display: flex;
+    align-items: center;
+    padding: 6px 8px 2px;
+  }
+
+  .tool-group-title {
     font-size: 11px;
     font-weight: 600;
     color: var(--text-dim);

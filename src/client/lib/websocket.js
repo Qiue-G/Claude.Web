@@ -8,7 +8,7 @@
  * - Ping/pong heartbeat: detects dead connections every 30s
  */
 import { isConnected, connectionStatus, sessionId, sessionToken, csrfToken } from '$stores/session.store.js';
-import { messages, addMessage, appendToLastAssistant, isWaiting, isTyping, setMessages, prependMessages } from '$stores/chat.store.js';
+import { messages, addMessage, appendToLastAssistant, updateMessage, isWaiting, isTyping, setMessages, prependMessages } from '$stores/chat.store.js';
 import { filtersConfig } from '$stores/filters.store.js';
 import { stripAnsi } from '$lib/utils.js';
 import { t } from '$lib/i18n.js';
@@ -362,14 +362,42 @@ function handleServerMessage(msg) {
         if (!last || last.role !== 'assistant') {
           addMessage('assistant', '');
         }
-        appendToLastAssistant(`\n[使用工具: ${msg.toolName}]\n`);
+        const lastMsg = get(messages)[get(messages).length - 1];
+        addMessage('system', '', {
+          type: 'tool_call',
+          toolName: msg.toolName,
+          toolInput: msg.toolInput,
+          status: 'running',
+          parentId: lastMsg?.id
+        });
       }
       break;
     case 'tool_result':
-      appendToLastAssistant(`\n[${msg.toolName}] ${stripAnsi(msg.result || '')}\n`);
+      {
+        const msgs = get(messages);
+        // 找到最近的 tool_call 消息并更新
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].meta?.type === 'tool_call' && msgs[i].meta?.toolName === msg.toolName && msgs[i].meta?.status === 'running') {
+            updateMessage(msgs[i].id, {
+              meta: { ...msgs[i].meta, status: 'success', result: msg.result }
+            });
+            break;
+          }
+        }
+      }
       break;
     case 'tool_error':
-      appendToLastAssistant(`\n[${msg.toolName} 失败] ${msg.error}\n`);
+      {
+        const msgs = get(messages);
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].meta?.type === 'tool_call' && msgs[i].meta?.toolName === msg.toolName && msgs[i].meta?.status === 'running') {
+            updateMessage(msgs[i].id, {
+              meta: { ...msgs[i].meta, status: 'error', error: msg.error }
+            });
+            break;
+          }
+        }
+      }
       break;
     case 'stderr':
       appendToLastAssistant(stripAnsi('[stderr] ' + (msg.data || '')));
