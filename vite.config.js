@@ -12,10 +12,10 @@ export default defineConfig({
     minify: true,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'vendor-shiki': ['shiki'],
-          'vendor-marked': ['marked'],
-          'vendor-yjs': ['yjs', 'y-websocket']
+        manualChunks(id) {
+          if (id.includes('node_modules/shiki')) return 'vendor-shiki';
+          if (id.includes('node_modules/marked')) return 'vendor-marked';
+          if (id.includes('node_modules/yjs') || id.includes('node_modules/y-websocket')) return 'vendor-yjs';
         }
       }
     }
