@@ -5,19 +5,48 @@
   let sessions = [];
   let loading = true;
   let error = '';
-  const ADMIN_TOKEN = localStorage.getItem('admin_token') || '';
+  let tokenInput = '';
+  let ADMIN_TOKEN = localStorage.getItem('admin_token') || '';
+
+  function saveToken() {
+    localStorage.setItem('admin_token', tokenInput);
+    ADMIN_TOKEN = tokenInput;
+    fetchStats();
+  }
 
   async function fetchStats() {
     loading = true;
     error = '';
     try {
+      const headers = { 'Authorization': `Bearer ${ADMIN_TOKEN}` };
       const [statsRes, sessionsRes] = await Promise.all([
-        fetch('/api/admin/stats', { headers: { 'Authorization': `Bearer ${ADMIN_TOKEN}` } }),
-        fetch('/api/admin/sessions', { headers: { 'Authorization': `Bearer ${ADMIN_TOKEN}` } })
+        fetch('/api/admin/stats', { headers }),
+        fetch('/api/admin/sessions', { headers })
       ]);
-      if (statsRes.ok) stats = await statsRes.json();
+      if (statsRes.ok) {
+        const data = await statsRes.json();
+        // Ensure all required fields exist with safe defaults
+        stats = {
+          uptime: data.uptime || 0,
+          memory: {
+            heapUsedMB: data.memory?.heapUsedMB || 0,
+            heapTotalMB: data.memory?.heapTotalMB || 0,
+            rssMB: data.memory?.rssMB || 0
+          },
+          sessions: {
+            active: data.sessions?.active || 0,
+            withProxy: data.sessions?.withProxy || 0,
+            withProcess: data.sessions?.withProcess || 0
+          },
+          messages: { total: data.messages?.total || 0 },
+          models: data.models || {}
+        };
+      } else if (statsRes.status === 401) {
+        error = 'Admin token 无效或缺失 (设置 ADMIN_TOKEN 环境变量并配置 localStorage.admin_token)';
+      } else {
+        error = `API error: ${statsRes.status}`;
+      }
       if (sessionsRes.ok) sessions = (await sessionsRes.json()).sessions || [];
-      else if (statsRes.status === 401) error = 'Admin token 无效';
     } catch (e) {
       error = e.message;
     } finally {
@@ -53,6 +82,15 @@
 
   {#if error}
     <div class="error">{error}</div>
+    <div class="token-input-row">
+      <input
+        type="password"
+        bind:value={tokenInput}
+        placeholder="Admin Token (设置后刷新)"
+        class="token-input"
+      />
+      <button class="save-token-btn" onclick={saveToken}>保存</button>
+    </div>
   {/if}
 
   <div class="stats-grid">
@@ -153,6 +191,28 @@
     padding: 10px;
     border-radius: 6px;
     margin-bottom: 12px;
+  }
+  .token-input-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .token-input {
+    flex: 1;
+    padding: 6px 10px;
+    border: 1px solid var(--ds-border, #ddd);
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: monospace;
+  }
+  .save-token-btn {
+    padding: 6px 14px;
+    background: var(--ds-accent, #7a5fd0);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
   }
   .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
   .stat-card {
