@@ -35,8 +35,8 @@
           },
           sessions: {
             active: data.sessions?.active || 0,
-            withProxy: data.sessions?.withProxy || 0,
-            withProcess: data.sessions?.withProcess || 0
+            wsConnected: data.sessions?.wsConnected || 0,
+            idle: data.sessions?.idle || 0
           },
           messages: { total: data.messages?.total || 0 },
           models: data.models || {}
@@ -115,12 +115,12 @@
 
   <div class="detail-grid">
     <div class="detail-card">
-      <span>代理进程</span>
-      <strong>{stats.sessions.withProxy}</strong>
+      <span>WS 已连接</span>
+      <strong>{stats.sessions.wsConnected}</strong>
     </div>
     <div class="detail-card">
-      <span>CLI 进程</span>
-      <strong>{stats.sessions.withProcess}</strong>
+      <span>空闲会话</span>
+      <strong>{stats.sessions.idle}</strong>
     </div>
     <div class="detail-card">
       <span>堆内存</span>
@@ -145,14 +145,14 @@
     <div class="session-row header">
       <span>ID</span>
       <span>模型</span>
-      <span>代理</span>
+      <span>WS 连接</span>
       <span>操作</span>
     </div>
     {#each sessions as s}
       <div class="session-row">
         <span class="session-id" title={s.sessionId}>{s.sessionId.substring(0, 10)}...</span>
         <span class="session-model">{s.model?.substring(0, 25) || '—'}</span>
-        <span>{s.proxyAlive ? '✅' : '❌'}</span>
+        <span>{s.wsConnected ? '✅' : '⚠️'}</span>
         <button class="kill-btn" onclick={() => killSession(s.sessionId)} title="强制关闭">
           🗑️
         </button>

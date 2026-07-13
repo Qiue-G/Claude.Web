@@ -179,6 +179,7 @@ export function createApp(deps) {
     sessions: deps.sessions,
     sessionProcesses: deps.sessionProcesses,
     sessionProxies: deps.sessionProxies,
+    sessionClients: deps.sessionClients,
     modelStats: deps.modelStats,
     mcpManager: deps.mcpManager,
     rag: deps.rag,

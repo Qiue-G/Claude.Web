@@ -9,7 +9,7 @@ import { Router } from 'express';
 import { requireAdmin } from '../auth/middleware.js';
 
 export function createAdminRouter(deps) {
-  const { sessions, sessionProcesses, sessionProxies, modelStats, mcpManager, rag, db, auditLog, processPool, monitor, messageStore } = deps;
+  const { sessions, sessionProcesses, sessionProxies, sessionClients, modelStats, mcpManager, rag, db, auditLog, processPool, monitor, messageStore } = deps;
   const router = Router();
 
   // All admin routes require admin token
@@ -24,8 +24,7 @@ export function createAdminRouter(deps) {
         model: s.currentModel || s.model,
         provider: s.provider,
         health: s.modelHealth,
-        proxyAlive: sessionProxies.has(sid),
-        processAlive: sessionProcesses.has(sid),
+        wsConnected: (sessionClients && sessionClients.has(sid) && sessionClients.get(sid).size > 0) || false,
         createdAt: s.createdAt,
         lastActivity: s.lastActivity
       });
@@ -123,7 +122,7 @@ export function createAdminRouter(deps) {
       return res.status(404).json({ error: 'Session not found', code: 'session_not_found' });
     }
 
-    const killed = { proxy: false, process: false };
+    const killed = { proxy: false, process: false, ws: false };
     const proxy = sessionProxies.get(sid);
     if (proxy) {
       try { proxy.kill('SIGKILL'); } catch (_) {}
@@ -135,6 +134,17 @@ export function createAdminRouter(deps) {
       try { proc.kill('SIGKILL'); } catch (_) {}
       sessionProcesses.delete(sid);
       killed.process = true;
+    }
+    // Disconnect WebSocket clients for this session
+    if (sessionClients) {
+      const sClients = sessionClients.get(sid);
+      if (sClients) {
+        for (const client of sClients) {
+          try { client.close(); } catch (_) {}
+        }
+        sessionClients.delete(sid);
+        killed.ws = true;
+      }
     }
 
     // Clean up message store for this session
@@ -158,12 +168,19 @@ export function createAdminRouter(deps) {
       messageCount = rows[0]?.values?.[0]?.[0] || 0;
 
       // Model usage stats
-      const sessionRows = sessions.size > 0 ? null : [];
       for (const [_, s] of sessions) {
         const model = s.currentModel || s.model || 'unknown';
         activeModels[model] = (activeModels[model] || 0) + 1;
       }
     } catch (_) {}
+
+    // Count WebSocket-connected sessions
+    let wsConnected = 0;
+    if (sessionClients) {
+      for (const [_, clients] of sessionClients) {
+        if (clients && clients.size > 0) wsConnected++;
+      }
+    }
 
     res.json({
       uptime: Math.round(process.uptime()),
@@ -174,8 +191,8 @@ export function createAdminRouter(deps) {
       },
       sessions: {
         active: sessions.size,
-        withProxy: [...sessionProxies.keys()].length,
-        withProcess: [...sessionProcesses.keys()].length,
+        wsConnected,
+        idle: sessions.size - wsConnected,
       },
       messages: { total: messageCount },
       models: activeModels,

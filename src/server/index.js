@@ -64,6 +64,7 @@ const app = createApp({
   ...deps,
   sessionProcesses,
   sessionProxies,
+  sessionClients,
   modelStats,
 });
 
