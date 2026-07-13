@@ -80,7 +80,9 @@
               {($authUser?.username || '?')[0].toUpperCase()}
             </span>
           {/if}
-          {#each ($connectionStatus === 'connected' ? $onlineUsers.filter(u => u.username !== $authUser?.username) : $onlineUsers) as user}
+          {#each ($connectionStatus === 'connected'
+            ? $onlineUsers.filter(u => u.username && u.username !== ($authUser?.username || ''))
+            : $onlineUsers) as user}
             <span class="online-user-avatar" style="background:{user.color || '#888'}" title={user.username}>
               {(user.username || '?')[0].toUpperCase()}
             </span>
