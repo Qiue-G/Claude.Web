@@ -108,21 +108,50 @@ export async function handleInputMessage(ws, message, sessionId, session, deps) 
     }
   }
 
-  // 工具审批处理
+  // 工具审批处理 — 按策略分流: auto 自动批准 / prompt 弹窗 / deny 拒绝
   let approvedTools = [];
-  const availableTools = deps.mcpManager
-    ? [...getToolInstructions(data.tools || []).split('\n').filter(Boolean), ...(await deps.mcpManager.listTools()).map(t => t.id)]
-    : getToolInstructions(data.tools || []).split('\n').filter(Boolean);
+  const toolPolicies = (agentConfig && agentConfig.toolPolicies) || {};
+  const defaultPolicy = toolPolicies.default || 'prompt';
 
-  if (availableTools.length > 0 && pendingApprovals) {
-    const approvalId = `${sessionId}_${Date.now()}`;
-    const approvalPromise = new Promise(resolve => {
-      const timeout = setTimeout(() => resolve([]), APPROVAL_TIMEOUT);
-      pendingApprovals.set(approvalId, { resolve: (tools) => { clearTimeout(timeout); resolve(tools); }, tools: availableTools, _timeout: timeout });
-    });
-    broadcastToSession(sessionId, { type: 'tool_approval_request', approvalId, tools: availableTools });
-    approvedTools = await approvalPromise;
-    pendingApprovals.delete(approvalId);
+  // Build actual tool list from data.tools (user-facing tool IDs)
+  const requestedTools = (Array.isArray(data.tools) ? data.tools : [])
+    .filter(t => typeof t === 'string' && t.length > 0 && t.length < 64);
+
+  if (requestedTools.length > 0 && pendingApprovals) {
+    // Separate tools by policy
+    const autoTools = [];
+    const promptTools = [];
+    for (const toolId of requestedTools) {
+      const policy = toolPolicies[toolId] || defaultPolicy;
+      if (policy === 'deny') continue;      // silently dropped
+      if (policy === 'auto') autoTools.push(toolId);
+      else promptTools.push(toolId);
+    }
+
+    // Auto-approve tools immediately
+    approvedTools.push(...autoTools);
+
+    // Only prompt for tools that need confirmation
+    if (promptTools.length > 0) {
+      const approvalId = `${sessionId}_${Date.now()}`;
+      const approvalPromise = new Promise(resolve => {
+        const timeout = setTimeout(() => resolve([]), APPROVAL_TIMEOUT);
+        pendingApprovals.set(approvalId, {
+          resolve: (tools) => { clearTimeout(timeout); resolve(tools); },
+          tools: promptTools,
+          _timeout: timeout
+        });
+      });
+      broadcastToSession(sessionId, {
+        type: 'tool_approval_request',
+        approvalId,
+        tools: promptTools,
+        autoApproved: autoTools
+      });
+      const userApproved = await approvalPromise;
+      pendingApprovals.delete(approvalId);
+      approvedTools.push(...userApproved);
+    }
   }
 
   // 钩子处理

@@ -98,6 +98,25 @@
       "stripCodeFences": true
     }
   },
+  "toolPolicies": {
+    "default": "prompt",
+    "read_file": "auto",
+    "list_files": "auto",
+    "glob": "auto",
+    "grep": "auto",
+    "todo_write": "auto",
+    "web_search": "auto",
+    "code_interpreter": "prompt",
+    "write_file": "prompt",
+    "edit_file": "prompt",
+    "delete_file": "prompt",
+    "rename_file": "prompt",
+    "comment": "auto = 自动批准不弹窗, prompt = 弹窗确认, deny = 自动拒绝"
+  },
+  "fileSandbox": {
+    "enabled": true,
+    "comment": "限制文件工具只能操作 WORKSPACE_DIR 下的路径"
+  },
   "plugins": {
     "starlight": {
       "enabled": true,
