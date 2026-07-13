@@ -163,7 +163,8 @@
 
 <style>
   .admin-panel {
-    background: var(--ds-surface, #fff);
+    background: var(--bg-panel);
+    color: var(--text-primary);
     border-radius: 12px;
     padding: 20px;
     max-width: 800px;
@@ -176,19 +177,20 @@
     align-items: center;
     margin-bottom: 16px;
   }
-  .admin-header h2 { margin: 0; font-size: 18px; }
+  .admin-header h2 { margin: 0; font-size: 18px; color: var(--text-primary); }
   .refresh-btn {
     padding: 6px 14px;
-    border: 1px solid var(--ds-border, #ddd);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    background: var(--ds-surface-2, #f5f5f5);
+    background: var(--bg-raised);
+    color: var(--text-primary);
     cursor: pointer;
     font-size: 13px;
   }
   .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .error {
-    background: #ffe0e0;
-    color: #c00;
+    background: rgba(220, 38, 38, 0.15);
+    color: rgb(248, 113, 113);
     padding: 10px;
     border-radius: 6px;
     margin-bottom: 12px;
@@ -201,15 +203,17 @@
   .token-input {
     flex: 1;
     padding: 6px 10px;
-    border: 1px solid var(--ds-border, #ddd);
+    border: 1px solid var(--border);
     border-radius: 6px;
+    background: var(--bg-input);
+    color: var(--text-primary);
     font-size: 12px;
     font-family: monospace;
   }
   .save-token-btn {
     padding: 6px 14px;
-    background: var(--ds-accent, #7a5fd0);
-    color: white;
+    background: var(--bg-accent-dim2, #d97706);
+    color: var(--text-primary);
     border: none;
     border-radius: 6px;
     cursor: pointer;
@@ -217,48 +221,49 @@
   }
   .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
   .stat-card {
-    background: var(--ds-surface-2, #f5f5f5);
+    background: var(--bg-raised);
     padding: 12px;
     border-radius: 8px;
     text-align: center;
   }
-  .stat-value { font-size: 24px; font-weight: 700; color: var(--ds-accent, #7a5fd0); }
-  .stat-label { font-size: 12px; color: var(--ds-text-2, #888); margin-top: 4px; }
+  .stat-value { font-size: 24px; font-weight: 700; color: #d97706; }
+  .stat-label { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
   .detail-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
   .detail-card {
-    background: var(--ds-surface-2, #f5f5f5);
+    background: var(--bg-raised);
     padding: 8px 12px;
     border-radius: 6px;
     display: flex;
     justify-content: space-between;
     font-size: 13px;
   }
-  .detail-card span { color: var(--ds-text-2, #888); }
-  h3 { font-size: 15px; margin: 16px 0 8px; }
+  .detail-card span { color: var(--text-muted); }
+  h3 { font-size: 15px; margin: 16px 0 8px; color: var(--text-primary); }
   .models-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
   .model-row {
-    background: var(--ds-surface-2, #f5f5f5);
+    background: var(--bg-raised);
     padding: 4px 10px;
     border-radius: 6px;
     display: flex;
     gap: 8px;
     align-items: center;
   }
-  .model-name { font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .model-count { font-weight: 600; color: var(--ds-accent, #7a5fd0); }
-  .sessions-table { border: 1px solid var(--ds-border, #ddd); border-radius: 8px; overflow: hidden; }
+  .model-name { font-size: 12px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+  .model-count { font-weight: 600; color: #d97706; }
+  .sessions-table { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
   .session-row {
     display: grid;
     grid-template-columns: 1fr 2fr 0.5fr 0.5fr;
     gap: 8px;
     padding: 8px 12px;
-    border-bottom: 1px solid var(--ds-border, #eee);
+    border-bottom: 1px solid var(--border);
     align-items: center;
     font-size: 12px;
+    color: var(--text-secondary);
   }
-  .session-row.header { font-weight: 600; background: var(--ds-surface-2, #f5f5f5); font-size: 11px; }
+  .session-row.header { font-weight: 600; background: var(--bg-raised); font-size: 11px; color: var(--text-primary); }
   .session-row:last-child { border-bottom: none; }
-  .session-id { font-family: monospace; }
+  .session-id { font-family: monospace; color: var(--text-muted); }
   .kill-btn {
     background: none;
     border: none;
@@ -267,5 +272,5 @@
     padding: 2px 6px;
     border-radius: 4px;
   }
-  .kill-btn:hover { background: #ffe0e0; }
+  .kill-btn:hover { background: rgba(220, 38, 38, 0.2); }
 </style>
