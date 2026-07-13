@@ -73,22 +73,14 @@
       </div>
     </div>
 
-      {#if $onlineUsers.length > 0}
-        <div class="online-users" title={$onlineUsers.map(u => u.username).join(', ')}>
-          {#each $onlineUsers as user}
-            <span class="online-user-avatar" style="background:{user.color || '#888'}" title={user.username}>
-              {(user.username || '?')[0].toUpperCase()}
+      {#if $connectionStatus === 'connected' || $onlineUsers.length > 0}
+        <div class="online-users" title={$onlineUsers.map(u => u.username).join(', ') || '协作已就绪'}>
+          {#if $connectionStatus === 'connected'}
+            <span class="online-user-avatar online-self" style="background:var(--accent)" title="自己 — {$authUser?.username || 'anonymous'}">
+              {($authUser?.username || '?')[0].toUpperCase()}
             </span>
-          {/each}
-        </div>
-      {/if}
-
-      {#if $connectionStatus === 'connected'}
-        <div class="online-users" title="协作已就绪">
-          <span class="online-user-avatar online-self" style="background:var(--accent)" title="自己 — {$authUser?.username || 'anonymous'}">
-            {($authUser?.username || '?')[0].toUpperCase()}
-          </span>
-          {#each $onlineUsers.filter(u => u.username !== $authUser?.username) as user}
+          {/if}
+          {#each ($connectionStatus === 'connected' ? $onlineUsers.filter(u => u.username !== $authUser?.username) : $onlineUsers) as user}
             <span class="online-user-avatar" style="background:{user.color || '#888'}" title={user.username}>
               {(user.username || '?')[0].toUpperCase()}
             </span>
