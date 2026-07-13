@@ -74,10 +74,10 @@
     </div>
 
       {#if $connectionStatus === 'connected' || $onlineUsers.length > 0}
-        <div class="online-users" title={$onlineUsers.map(u => u.username).join(', ') || '协作已就绪'}>
-          {#if $connectionStatus === 'connected'}
-            <span class="online-user-avatar online-self" style="background:var(--accent)" title="自己 — {$authUser?.username || 'anonymous'}">
-              {($authUser?.username || '?')[0].toUpperCase()}
+        <div class="online-users" title={$onlineUsers.filter(u => u.username).map(u => u.username).join(', ') || '协作已就绪'}>
+          {#if $connectionStatus === 'connected' && $authUser?.username}
+            <span class="online-user-avatar online-self" style="background:var(--accent)" title="自己 — {$authUser.username}">
+              {$authUser.username[0].toUpperCase()}
             </span>
           {/if}
           {#each ($connectionStatus === 'connected'
