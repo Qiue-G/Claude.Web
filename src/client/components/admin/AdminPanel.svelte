@@ -46,7 +46,7 @@
 <div class="admin-panel">
   <div class="admin-header">
     <h2>⚙️ 管理面板</h2>
-    <button class="refresh-btn" on:click={fetchStats} disabled={loading}>
+    <button class="refresh-btn" onclick={fetchStats} disabled={loading}>
       {loading ? '加载中...' : '🔄 刷新'}
     </button>
   </div>
@@ -114,7 +114,7 @@
         <span class="session-id" title={s.sessionId}>{s.sessionId.substring(0, 10)}...</span>
         <span class="session-model">{s.model?.substring(0, 25) || '—'}</span>
         <span>{s.proxyAlive ? '✅' : '❌'}</span>
-        <button class="kill-btn" on:click={() => killSession(s.sessionId)} title="强制关闭">
+        <button class="kill-btn" onclick={() => killSession(s.sessionId)} title="强制关闭">
           🗑️
         </button>
       </div>
