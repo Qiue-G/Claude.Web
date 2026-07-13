@@ -63,8 +63,9 @@
     fetchStats();
   }
 
-  function formatMB(n) { return `${Math.round(n)}MB`; }
+  function formatMB(n) { return n ? `${Math.round(n)}MB` : '—'; }
   function formatUptime(s) {
+    if (!s) return '0m';
     const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
     return h > 0 ? `${h}h ${m}m` : `${m}m ${s % 60}s`;
   }
