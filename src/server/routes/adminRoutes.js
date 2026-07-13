@@ -9,7 +9,7 @@ import { Router } from 'express';
 import { requireAdmin } from '../auth/middleware.js';
 
 export function createAdminRouter(deps) {
-  const { sessions, sessionProcesses, sessionProxies, modelStats, mcpManager, rag, db, auditLog, processPool, monitor } = deps;
+  const { sessions, sessionProcesses, sessionProxies, modelStats, mcpManager, rag, db, auditLog, processPool, monitor, messageStore } = deps;
   const router = Router();
 
   // All admin routes require admin token
@@ -113,6 +113,74 @@ export function createAdminRouter(deps) {
       return res.json({ slowQueries: [] });
     }
     res.json({ slowQueries: monitor.getSlowQueries() });
+  });
+
+  // Force-kill a zombie session (admin only)
+  router.post('/sessions/:id/kill', (req, res) => {
+    const sid = req.params.id;
+    const session = sessions.get(sid);
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found', code: 'session_not_found' });
+    }
+
+    const killed = { proxy: false, process: false };
+    const proxy = sessionProxies.get(sid);
+    if (proxy) {
+      try { proxy.kill('SIGKILL'); } catch (_) {}
+      sessionProxies.delete(sid);
+      killed.proxy = true;
+    }
+    const proc = sessionProcesses.get(sid);
+    if (proc) {
+      try { proc.kill('SIGKILL'); } catch (_) {}
+      sessionProcesses.delete(sid);
+      killed.process = true;
+    }
+
+    // Clean up message store for this session
+    if (messageStore) {
+      try { messageStore.deleteSessionMessages(sid); } catch (_) {}
+    }
+
+    sessions.delete(sid);
+    res.json({ killed: true, sessionId: sid, details: killed });
+  });
+
+  // Aggregated system stats (admin only)
+  router.get('/stats', (req, res) => {
+    const mem = process.memoryUsage();
+
+    // Count messages per session from DB
+    let messageCount = 0;
+    let activeModels = {};
+    try {
+      const rows = db ? db.exec('SELECT COUNT(*) as cnt FROM messages') : [];
+      messageCount = rows[0]?.values?.[0]?.[0] || 0;
+
+      // Model usage stats
+      const sessionRows = sessions.size > 0 ? null : [];
+      for (const [_, s] of sessions) {
+        const model = s.currentModel || s.model || 'unknown';
+        activeModels[model] = (activeModels[model] || 0) + 1;
+      }
+    } catch (_) {}
+
+    res.json({
+      uptime: Math.round(process.uptime()),
+      memory: {
+        heapUsedMB: Math.round(mem.heapUsed / 1024 / 1024),
+        heapTotalMB: Math.round(mem.heapTotal / 1024 / 1024),
+        rssMB: Math.round(mem.rss / 1024 / 1024)
+      },
+      sessions: {
+        active: sessions.size,
+        withProxy: [...sessionProxies.keys()].length,
+        withProcess: [...sessionProcesses.keys()].length,
+      },
+      messages: { total: messageCount },
+      models: activeModels,
+      processPool: processPool ? processPool.stats() : null,
+    });
   });
 
   return router;

@@ -185,7 +185,8 @@ export function createApp(deps) {
     db: deps.db,
     auditLog: deps.auditLog,
     processPool: deps.processPool,
-    monitor: deps.monitor
+    monitor: deps.monitor,
+    messageStore: deps.messageStore
   }));
 
   // ===== Prompt Template API ====

@@ -12,6 +12,7 @@
   import ToolApprovalModal from '$components/chat/ToolApprovalModal.svelte';
   import Modal from '$components/common/Modal.svelte';
   import InstallPrompt from '$components/common/InstallPrompt.svelte';
+  import AdminPanel from '$components/admin/AdminPanel.svelte';
   import { sendToolApproval } from '$lib/websocket.js';
 
   // Parallel comparison store (keep store small)
@@ -876,6 +877,11 @@
     <div class="admin-tabs">
         <button
           class="admin-tab"
+          class:active={adminTab === 'dashboard'}
+          onclick={() => adminTab = 'dashboard'}
+        >仪表盘</button>
+        <button
+          class="admin-tab"
           class:active={adminTab === 'audit'}
           onclick={() => adminTab = 'audit'}
         >{_t('admin.tabAudit')}</button>
@@ -885,7 +891,9 @@
           onclick={() => adminTab = 'perf'}
         >{_t('admin.tabPerf')}</button>
       </div>
-    {#if adminTab === 'audit'}
+    {#if adminTab === 'dashboard'}
+      <AdminPanel />
+    {:else if adminTab === 'audit'}
       {#if AuditLogComponent}
         <AuditLogComponent />
       {:else}
